@@ -4,6 +4,7 @@
 %%%-------------------------------------------------------------------
 
 -module(vmq_webhooks_sup).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(supervisor).
 
@@ -64,7 +65,7 @@ register_webhook({Name, #{hook := HookName, endpoint := Endpoint, options := Opt
         ok ->
             ok;
         {error, Reason} ->
-            lager:error(
+            ?LOG_ERROR(
                 "failed to register the ~p webhook ~p ~p ~p due to ~p",
                 [Name, Endpoint, HookName, Opts, Reason]
             )

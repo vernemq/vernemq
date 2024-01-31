@@ -14,6 +14,7 @@
 
 -module(vmq_ql_query).
 -include("vmq_ql.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -97,7 +98,7 @@ handle_info(timeout, #state{mgr = Mgr, query = Query} = State) ->
             Mgr ! {results_ready, node(), self(), ets:info(ResultTable, size)},
             {noreply, State#state{result_table = ResultTable}};
         {error, Reason} ->
-            lager:debug("can't run query ~p due to ~p", [Query, Reason]),
+            ?LOG_DEBUG("can't run query ~p due to ~p", [Query, Reason]),
             Mgr ! {query_error, node(), self(), Reason},
             {stop, normal, State}
     end.
@@ -231,7 +232,7 @@ select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
                     exit(Pid, kill),
                     %% TODO: This warning needs more detailed
                     %% information to be really useful.
-                    lager:warning("Subquery failed due to timeout"),
+                    ?LOG_WARNING("Subquery failed due to timeout"),
                     Idx
                 end
             end,
@@ -244,7 +245,7 @@ select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
             ok;
         Error:Reason:Stacktrace ->
             ets:delete(Results),
-            lager:error(
+            ?LOG_ERROR(
                 "Select query terminated due to ~p ~p, stacktrace: ~p",
                 [Error, Reason, Stacktrace]
             ),
@@ -377,9 +378,9 @@ spawn_initialize_row(CallerRef, CallerPid, RowInitializer, InitRow) ->
         CallerPid ! {CallerRef, {ok, initialize_row(RowInitializer, InitRow)}}
     catch
         Class:Reason:Stacktrace ->
-            lager:warning(
+            ?LOG_WARNING(
                 "Subquery failed. ~nStacktrace:~s",
-                [lager:pr_stacktrace(Stacktrace, {Class, Reason})]
+                [Stacktrace]
             ),
             CallerPid ! {CallerRef, {error, Reason}}
     end.
@@ -495,7 +496,7 @@ eval_op(match, V1, V2) ->
                             put({?MODULE, P}, MP),
                             re:run(V, MP) =/= nomatch;
                         {error, ErrSpec} ->
-                            lager:error("can't compile regexp ~p due to ~p", [P, ErrSpec]),
+                            ?LOG_ERROR("can't compile regexp ~p due to ~p", [P, ErrSpec]),
                             false
                     end;
                 MP ->

@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_swc_store).
+-include_lib("kernel/include/logger.hrl").
+
 -include("vmq_swc.hrl").
 -behaviour(gen_server).
 
@@ -397,7 +399,7 @@ handle_call(
     {reply, ok, State0#state{subscriptions = Subs1}};
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
     {Peer, _Actor} = Id,
-    %   lager:info("Local ID in lock request: ~p~n", [Id]),
+    %   ?LOG_INFO("Local ID in lock request: ~p~n", [Id]),
     case node(OwnerPid) == Peer of
         true when SyncLock == undefined ->
             MRef = monitor(process, OwnerPid),
@@ -501,7 +503,7 @@ handle_call(dump_dotkeymap, _, #state{dotkeymap = DKM} = State) ->
 handle_call({set_broadcast, IsBroadcastEnabled}, _From, State) ->
     {reply, ok, State#state{broadcast_enabled = IsBroadcastEnabled}};
 handle_call(Request, From, State) ->
-    lager:error("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
+    ?LOG_ERROR("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
     {reply, {error, wrong_request}, State}.
 
 handle_cast({set_group_members, UpdatedPeerList}, State) ->
@@ -526,7 +528,7 @@ handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers = Peers, config = C
             {noreply, State0}
     end;
 handle_cast(Request, State) ->
-    lager:error("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
+    ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
     {noreply, State}.
 
 handle_info(do_gc, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
@@ -549,7 +551,7 @@ handle_info(sync, #state{config = Config, sync_lock = undefined, peers = Peers} 
                 Config, SyncNode, application:get_env(vmq_swc, sync_timeout, 60000)
             );
         {error, no_peer_available} ->
-            lager:debug("Replica ~p: Can't initialize AE exchange due to no peer available", [
+            ?LOG_DEBUG("Replica ~p: Can't initialize AE exchange due to no peer available", [
                 State#state.group
             ]),
             ignore
@@ -562,7 +564,7 @@ handle_info(sync, State) ->
 handle_info({'DOWN', MRef, process, Pid, _Info}, #state{sync_lock = {Pid, MRef}} = State) ->
     {noreply, State#state{sync_lock = undefined}};
 handle_info(Info, State) ->
-    lager:error("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
+    ?LOG_ERROR("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -580,8 +582,8 @@ set_peers(
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
-    lager:debug("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
-    lager:debug("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
+    ?LOG_DEBUG("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
+    ?LOG_DEBUG("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
 
     {NodeClock, Watermark} =
         case {AddedPeers, LeftPeers} of

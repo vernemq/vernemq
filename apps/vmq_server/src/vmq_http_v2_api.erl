@@ -15,6 +15,7 @@
 -module(vmq_http_v2_api).
 -behaviour(vmq_http_config).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% cowboy rest handler callbacks
 -export([
@@ -116,7 +117,7 @@ force_disconnect(SubscriberId, DoCleanup) ->
                     vmq_queue:force_disconnect(QPid, ?ADMINISTRATIVE_ACTION, DoCleanup)
             catch
                 E:R ->
-                    lager:debug("API v2 disconnect RPC failed with ~p:~p", [E, R]),
+                    ?LOG_DEBUG("API v2 disconnect RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
     end.
@@ -144,7 +145,7 @@ get_status_and_topics(SubscriberId) ->
                     end
             catch
                 E:R ->
-                    lager:debug("API v2 client status RPC failed with ~p:~p", [E, R]),
+                    ?LOG_DEBUG("API v2 client status RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
     end.

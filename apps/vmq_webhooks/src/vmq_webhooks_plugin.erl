@@ -13,6 +13,7 @@
 %% limitations under the License.
 -module(vmq_webhooks_plugin).
 
+-include_lib("kernel/include/logger.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include_lib("hackney/include/hackney_lib.hrl").
 
@@ -891,11 +892,11 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     case Res of
         {decoded_error, Reason} ->
             vmq_webhooks_metrics:incr(Hook, errors),
-            lager:debug("calling endpoint received error due to ~p", [Reason]),
+            ?LOG_DEBUG("calling endpoint received error due to ~p", [Reason]),
             {error, Reason};
         {error, Reason} ->
             vmq_webhooks_metrics:incr(Hook, errors),
-            lager:error("calling endpoint failed due to ~p", [Reason]),
+            ?LOG_ERROR("calling endpoint failed due to ~p", [Reason]),
             {error, Reason};
         Res ->
             Res

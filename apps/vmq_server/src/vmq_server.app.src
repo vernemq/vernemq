@@ -5,7 +5,6 @@
     {applications, [
         kernel,
         stdlib,
-        lager,
         cowboy,
         ranch,
         os_mon,

@@ -14,6 +14,7 @@
 
 -module(vmq_metrics).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
@@ -363,7 +364,7 @@ metrics(Opts) ->
                     %% this could happen if metric definitions does
                     %% not correspond to the ids returned with the
                     %% metrics values.
-                    lager:warning("unknown metrics id: ~p", [Id]),
+                    ?LOG_WARNING("unknown metrics id: ~p", [Id]),
                     false
             end
         end,
@@ -600,7 +601,7 @@ handle_info(calc_rates, State) ->
                 rate_entries()
             );
         _ ->
-            lager:warning("can't calculate message rates", [])
+            ?LOG_WARNING("can't calculate message rates", [])
     end,
     {noreply, State}.
 
@@ -1623,8 +1624,8 @@ fetch_external_metric(Mod, Fun, Default) ->
         apply(Mod, Fun, [])
     catch
         ErrorClass:Reason ->
-            lager:warning("can't fetch metrics from ~p", [Mod]),
-            lager:debug("fetching metrics from ~p resulted in ~p with reason ~p", [
+            ?LOG_WARNING("can't fetch metrics from ~p", [Mod]),
+            ?LOG_DEBUG("fetching metrics from ~p resulted in ~p with reason ~p", [
                 Mod, ErrorClass, Reason
             ]),
             Default

@@ -14,6 +14,7 @@
 
 -module(vmq_subscriber).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     new/1,
@@ -262,7 +263,7 @@ subtract([{N, _, NSubs1} | Subs1], [{N, _, NSubs2} | Subs2], Acc) ->
     %% same node with different node subscriptions
     % case {ordsets:is_set(NSubs1), ordsets:is_set(NSubs2)} of
     %    {true, true} -> ok;
-    %    _ -> lager:info("!!!!!!!!!!!!!!!!!!!!! Unfortunately not ordered!")
+    %    _ -> ?LOG_INFO("!!!!!!!!!!!!!!!!!!!!! Unfortunately not ordered!")
     %end,
     case NSubs1 -- NSubs2 of
         [] ->

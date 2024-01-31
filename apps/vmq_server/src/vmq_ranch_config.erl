@@ -15,6 +15,7 @@
 -module(vmq_ranch_config).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -297,7 +298,7 @@ reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Lis
         ok ->
             ok;
         {error, Reason} ->
-            lager:error(
+            ?LOG_ERROR(
                 "can't reconfigure ~p listener(~p, ~p) with Options ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             )
@@ -370,7 +371,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
             apply(Mod, Fun, Param)
         catch
             E:R ->
-                lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
+                ?LOG_ERROR("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
         end
     end,

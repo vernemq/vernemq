@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_redis).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
@@ -292,7 +293,7 @@ pool_id(BPoolId, As, St) ->
         APoolId -> APoolId
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            ?LOG_ERROR("unknown pool ~p", [BPoolId]),
             badarg_error(unknown_pool, As, St)
     end.
 

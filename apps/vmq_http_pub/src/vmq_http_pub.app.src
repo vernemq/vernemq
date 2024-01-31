@@ -16,8 +16,7 @@
     {registered, []},
     {applications, [
         kernel,
-        stdlib,
-        lager
+        stdlib
     ]},
     {mod, {vmq_http_pub_app, []}},
     {maintainers, []},

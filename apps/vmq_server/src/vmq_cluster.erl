@@ -15,6 +15,7 @@
 -module(vmq_cluster).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_event).
 
@@ -58,7 +59,7 @@ recheck() ->
         ok ->
             ok;
         E ->
-            lager:warning("error during cluster checkup due to ~p", [E]),
+            ?LOG_WARNING("error during cluster checkup due to ~p", [E]),
             E
     end.
 
@@ -160,7 +161,7 @@ remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
 -spec init([]) -> {'ok', state()}.
 init([]) ->
     check_ready(),
-    lager:info("cluster event handler '~p' registered", [?MODULE]),
+    ?LOG_INFO("cluster event handler '~p' registered", [?MODULE]),
     {ok, #state{}}.
 
 -spec handle_call(_, _) -> {'ok', 'ok', _}.
@@ -175,7 +176,7 @@ handle_event({update, _}, State) ->
     {ok, State}.
 
 handle_info(Info, State) ->
-    lager:warning("got unhandled info ~p", [Info]),
+    ?LOG_WARNING("got unhandled info ~p", [Info]),
     {ok, State}.
 
 -spec terminate(_, _) -> 'ok'.
@@ -205,7 +206,7 @@ check_ready(Nodes) ->
                         ignore;
                     false ->
                         %% Node is not part of the cluster anymore
-                        lager:warning("remove supervision for node ~p", [Node]),
+                        ?LOG_WARNING("remove supervision for node ~p", [Node]),
                         _ = vmq_cluster_node_sup:del_cluster_node(Node),
                         ets:delete(?VMQ_CLUSTER_STATUS, Node)
                 end

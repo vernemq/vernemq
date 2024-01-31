@@ -1,4 +1,6 @@
 -module(vmq_cluster_netsplit_SUITE).
+-include_lib("kernel/include/logger.hrl").
+
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -23,11 +25,10 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     Config0 = vmq_cluster_test_utils:init_distribution(Config),
-    lager:info("node name ~p", [node()]),
+    ?LOG_INFO("node name ~p", [node()]),
     [S | Config0].
 
 end_per_suite(_Config) ->
-    application:stop(lager),
     _Config.
 
 init_per_testcase(Case, Config) ->

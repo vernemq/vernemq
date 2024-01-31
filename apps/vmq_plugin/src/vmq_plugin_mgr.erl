@@ -15,6 +15,7 @@
 -module(vmq_plugin_mgr).
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_plugin.hrl").
 
 %% API
@@ -498,7 +499,7 @@ check_updated_plugins(Plugins, State) ->
 check_plugins([{module, ModuleName, Options} = Plugin | Rest], Acc) ->
     case check_module_plugin(ModuleName, Options) of
         {error, Reason} ->
-            lager:warning("can't load module plugin ~p due to ~p", [ModuleName, Reason]),
+            logger:warning("can't load module plugin ~p due to ~p", [ModuleName, Reason]),
             {error, Reason};
         plugin_ok ->
             check_plugins(Rest, [Plugin | Acc])
@@ -506,7 +507,7 @@ check_plugins([{module, ModuleName, Options} = Plugin | Rest], Acc) ->
 check_plugins([{application, App, Options} | Rest], Acc) ->
     case check_app_plugin(App, Options) of
         {error, Reason} ->
-            lager:warning("can't load application plugin ~p due to ~p", [App, Reason]),
+            ?LOG_WARNING("can't load application plugin ~p due to ~p", [App, Reason]),
             {error, Reason};
         CheckedPlugin ->
             check_plugins(Rest, [CheckedPlugin | Acc])
@@ -596,7 +597,7 @@ init_plugins_cli([{application, App, _} | Rest], Acc) ->
 init_plugins_cli([], Acc) ->
     case clique_config:load_schema(Acc) of
         {error, schema_files_not_found} ->
-            lager:debug("couldn't load cuttlefish schema");
+            ?LOG_DEBUG("couldn't load cuttlefish schema");
         ok ->
             ok
     end.
@@ -646,7 +647,7 @@ check_app_plugin(App, Options) ->
     Path = proplists:get_value(path, Options, undefined),
     case create_paths(App, Path) of
         [] ->
-            lager:debug("can't create paths for app ~p (path: ~p)", [App, Path]),
+            ?LOG_DEBUG("can't create paths for app ~p (path: ~p)", [App, Path]),
             {error, plugin_not_found};
         Paths ->
             code:add_pathsa(Paths),
@@ -668,7 +669,7 @@ load_application(App, Options) ->
             Hooks = application:get_env(App, vmq_plugin_hooks, []),
             check_app_hooks(App, Hooks, Options);
         E ->
-            lager:debug("can't load application ~p", [E]),
+            ?LOG_DEBUG("can't load application ~p", [E]),
             []
     end.
 
@@ -721,12 +722,12 @@ create_paths(Path) ->
 
 purge_app_modules(App) ->
     {ok, Modules} = application:get_key(App, modules),
-    lager:debug("purging modules: ~p", [Modules]),
+    ?LOG_DEBUG("purging modules: ~p", [Modules]),
     [code:purge(M) || M <- Modules].
 
 load_app_modules(App) ->
     {ok, Modules} = application:get_key(App, modules),
-    lager:debug("loading modules: ~p", [Modules]),
+    ?LOG_DEBUG("loading modules: ~p", [Modules]),
     [code:load_file(M) || M <- Modules].
 
 check_app_hooks(App, Hooks, Options) ->
@@ -746,7 +747,7 @@ check_app_hooks(App, [#hook{module = Module, function = Fun, arity = Arity, opts
         ok ->
             check_app_hooks(App, Rest);
         {error, Reason} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "can't load specified hook module ~p in app ~p due to ~p",
                 [Module, App, Reason]
             ),

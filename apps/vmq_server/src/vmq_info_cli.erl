@@ -26,6 +26,8 @@ register_cli() ->
     vmq_session_reauthorize_cmd(),
     vmq_retain_show_cmd(),
     vmq_retain_delete_cmd(),
+    vmq_loq_show_cmd(),
+    vmq_log_level_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
@@ -39,7 +41,9 @@ register_cli() ->
     clique:register_usage(["vmq-admin", "session", "reauthorize"], vmq_session_reauthorize_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain", "show"], retain_show_usage()),
-    clique:register_usage(["vmq-admin", "retain", "delete"], retain_delete_usage()).
+    clique:register_usage(["vmq-admin", "retain", "delete"], retain_delete_usage()),
+    clique:register_usage(["vmq-admin", "log"], log_usage()),
+    clique:register_usage(["vmq-admin", "log", "level"], log_level_usage()).
 
 vmq_retain_show_cmd() ->
     Cmd = ["vmq-admin", "retain", "show"],
@@ -405,6 +409,53 @@ v(_, V) ->
             "\"" ++ V ++ "\""
     end.
 
+get_nested_value([], Map) ->
+    Map;
+get_nested_value([Key | Rest], Map) when is_map(Map) ->
+    case maps:get(Key, Map, undefined) of
+        undefined -> "-";
+        Value -> get_nested_value(Rest, Value)
+    end.
+logger_info(Logger) ->
+    case logger:get_handler_config(Logger) of
+        {ok, Config} ->
+            [
+                {logger, get_nested_value([id], Config)},
+                {level, get_nested_value([level], Config)},
+                {type, get_nested_value([config, type], Config)},
+                {file, get_nested_value([config, file], Config)}
+            ];
+        _ ->
+            []
+    end.
+
+vmq_loq_show_cmd() ->
+    Cmd = ["vmq-admin", "log", "show", "config"],
+    KeySpecs = [],
+    FlagSpecs = [],
+    Callback = fun(_, [], _) ->
+        Table = lists:map(fun logger_info/1, logger:get_handler_ids()),
+        [clique_status:table(Table)]
+    end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_log_level_cmd() ->
+    Cmd = ["vmq-admin", "log", "level"],
+    KeySpecs = [
+        {'logger', [{typecast, fun(Logger) -> Logger end}]},
+        {'level', [{typecast, fun(Level) -> Level end}]}
+    ],
+    FlagSpecs = [],
+    Callback =
+        fun
+            (_, [{'logger', Logger}, {'level', Level}], _) ->
+                vmq_log:set_loglevel(Logger, Level);
+            (_, _, _) ->
+                Text = clique_status:text(log_level_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
 session_usage() ->
     [
         "vmq-admin session <sub-command>\n\n",
@@ -534,4 +585,20 @@ retain_delete_usage() ->
         "If --mountpoint is not set, the default empty mountpoint\n"
         "is assumed.\n\n"
         | Options
+    ].
+
+log_usage() ->
+    [
+        "vmq-admin log <sub-command>\n\n",
+        "  Manage VerneMQ log sub-system.\n\n",
+        "  Sub-commands:\n",
+        "    show config   Shows logging configuration\n",
+        "    level         Set log level during runtime\n",
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+log_level_usage() ->
+    [
+        "vmq-admin log level logger=<logger> level=<level>\n\n",
+        "  Sets log level for logger\n\n"
     ].

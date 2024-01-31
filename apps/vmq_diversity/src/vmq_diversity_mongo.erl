@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_mongo).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -257,7 +258,7 @@ insert(As, St) ->
                             {[Result2], NewSt}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute insert ~p due to ~p:~p",
                                 [TableOrTables, E, R]
                             ),
@@ -291,7 +292,7 @@ update(As, St) ->
                             {[true], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute update ~p due to ~p:~p",
                                 [{Selector, Command}, E, R]
                             ),
@@ -316,7 +317,7 @@ delete(As, St) ->
                             {[true], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute delete ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -350,7 +351,7 @@ find(As, St) ->
                             {[<<"mongo-cursor-", BinPid/binary>>], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute find ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -389,7 +390,7 @@ find_one(As, St) ->
                             {[false], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute find_one ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -449,7 +450,7 @@ pool_id(BPoolId, As, St) ->
         APoolId -> APoolId
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            ?LOG_ERROR("unknown pool ~p", [BPoolId]),
             badarg_error(unknown_pool, As, St)
     end.
 

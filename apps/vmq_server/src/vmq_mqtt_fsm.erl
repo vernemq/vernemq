@@ -14,6 +14,7 @@
 
 -module(vmq_mqtt_fsm).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
@@ -190,7 +191,7 @@ init(
                     {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
             end;
         false ->
-            lager:warning(
+            ?LOG_WARNING(
                 "invalid protocol version for ~p ~p",
                 [SubscriberId, ProtoVer]
             ),
@@ -335,7 +336,7 @@ connected(
     NewState =
         case Dropped > 0 of
             true ->
-                lager:warning(
+                ?LOG_WARNING(
                     "subscriber ~p dropped ~p messages",
                     [SubscriberId, Dropped]
                 ),
@@ -392,7 +393,7 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State, [PubRelFrame]};
         not_found ->
-            lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
             terminate(normal, State)
     end;
@@ -426,7 +427,7 @@ connected(#mqtt_pubcomp{message_id = MessageId}, State) ->
             });
         % error or wrong waiting_ack, definitely not well behaving client
         not_found ->
-            lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
@@ -521,12 +522,12 @@ connected(
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue = NewRetryQueue}, RetryFrames};
 connected({disconnect, Reason}, State) ->
-    lager:debug("stop due to disconnect", []),
+    ?LOG_DEBUG("stop due to disconnect", []),
     terminate(Reason, State);
 connected(
     disconnect_max_conn_lifetime, State
 ) ->
-    lager:debug("stop due to max connection lifetime reached", []),
+    ?LOG_DEBUG("stop due to max connection lifetime reached", []),
     terminate(?ADMINISTRATIVE_ACTION, State);
 connected(
     check_keepalive,
@@ -542,11 +543,11 @@ connected(
         true ->
             case proplists:get_value(keepalive_as_warning, vmq_config:get_env(logging, []), true) of
                 false ->
-                    lager:info("client ~p with username ~p stopped due to keepalive expired", [
+                    ?LOG_INFO("client ~p with username ~p stopped due to keepalive expired", [
                         SubscriberId, UserName
                     ]);
                 _ ->
-                    lager:warning("client ~p with username ~p stopped due to keepalive expired", [
+                    ?LOG_WARNING("client ~p with username ~p stopped due to keepalive expired", [
                         SubscriberId, UserName
                     ])
             end,
@@ -580,7 +581,7 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+    ?LOG_WARNING("stopped connected session for client ~p, due to unexpected frame type ~p", [
         State#state.subscriber_id, Unexpected
     ]),
     terminate({error, unexpected_message, Unexpected}, State).
@@ -650,7 +651,7 @@ check_client_id(#mqtt_connect{client_id = <<>>, proto_ver = Ver} = F, State) whe
             )
     end;
 check_client_id(#mqtt_connect{client_id = <<>>, proto_ver = Ver}, State) when ?IS_PROTO_3(Ver) ->
-    lager:warning(
+    ?LOG_WARNING(
         "empty client id not allowed in mqttv3 ~p",
         [State#state.subscriber_id]
     ),
@@ -665,7 +666,7 @@ check_client_id(
     SubscriberId = {MountPoint, ClientId},
     check_user(F, State#state{subscriber_id = SubscriberId});
 check_client_id(#mqtt_connect{client_id = Id}, State) ->
-    lager:warning("invalid client id ~p", [Id]),
+    ?LOG_WARNING("invalid client id ~p", [Id]),
     connack_terminate(?CONNACK_INVALID_ID, State).
 
 -spec check_user(mqtt_connect(), state()) ->
@@ -710,27 +711,27 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                             State2 = State1#state{queue_pid = QPid, next_msg_id = MsgId},
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
-                            lager:warning(
+                            ?LOG_WARNING(
                                 "can't register client ~p with username ~p due to ~p",
                                 [SubscriberId, User, Reason]
                             ),
                             connack_terminate(?CONNACK_SERVER, State1)
                     end;
                 {error, no_matching_hook_found} ->
-                    lager:error(
+                    ?LOG_ERROR(
                         "can't authenticate client ~p from ~s due to no_matching_hook_found",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
                     connack_terminate(?CONNACK_AUTH, State);
                 {error, invalid_credentials} ->
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to invalid_credentials",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
                     connack_terminate(?CONNACK_CREDENTIALS, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), Error]
                     ),
@@ -765,7 +766,7 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                         queue_pid = QPid, username = User, next_msg_id = MsgId
                     });
                 {error, Reason} ->
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't register client ~p due to reason ~p",
                         [SubscriberId, Reason]
                     ),
@@ -814,7 +815,7 @@ check_will(
                 SessCtrl
             };
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't authenticate last will\n"
                 "                          for client ~p due to ~p",
                 [SubscriberId, Reason]
@@ -961,7 +962,7 @@ auth_on_publish(
                 SessCtrl
             );
         {error, Re} ->
-            lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
+            ?LOG_ERROR("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
     end.
 
@@ -1318,7 +1319,7 @@ maybe_publish_last_will(
             ),
             ok;
         true ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "last will and testament suppressed on session takeover for subscriber ~p",
                 [SubscriberId]
             ),

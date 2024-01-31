@@ -14,6 +14,7 @@
 
 -module(vmq_http_mgmt_api).
 -behaviour(vmq_http_config).
+-include_lib("kernel/include/logger.hrl").
 
 %% cowboy rest handler callbacks
 -export([
@@ -65,7 +66,7 @@ malformed_request(Req, State) ->
     QsVals = cowboy_req:parse_qs(Req),
     try validate_command(PathInfo, QsVals) of
         {error, V} ->
-            lager:error("malformed request ~p", [V]),
+            ?LOG_ERROR("malformed request ~p", [V]),
             {true, Req, State};
         M3 ->
             {false, Req, M3}

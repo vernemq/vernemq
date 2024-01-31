@@ -13,6 +13,7 @@
 %% limitations under the License.
 -module(vmq_shared_subscriptions).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([publish/5]).
 
@@ -26,7 +27,7 @@ publish(Msg, Policy, SubscriberGroups, Acc) when is_map(SubscriberGroups) ->
 publish(_, _, [], Acc) ->
     Acc;
 publish(Msg, Policy, [{Group, []} | Rest], Acc) ->
-    lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [
+    ?LOG_DEBUG("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [
         Group, Msg
     ]),
     publish(Msg, Policy, Rest, Acc);
@@ -38,7 +39,7 @@ publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
         {ok, Acc1} ->
             publish(Msg, Policy, Rest, Acc1);
         {error, Reason} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "can't publish to shared subscription ~p due to '~p', msg: ~p",
                 [Group, Reason, Msg]
             ),

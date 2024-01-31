@@ -15,6 +15,7 @@
 -module(vmq_ranch).
 -include("vmq_server.hrl").
 -behaviour(ranch_protocol).
+-include_lib("kernel/include/logger.hrl").
 
 %% API.
 -export([start_link/4, start_link/3]).
@@ -66,7 +67,7 @@ init(Ref, Parent, Transport, Opts) ->
                         {error, Reason} ->
                             %% If the socket already closed we don't want to
                             %% go through teardown, because no session was initialized
-                            lager:debug("getopts error, socket already closed: ~p", [Reason]);
+                            ?LOG_DEBUG("getopts error, socket already closed: ~p", [Reason]);
                         {ok, BufSizes} ->
                             BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
                             setopts(MaskedSocket, [{buffer, BufSize}]),
@@ -83,10 +84,10 @@ init(Ref, Parent, Transport, Opts) ->
             %% know about it - it's not an error.
             ok;
         {error, {proxy_protocol_error, Error}} ->
-            lager:warning("Proxy Protocol Error: ~p~n", [Error]),
+            ?LOG_WARNING("Proxy Protocol Error: ~p~n", [Error]),
             ok;
         {error, Reason} ->
-            lager:debug("could not get socket peername: ~p", [Reason]),
+            ?LOG_DEBUG("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
             %% listener to crash just because this socket had an
             %% error.
@@ -180,14 +181,14 @@ loop_({exit, Reason, State}) ->
 teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("session normally stopped", []);
+            ?LOG_DEBUG("session normally stopped", []);
         shutdown ->
-            lager:debug("session stopped due to shutdown", []);
+            ?LOG_DEBUG("session stopped due to shutdown", []);
         keep_alive_timeout ->
-            lager:debug("session stopped due to keep_alive_timeout", []);
+            ?LOG_DEBUG("session stopped due to keep_alive_timeout", []);
         _ ->
             SubscriberId = apply(FsmMod, subscriber, [FsmState]),
-            lager:warning("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
+            ?LOG_WARNING("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
@@ -263,13 +264,13 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = Fsm
                 buffer = Rest
             });
         {error, Reason, Out} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),
             {exit, Reason, State#st{pending = [Pending | Out]}};
         {error, Reason} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),

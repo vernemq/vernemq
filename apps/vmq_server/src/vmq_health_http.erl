@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_health_http).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(vmq_http_config).
 
@@ -72,7 +73,7 @@ cluster_status() ->
         end
     catch
         Exception:Reason ->
-            lager:debug("Cluster status check failed ~p:~p", [Exception, Reason]),
+            ?LOG_DEBUG("Cluster status check failed ~p:~p", [Exception, Reason]),
             {error, "Unknown cluster status"}
     end.
 
