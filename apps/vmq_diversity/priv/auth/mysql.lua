@@ -57,18 +57,32 @@ require "auth/auth_commons"
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        results = mysql.execute(pool,
-            [[SELECT publish_acl, subscribe_acl
-              FROM vmq_auth_acl
-              WHERE
-                mountpoint=? AND
-                client_id=? AND
-                username=? AND
-                password=]]..mysql.hash_method(),
-            reg.mountpoint,
-            reg.client_id,
-            reg.username,
-            reg.password)
+        if os.getenv("DATABASE_CLIENT_ID_MATCH") == 'off' then
+            results = mysql.execute(pool,
+                [[SELECT publish_acl, subscribe_acl
+                FROM vmq_auth_acl
+                WHERE
+                    mountpoint=? AND
+                    username=? AND
+                    password=]]..mysql.hash_method(),
+                reg.mountpoint,
+                reg.username,
+                reg.password)
+        else
+            results = mysql.execute(pool,
+                [[SELECT publish_acl, subscribe_acl
+                FROM vmq_auth_acl
+                WHERE
+                    mountpoint=? AND
+                    client_id=? AND
+                    username=? AND
+                    password=]]..mysql.hash_method(),
+                reg.mountpoint,
+                reg.client_id,
+                reg.username,
+                reg.password)
+        end
+        
         if #results == 1 then
             row = results[1]
             publish_acl = json.decode(row.publish_acl)
