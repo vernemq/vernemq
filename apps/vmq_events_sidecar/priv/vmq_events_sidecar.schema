@@ -52,3 +52,23 @@
  [{datatype, integer},
   hidden,
   {default, 4096}]}.
+
+%% @doc Configure the sampling for on_publish events based on ACL names
+{mapping, "sample.on_publish.$acl.percentage", "vmq_events_sidecar.sampler.on_publish", 
+ [{datatype, integer}]}.
+
+{translation, "vmq_events_sidecar.sampler.on_publish",
+  fun(Conf) ->
+    vmq_events_sidecar_schema:translate_sampling("on_publish", Conf)
+  end
+}.
+
+%% @doc Configure the sampling for on_deliver events based on user names
+{mapping, "sample.on_deliver.$user.percentage", "vmq_events_sidecar.sampler.on_deliver", 
+ [{datatype, integer}]}.
+
+{translation, "vmq_events_sidecar.sampler.on_deliver",
+  fun(Conf) ->
+    vmq_events_sidecar_schema:translate_sampling("on_deliver", Conf)
+  end
+}.

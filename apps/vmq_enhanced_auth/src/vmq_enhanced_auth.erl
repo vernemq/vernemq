@@ -360,8 +360,13 @@ match(TIn, T, Tbl, Type, Key, Qos) ->
     case match(TIn, T) of
         true ->
             case ets:lookup(Tbl, Key) of
+                [{_, _, <<>>}] ->
+                    MatchedAcl = #matched_acl{
+                        pattern = iolist_to_binary(vmq_topic:unword(T))
+                    },
+                    {true, MatchedAcl};
                 [{_, _, Label}] ->
-                    check_label_and_incr_metrics(Label, Type, Qos),
+                    incr_matched_topic(Label, Type, Qos),
                     MatchedAcl = #matched_acl{
                         name = Label, pattern = iolist_to_binary(vmq_topic:unword(T))
                     },
@@ -376,22 +381,21 @@ match(TIn, T, Tbl, Type, Key, Qos) ->
             false
     end.
 
-check_label_and_incr_metrics(Label, Type, Qos) ->
-    case Label of
-        <<>> ->
-            ok;
-        _ ->
-            OperationName =
-                case Type of
-                    read -> subscribe;
-                    write -> publish
-                end,
-            _ = vmq_metrics:incr_topic_counter(
-                {topic_matches, OperationName, [
-                    {acl_matched, Label}, {qos, integer_to_list(Qos)}
-                ]}
-            )
-    end.
+incr_matched_topic(<<>>, _Type, _Qos) ->
+    ok;
+incr_matched_topic(undefined, _Type, _Qos) ->
+    ok;
+incr_matched_topic(Label, Type, Qos) ->
+    OperationName =
+        case Type of
+            read -> subscribe;
+            write -> publish
+        end,
+    _ = vmq_metrics:incr_topic_counter(
+        {topic_matches, OperationName, [
+            {acl_matched, Label}, {qos, integer_to_list(Qos)}
+        ]}
+    ).
 
 topic(User, {MP, ClientId}, Topic) ->
     subst(list_to_binary(MP), User, ClientId, Topic, []).
@@ -760,8 +764,8 @@ simple_acl(_) ->
         ),
         ?_assertEqual(
             {ok, [
-                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, <<>>, <<"a/b/c">>}},
-                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, <<>>, <<"x/y/z/#">>}},
+                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, undefined, <<"a/b/c">>}},
+                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, undefined, <<"x/y/z/#">>}},
                 {
                     [<<>>, <<"test">>, <<"my-client-id">>],
                     0,
@@ -780,8 +784,8 @@ simple_acl(_) ->
         ),
         ?_assertEqual(
             {ok, [
-                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, <<>>, <<"a/b/c">>}},
-                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, <<>>, <<"x/y/z/#">>}},
+                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, undefined, <<"a/b/c">>}},
+                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, undefined, <<"x/y/z/#">>}},
                 {
                     [<<"example">>, <<"profile-id">>],
                     0,
@@ -802,8 +806,8 @@ simple_acl(_) ->
         %% colon separated username
         ?_assertEqual(
             {ok, [
-                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, <<>>, <<"a/b/c">>}},
-                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, <<>>, <<"x/y/z/#">>}},
+                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, undefined, <<"a/b/c">>}},
+                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0, {matched_acl, undefined, <<"x/y/z/#">>}},
                 {
                     [<<>>, <<"test">>, <<"my-client-id">>],
                     0,
@@ -822,9 +826,17 @@ simple_acl(_) ->
         ),
         ?_assertEqual(
             {ok, [
-                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, <<>>, <<"a/b/c">>}},
-                {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], not_allowed, {matched_acl, <<>>, <<>>}},
-                {[<<>>, <<"test">>, <<"my-client-id">>], not_allowed, {matched_acl, <<>>, <<>>}}
+                {[<<"a">>, <<"b">>, <<"c">>], 0, {matched_acl, undefined, <<"a/b/c">>}},
+                {
+                    [<<"x">>, <<"y">>, <<"z">>, <<"#">>],
+                    not_allowed,
+                    {matched_acl, undefined, undefined}
+                },
+                {
+                    [<<>>, <<"test">>, <<"my-client-id">>],
+                    not_allowed,
+                    {matched_acl, undefined, undefined}
+                }
             ]},
             auth_on_subscribe(
                 <<"invalid-user">>,
@@ -837,7 +849,7 @@ simple_acl(_) ->
             )
         ),
         ?_assertEqual(
-            {ok, [{matched_acl, {matched_acl, <<>>, <<"a/b/c">>}}]},
+            {ok, [{matched_acl, {matched_acl, undefined, <<"a/b/c">>}}]},
             auth_on_publish(
                 <<"test">>,
                 {"", <<"my-client-id">>},
@@ -859,7 +871,7 @@ simple_acl(_) ->
             )
         ),
         ?_assertEqual(
-            {ok, [{matched_acl, {matched_acl, <<>>, <<"x/y/z/#">>}}]},
+            {ok, [{matched_acl, {matched_acl, undefined, <<"x/y/z/#">>}}]},
             auth_on_publish(
                 <<"test">>,
                 {"", <<"my-client-id">>},

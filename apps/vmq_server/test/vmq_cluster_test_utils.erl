@@ -125,7 +125,7 @@ start_node(Name, Config, Case) ->
                 vmq_reg_redis_trie]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
                 redis_sentinel_endpoints,
-                "[{\"localhost\", 26379}]"]),
+                "[{\"127.0.0.1\", 26379}]"]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
                 redis_lua_dir,
                     VmqServerPrivDir ++ "/lua_scripts"]),

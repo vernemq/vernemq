@@ -28,6 +28,31 @@ start_link() ->
                 HooksList = vmq_schema_util:parse_list(Hooks),
                 lists:foreach(
                     fun(Hook) -> vmq_events_sidecar_plugin:enable_event(Hook) end, HooksList
+                ),
+
+                Sampler = application:get_env(
+                    vmq_events_sidecar, 'sampler', []
+                ),
+                SamplingHooks = [
+                    on_publish,
+                    on_deliver
+                ],
+                lists:foreach(
+                    fun
+                        (Hook) when is_atom(Hook) ->
+                            HookSamplingList = proplists:get_value(Hook, Sampler, []),
+                            lists:foreach(
+                                fun({StrCriterion, P}) ->
+                                    vmq_events_sidecar_plugin:enable_sampling(
+                                        Hook, list_to_binary(StrCriterion), P
+                                    )
+                                end,
+                                HookSamplingList
+                            );
+                        (_) ->
+                            lager:error("Hook must be an atom.")
+                    end,
+                    SamplingHooks
                 )
             end),
             Ret;

@@ -71,7 +71,7 @@ init_per_testcase(convert_new_msgs_to_old_format, Config) ->
     %% no setup necessary,
     Config;
 init_per_testcase(Case, Config) ->
-    {ok, RedisClient} = eredis:start_link([{reconnect_sleep, no_reconnect}]),
+    {ok, RedisClient} = eredis:start_link([{host, "127.0.0.1"}, {reconnect_sleep, no_reconnect}]),
     eredis:q(RedisClient, ["FLUSHALL"]),
     vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
@@ -1053,7 +1053,7 @@ shared_subs_random_policy_dead_node_message_reaper_test(Config) ->
 
     {ok, PubSocket} = packet:do_client_connect(PConnect, Connack, [{port, RandomPort}]),
 
-    {ok, RC} = eredis:start_link([{database, 1}, {reconnect_sleep, no_reconnect}]),
+    {ok, RC} = eredis:start_link([{host, "127.0.0.1"}, {database, 1}, {reconnect_sleep, no_reconnect}]),
 
     %% Ungracefully stop node
     {ok, DNode} = ct_slave:stop(DNode),

@@ -40,5 +40,7 @@
     non_persistence = false :: flag()
 }).
 -type msg() :: #vmq_msg{}.
--record(matched_acl, {name = <<>> :: binary(), pattern = <<>> :: binary()}).
+-record(matched_acl, {
+    name = undefined :: binary() | undefined, pattern = undefined :: binary() | undefined
+}).
 -endif.
