@@ -9,23 +9,19 @@
 %% ===================================================================
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
-    %% this might help, might not...
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    {ok, Hostname} = inet:gethostname(),
-    case net_kernel:start([list_to_atom("runner@"++Hostname), shortnames]) of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok
-    end,
+    Config0 = vmq_cluster_test_utils:init_distribution(Config),
     ct:log("node name ~p", [node()]),
-    Node = vmq_cluster_test_utils:start_node(test_com1, Config, default_case),
+    {ok, Peer, Node} = vmq_cluster_test_utils:start_node(test_com1, Config, default_case),
     ct:pal("This is the default NODE : ~p~n", [Node]),
     {ok, _} = ct_cover:add_nodes([Node]),
     vmq_cluster_test_utils:wait_until_ready([Node]),
-    [{node, Node}, S|Config].
+    [{peer, Peer}, {node, Node}, S| Config0].
 
-end_per_suite(_Config) ->
-    ct_slave:stop(test_com1),
-    _Config.
+end_per_suite(Config) ->
+    {_, Peer} = lists:keyfind(peer, 1, Config),
+    {_, Node} = lists:keyfind(node, 1, Config),
+    ok = vmq_cluster_test_utils:stop_peer(Peer, Node),
+    Config.
 
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:seed_rand(Config),

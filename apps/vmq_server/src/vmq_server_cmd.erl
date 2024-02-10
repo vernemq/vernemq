@@ -5,6 +5,7 @@
     node_status/0,
     node_join/1,
     node_leave/1,
+    node_leave/3,
     node_upgrade/0,
     node_upgrade/1,
     set_config/2,
@@ -46,6 +47,22 @@ node_leave(Node) ->
             "node=" ++
                 atom_to_list(Node),
             "--kill_sessions"
+        ],
+        false
+    ).
+
+% for tests
+node_leave(Node, Interval, Timeout) ->
+    vmq_server_cli:command(
+        [
+            "vmq-admin",
+            "cluster",
+            "leave",
+            "node=" ++
+                atom_to_list(Node),
+            "--kill_sessions",
+            "-i" ++ integer_to_list(Interval),
+            "-t" ++ integer_to_list(Timeout)
         ],
         false
     ).

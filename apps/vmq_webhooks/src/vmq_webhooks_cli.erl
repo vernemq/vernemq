@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_webhooks_cli).
+-include_lib("kernel/include/logger.hrl").
+
 -export([register_cli/0]).
 -behaviour(clique_handler).
 
@@ -22,6 +24,7 @@ register_cli() ->
     status_cmd(),
     register_cmd(),
     cache_stats_cmd(),
+    cache_clear_cmd(),
     deregister_cmd().
 
 register_config() ->
@@ -76,6 +79,19 @@ cache_stats_cmd() ->
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, [], FlagSpecs, Callback).
+
+cache_clear_cmd() ->
+    Cmd = ["vmq-admin", "webhooks", "cache", "clear"],
+    Callback =
+        fun
+            (_, [], []) ->
+                vmq_webhooks_cache:purge_all(),
+                [clique_status:text("Done")];
+            (_, _, _) ->
+                Text = clique_status:text(cache_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, [], [], Callback).
 
 status_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "show"],
@@ -145,7 +161,7 @@ register_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't register endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),
@@ -178,7 +194,7 @@ deregister_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't deregister endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),
@@ -306,5 +322,7 @@ cache_usage() ->
         "  Manage the webhooks cache."
         "\n\n",
         "  Sub-commands:\n",
-        "    show       Show statistics about the cache\n"
+        "    show       Show statistics about the cache\n",
+        "    clear      Clears the webhook cache",
+        "\n\n"
     ].

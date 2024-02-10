@@ -1,0 +1,15 @@
+# simple comment
+topic read a/b/c
+# other comment
+topic write a/b/c
+topic write v/w x/y
+
+#
+# ACL for user 'test'
+user test
+
+
+topic x/y/z/#
+# some patterns
+pattern read %m/%u/%c
+pattern write %m/%u/%c

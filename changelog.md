@@ -1,4 +1,69 @@
+- Improve systemd support: Add support of systemd-notify
+- New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
+- Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
+- 'vmq_http_api_v2': Set apikey as new default authentication method
+- Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
+- New feature: "null" message store that disables persisting messages
+- Add environment variable support for erlang configuration arguments
+- 'vmq_admin': Introduce regex search for session show command
+- 'vmq_admin': Extend vmq-admin listener show with  TLS and MQTT listener settings
+- Improve error reporting (include client) in logs (#2184)
+- 'vmq_http_pub': Allows post in netsplit situations (follows allow_publish_during_netsplit global config)
+- 'vmq_admin': Add new command tls invalide-pem-cache to support easier certificate replacement
+- Add compatibility with [Erlang/OTP 26]
+- Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
+- 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
+- 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
+- New feature: Add configuration option disconnect_on_unauthorized_publish_v3 to force disconnect on unauthorized publish even for MQTT clients before v3.1.1
 
+
+## VerneMQ 1.13.0
+
+- New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface
+- Allow configuration of `max_request_line_length` for HTTP(S) listeners
+- Improve memory footprint and performance of sessions that subscribe to many topics (new configurable `vmq_reg_ordered_trie` module, the old `vmq_reg_trie` is kept as default)
+- Bugfix: Use default regview as information source for status page 
+- Add support for x-forward-for (XFF) header (Websockets) (#1783)
+- Bugfix: QoS0 message shall ignore receive maximum setting (#2150)
+- Offline queues to online queue transition can (temporarily) override the max online queue size (#1663)
+- Fix processing of line endings in vmq_acl (#1897)
+- QoS0 messages for offline sessions now count towards the queue_unhandeled metric (#1528,#1536)
+- Allow overriding last will delay in plugins (#1998)
+- Improve error logging: Report invalid modifiers in hooks
+- Fix MQTT listener suspension and --kill_session flag in cluster leave.
+- Adapt nodetool escript to Erlang distribution protocol at boot, enabling IPv6 compat for vmq-admi
+- Expose more SWC sync protocol settings in vernemq.conf (number of SWC groups & more)
+- Add `vmq-admin retain delete` command to CLI (single topic delete only).
+- Fix per mountpoint filtering of `vmq-admin retain show`.
+- Add 'keypasswd': Allows setting password for pem keyfile (#1676)
+- Bugfix: Improve warning messages for unexpected frame type error to track origin (#1671)
+- Bugfix: Remove special chars in auto-generated client id (#1673)
+- Bugfix: Websocket returned error 500 and wrote to log, instead of returning 426 (protocol upgrade) #1983 
+- Allow to specify a maximum connection lifetime (per listener). The lifetime can be overwriten by on_register hooks.
+- Improve TLSv1.3 support (Documentation, CLI, Testsuite)
+- Improve HTTP/2 support for HTTPS listeners (#2117)
+- Make Redis username configurable in vmq_diversity.
+- Enable v5 protocol for WS and SSL listeners as a default.
+- Fix dev_n builds (make dev0 dev1...).
+- Fix issue [#2078](https://github.com/vernemq/vernemq/issues/2008) where the default MQTT listener fails to create in `vernemq.conf`.
+- Fix configuration problems when using Unix Domain Sockets.
+- Add support for compilation in ARM architectures (Tested on M1 Mac and Raspberry PI). Now we can use the `make rel` target to build a VerneMQ release for RaspberryPI.
+- CI Improvements:
+  - Test on the last 3 major OTP versions, following the Erlang/OTP support conventions.
+  - Test on Both Linux and OSX for each version.
+  - Add more extensive smoke test by publishing/subscribing to messages.
+- Add compatibility with [Erlang/OTP 25](https://www.erlang.org/blog/my-otp-25-highlights/).
+- Allow protection of all HTTP(s) endpoints with API keys (e.g. metrics)
+- Update bootstrap 4.6.2 in status page and add favicon
+- vmq_passwd -c no longer overwrites existing files by default.
+- Allow per-purpose HTTP endpoints (status, metrics, api) by assigning http_modules
+- Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
+- Fix regression in handling of the Proxy protocol for WebSockets.
+- Refactor metrics count of active connections, using 3 new gauges:
+  `active_mqtt_connections`, `active_mqttws_connections` (WebSocket) and
+  `total_active_connections`. Adapt Status page. This also fixes an error,
+  where the status page would show a false connection count.
+- Add `active_conns` and `all_conns` info to `vmq-admin listener show`.
 ## VerneMQ 1.12.6.2
 
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.

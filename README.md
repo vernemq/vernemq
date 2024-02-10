@@ -9,7 +9,7 @@
 	</a>
 <a href="https://github.com/vernemq/vernemq/releases/latest">
 <img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq"></a>
-<a href="https://github.com/vernemq/vernemq/commits/master">
+<a href="https://github.com/vernemq/vernemq/commits/main">
 <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq"></a>
 <a href="https://twitter.com/vernemq">
 		<img
@@ -18,6 +18,9 @@
 			target="_blank"
 		/>
 	</a>
+ <a href="https://fosstodon.org/@VerneMQ">
+ <img alt="VerneMQ on Fosstodon" src="https://img.shields.io/mastodon/follow/110683123510225618?domain=https%3A%2F%2Ffosstodon.org"></a>
+
 [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
 Old Docker Repo | New Docker Repo
 ------------ | -------------
@@ -27,7 +30,7 @@ New: VerneMQ can now use Github Discussions! To join the discussion on features 
 
 Make sure to visit the new [VerneMQ Forum](https://erlangforums.com/c/erlang-platforms/vernemq-forum/82) hosted on Erlang Forums. We're happy to discuss any of your questions and ideas around VerneMQ on the Forum too!
 
-- - - 
+- - -
 
 VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran: :cloud:
 
@@ -121,7 +124,7 @@ started, you need to first build VerneMQ.
 
 ### Building VerneMQ
 
-Note: VerneMQ requires Erlang/OTP 22-24 and `libsnappy-dev` installed in your system. You'll also need a C compiler for Eleveldb. (on Debian, you install `build-essential`, as an example).
+Note: VerneMQ requires Erlang/OTP 24-25 and `libsnappy-dev` installed in your system. You'll also need a C compiler for Eleveldb. (on Debian, you install `build-essential`, as an example).
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
@@ -129,7 +132,7 @@ simple as:
 ```shell
 $ cd $VERNEMQ
 $ make rel
-```    
+```
 
 ### Starting VerneMQ
 
@@ -147,9 +150,9 @@ If VerneMQ is running it is possible to check the status on
 
 <img src="https://i.imgur.com/XajYjtb.png" width="75%">
 
-Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
+Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete,
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
-move this directory outside the source tree if you plan to run a production 
+move this directory outside the source tree if you plan to run a production
 instance.
 
 ### Important links
@@ -163,3 +166,6 @@ instance.
 			target="_blank"
 		/>
 	</a>
+
+### Thank you to all our contributors!
+[![contributors](https://contributors-img.web.app/image?repo=vernemq/vernemq)](https://github.com/vernemq/vernemq/graphs/contributors)

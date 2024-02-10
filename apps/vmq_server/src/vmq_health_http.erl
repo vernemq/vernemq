@@ -13,10 +13,11 @@
 %% limitations under the License.
 
 -module(vmq_health_http).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(vmq_http_config).
 
--export([routes/0]).
+-export([routes/0, is_authorized/2]).
 -export([init/2]).
 
 routes() ->
@@ -36,6 +37,14 @@ init(Req, Opts) ->
     Headers = #{<<"content-type">> => <<"application/json">>},
     cowboy_req:reply(Code, Headers, vmq_json:encode(Payload), Req),
     {ok, Req, Opts}.
+
+is_authorized(Req, State) ->
+    AuthMode = vmq_http_config:auth_mode(Req, vmq_health_http),
+    case AuthMode of
+        "apikey" -> vmq_auth_apikey:is_authorized(Req, State, "health");
+        "noauth" -> {true, Req, State};
+        _ -> {error, invalid_authentication_scheme}
+    end.
 
 -spec check_health_concerns() -> [] | [Concern :: string()].
 check_health_concerns() ->
@@ -64,14 +73,14 @@ cluster_status() ->
         end
     catch
         Exception:Reason ->
-            lager:debug("Cluster status check failed ~p:~p", [Exception, Reason]),
+            ?LOG_DEBUG("Cluster status check failed ~p:~p", [Exception, Reason]),
             {error, "Unknown cluster status"}
     end.
 
 -spec listeners_status() -> ok | {error, Reason :: string()}.
 listeners_status() ->
     NotRunningListeners = lists:filtermap(
-        fun({Type, _, _, Status, _, _}) ->
+        fun({Type, _, _, Status, _, _, _, _}) ->
             case Status of
                 running ->
                     false;

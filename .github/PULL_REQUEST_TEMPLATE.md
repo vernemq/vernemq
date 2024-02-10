@@ -23,7 +23,7 @@ the PR. If you're unsure about any of them, don't hesitate to ask on the
 mailing list. We're here to help! This is simply a reminder of what we are
 going to look for before merging your code._
 
-- [ ] I have read the `CODE_OF_CONDUCT.md` document
+- [ ] I have read the [CODE_OF_CONDUCT.md](https://github.com/vernemq/vernemq/blob/main/CODE_OF_CONDUCT.md) document
 - [ ] All tests pass locally with my changes
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] I have added necessary documentation (if needed)

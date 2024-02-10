@@ -21,7 +21,7 @@
 %% Acceptable values:
 %%   - text
 {mapping, "nodename" , "vm_args.-name", [
-                {default, "VerneMQ@127.0.0.1"}
+                 {default, "{{nodename}}" }
                 ]}.
 
 %% @doc Where to emit the default log messages (typically at 'info'
@@ -30,136 +30,254 @@
 %%     file: the file specified by log.console.file
 %%  console: to standard output (seen when using `vmq attach-direct`)
 %%     both: log.console.file and standard out.
-{mapping, "log.console", "lager.handlers", [
+{mapping, "log.console", "kernel.logger", [
                                             {default, {{console_log_default}} },
                                             {datatype, {enum, [off, file, console, both]}}
                                            ]}.
 %% @doc The severity level of the console log, default is 'info'.
-{mapping, "log.console.level", "lager.handlers", [
+{mapping, "log.console.level", "kernel.logger", [
                                                   {default, info},
-                                                  {datatype, {enum, [debug, info, warning, error]}}
+                                                  {datatype, {enum, [debug, info, notice, warning, error, critical, alert, emergency]}}
                                                  ]}.
+%% @doc log format 
+{mapping, "log.template", "kernel.logger", [
+                                                  {default, extended},
+                                                  {datatype, {enum, [simple, extended]}},
+                                                  hidden
+                                                 ]}.
+
+
 %% @doc When 'log.console' is set to 'file' or 'both', the file where
 %% console messages will be logged.
-{mapping, "log.console.file", "lager.handlers", [
+{mapping, "log.console.file", "kernel.logger", [
                                                  {default, "{{platform_log_dir}}/console.log"},
                                                  {datatype, file}
                                                 ]}.
+
+%% @doc Logger format: text or json. Default text)
+{mapping, "log.console.file.format", "kernel.logger", [
+                                                  {default, text},
+                                                  {datatype, {enum, [text, json]}}
+                                                 ]}.
+
+%% @doc Maximum size of the console log in bytes, before it is rotated
+{mapping, "log.console.rotation.size", "kernel.logger", [
+                                                     {default, "infinity"},
+                                                     {datatype, [bytesize, {atom, infinity}]}
+                                                    ]}.
+
+%% @doc The number of rotated console logs to keep. When set to
+%% '0', only the current open log file is kept. This setting is only
+%% considered if log.error.rotation.size is different than "infinity".
+{mapping, "log.console.rotation.keep", "kernel.logger", [
+                                                               {default, 5},
+                                                               {datatype, integer}
+                                                              ]}.
+
+%% @doc Should rotated console log file archives be compressed (default off)
+{mapping, "log.console.rotation.compress_on_rotate", "kernel.logger", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+%% @doc Disables are enables the dedicated error logger
+{mapping, "log.error", "kernel.logger", [
+                                          {default, on},
+                                          {datatype, flag}
+                                        ]}.
+                                           
 %% @doc The file where error messages will be logged.
-{mapping, "log.error.file", "lager.handlers", [
+{mapping, "log.error.file", "kernel.logger", [
                                                {default, "{{platform_log_dir}}/error.log"},
                                                {datatype, file}
                                               ]}.
+
+%% @doc Logger format: text or json. Default text)
+{mapping, "log.error.file.format", "kernel.logger", [
+                                                  {default, text},
+                                                  {datatype, {enum, [text, json]}}
+                                                 ]}.
+
+%% @doc Maximum size of the error log in bytes, before it is rotated
+{mapping, "log.error.rotation.size", "kernel.logger", [
+                                                     {default, "infinity"},
+                                                     {datatype, [bytesize, {atom, infinity}]}
+                                                    ]}.
+
+%% @doc The number of rotated error logs to keep. When set to
+%% '0', only the current open log file is kept. This setting is only
+%% considered if log.error.rotation.size is different than "infinity".
+{mapping, "log.error.rotation.keep", "kernel.logger", [
+                                                               {default, 5},
+                                                               {datatype, integer}
+                                                              ]}.
+
+%% @doc Should rotated log file archives be compressed (default off)
+{mapping, "log.error.rotation.compress_on_rotate", "kernel.logger", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+%% @doc Disables are enables the dedicated crash logger. Crash logs are also written
+%% to the error log, so this logger is disabled by default.
+{mapping, "log.crash", "kernel.logger", [
+                                          {default, off},
+                                          {datatype, flag}
+                                        ]}.
+
+%% @doc The file where crash messages will be logged.
+{mapping, "log.crash.file", "kernel.logger", [
+                                               {default, "{{platform_log_dir}}/crash.log"},
+                                               {datatype, file}
+                                              ]}.
+
+%% @doc Maximum size of the crash log in bytes, before it is rotated
+{mapping, "log.crash.rotation.size", "kernel.logger", [
+                                                     {default, "infinity"},
+                                                     {datatype, [bytesize, {atom, infinity}]}
+                                                    ]}.
+
+%% @doc The number of rotated crash logs to keep. When set to
+%% '0', only the current open log file is kept.
+{mapping, "log.crash.rotation.keep", "kernel.logger", [
+                                                               {default, 5},
+                                                               {datatype, integer}
+                                                              ]}.
+
+%% @doc Should rotated log file archives be compressed (default off)
+{mapping, "log.crash.rotation.compress_on_rotate", "kernel.logger", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+%% @doc Disables are enables the dedicated sasl logger. Crash logs are also written
+%% to the error log, so this logger is disabled by default. 
+{mapping, "log.sasl", "kernel.logger", [
+                                          {default, off},
+                                          {datatype, flag}
+                                        ]}.
+
+%% @doc The file where sasl messages will be logged.
+{mapping, "log.sasl.file", "kernel.logger", [
+                                               {default, "{{platform_log_dir}}/sasl.log"},
+                                               {datatype, file}
+                                              ]}.
+
+%% @doc Maximum size of the crash log in bytes, before it is rotated
+{mapping, "log.sasl.rotation.size", "kernel.logger", [
+                                                     {default, "infinity"},
+                                                     {datatype, [bytesize, {atom, infinity}]}
+                                                    ]}.
+
+%% @doc The number of rotated crash logs to keep. When set to
+%% '0', only the current open log file is kept.
+{mapping, "log.sasl.rotation.keep", "kernel.logger", [
+                                                               {default, 5},
+                                                               {datatype, integer}
+                                                              ]}.
+
+%% @doc Should rotated log file archives be compressed (default off)
+{mapping, "log.sasl.rotation.compress_on_rotate", "kernel.logger", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+
 %% @doc When set to 'on', enables log output to syslog.
-{mapping, "log.syslog", "lager.handlers", [
+{mapping, "log.syslog", "kernel.logger", [
                                            {default, off},
                                            {datatype, flag}
                                           ]}.
+
+%% @doc The minimal level for all loggers. Should stay "all".
+{mapping, "log.level", "kernel.logger_level", [{default, all},
+                                                  {datatype, {enum, [all, debug, info, warning, error]}},
+                                                   hidden
+                                                 ]}.
+
+
 {translation,
- "lager.handlers",
+ "kernel.logger",
  fun(Conf) ->
-         SyslogHandler = [{lager_syslog_backend, ["vmq", daemon, info]} ||
-                          cuttlefish:conf_get("log.syslog", Conf)],
-         ErrorHandler = case cuttlefish:conf_get("log.error.file", Conf) of
-                            undefined -> [];
-                            ErrorFilename -> [{lager_file_backend, [{file, ErrorFilename},
-                                                                    {level, error},
-                                                                    {size, 10485760},
-                                                                    {date, "$D0"},
-                                                                    {count, 5}]}]
-                        end,
-         ConsoleLogLevel = cuttlefish:conf_get("log.console.level", Conf),
-         ConsoleLogFile = cuttlefish:conf_get("log.console.file", Conf),
-         ConsoleHandler = {lager_console_backend, [{level, ConsoleLogLevel}]},
-         ConsoleFileHandler = {lager_file_backend, [{file, ConsoleLogFile},
-                                                    {level, ConsoleLogLevel},
-                                                    {size, 10485760},
-                                                    {date, "$D0"},
-                                                    {count, 5}]},
-         ConsoleHandlers = case cuttlefish:conf_get("log.console", Conf) of
+    ConsoleLogLevel = cuttlefish:conf_get("log.console.level", Conf),
+    ConsoleLogFile  = cuttlefish:conf_get("log.console.file", Conf),
+    ErrorLogFile    = cuttlefish:conf_get("log.error.file", Conf),
+    CrashLogFile    = cuttlefish:conf_get("log.crash.file", Conf),
+    SaslLogFile     = cuttlefish:conf_get("log.sasl.file", Conf),
+
+    ConsoleLogRotationSize = cuttlefish:conf_get("log.console.rotation.size", Conf),
+    ConsoleLogRotationKeep = cuttlefish:conf_get("log.console.rotation.keep", Conf),
+    ConsoleLogRotationCompress = cuttlefish:conf_get("log.console.rotation.compress_on_rotate", Conf),
+
+    ErrorLogRotationSize = cuttlefish:conf_get("log.error.rotation.size", Conf),
+    ErrorLogRotationKeep = cuttlefish:conf_get("log.error.rotation.keep", Conf),
+    ErrorLogRotationCompress = cuttlefish:conf_get("log.error.rotation.compress_on_rotate", Conf),
+
+    CrashLogRotationSize = cuttlefish:conf_get("log.crash.rotation.size", Conf),
+    CrashLogRotationKeep = cuttlefish:conf_get("log.crash.rotation.keep", Conf),
+    CrashLogRotationCompress = cuttlefish:conf_get("log.crash.rotation.compress_on_rotate", Conf),
+
+    SaslLogRotationSize = cuttlefish:conf_get("log.sasl.rotation.size", Conf),
+    SaslLogRotationKeep = cuttlefish:conf_get("log.sasl.rotation.keep", Conf),
+    SaslLogRotationCompress = cuttlefish:conf_get("log.sasl.rotation.compress_on_rotate", Conf),
+
+    Template = case cuttlefish:conf_get("log.template", Conf) of
+      extended -> [time, " ", "[", level, "]", {pid, [" ", pid, ""], ""}, {mfa, [" ", mfa, ":", line], ""}, ": ", msg, "\n"];
+          _ -> [time, " ", level,": ", msg,"\n"]
+    end, 
+
+    ConsoleFileFormater = case cuttlefish:conf_get("log.console.file.format", Conf) of
+      json -> vmq_log_json_format;
+         _ -> logger_formatter
+    end, 
+
+    ErrorFileFormater = case cuttlefish:conf_get("log.error.file.format", Conf) of
+      json -> vmq_log_json_format;
+         _ -> logger_formatter
+    end, 
+    
+    ConsoleLogger     = {handler, console,     logger_std_h, #{config => #{},  filters => [{console, {fun logger_filters:progress/2, stop}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => ConsoleLogLevel}},
+    FileLoggerErr     = {handler, default,     logger_std_h, #{config => #{file => ErrorLogFile,   max_no_bytes => ErrorLogRotationSize,   max_no_files => ErrorLogRotationKeep,   compress_on_rotate => ErrorLogRotationCompress}, formatter => {ErrorFileFormater, #{single_line => true,  template => Template}}, level => error}},
+    ConsoleLoggerFile = {handler, consolefile, logger_std_h, #{config => #{file => ConsoleLogFile, max_no_bytes => ConsoleLogRotationSize, max_no_files => ConsoleLogRotationKeep, compress_on_rotate => ConsoleLogRotationCompress}, filters => [{consolefile, {fun logger_filters:progress/2, stop}}], formatter => {ConsoleFileFormater, #{single_line => true,  template => Template}}, level => ConsoleLogLevel}},
+    CrashLoggerFile   = {handler, crash,       logger_std_h, #{config => #{file => CrashLogFile,   max_no_bytes => CrashLogRotationSize,   max_no_files => CrashLogRotationKeep,   compress_on_rotate => CrashLogRotationCompress},   filters => [{crash, {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => error}},
+    SaslLoggerFile    = {handler, sasl,        logger_std_h, #{config => #{file => SaslLogFile,    max_no_bytes => SaslLogRotationSize,    max_no_files => SaslLogRotationKeep,    compress_on_rotate => SaslLogRotationCompress},    filters => [{sasl,  {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => info}},
+    SyslogLogger      = {handler, syslog,      syslog_logger_h, #{}},
+    
+    ConsoleHandlers = case cuttlefish:conf_get("log.console", Conf) of
                                off -> [];
-                               file -> [ConsoleFileHandler];
-                               console -> [ConsoleHandler];
-                               both -> [ConsoleHandler, ConsoleFileHandler];
+                               file -> [ConsoleLoggerFile];
+                               console -> [ConsoleLogger];
+                               both -> [ConsoleLogger, ConsoleLoggerFile];
                                _ -> []
-                           end,
-         SyslogHandler ++ ConsoleHandlers ++ ErrorHandler
+                       end,
+
+    SyslogLoggerHandler = case cuttlefish:conf_get("log.syslog", Conf) of
+                      false -> [];
+                         _  -> [SyslogLogger]
+                      end,    
+
+    FileLoggerErrHandler = case cuttlefish:conf_get("log.error", Conf) of
+                      false -> [];
+                         _  -> [FileLoggerErr]
+                      end,
+
+    CrashLoggerFileHandler = case cuttlefish:conf_get("log.crash", Conf) of
+                      false -> [];
+                             _  -> [CrashLoggerFile]
+                      end,
+
+    SaslLoggerFileHandler = case cuttlefish:conf_get("log.sasl", Conf) of
+                      false -> [];
+                             _  -> [SaslLoggerFile]
+                      end,
+
+    FileLoggerErrHandler ++ ConsoleHandlers ++ CrashLoggerFileHandler ++ SaslLoggerFileHandler ++ SyslogLoggerHandler
  end
 }.
+   
+
 %% @doc Whether to enable Erlang's built-in error logger.
-{mapping, "sasl", "sasl.sasl_error_logger", [
+{mapping, "sasl", "kernel.logger_sasl_compatible", [
                                              {default, off},
                                              {datatype, flag},
                                              hidden
                                             ]}.
-%% @doc Whether to enable the crash log.
-{mapping, "log.crash", "lager.crash_log", [
-                                           {default, on},
-                                           {datatype, flag}
-                                          ]}.
-%% @doc If the crash log is enabled, the file where its messages will
-%% be written.
-{mapping, "log.crash.file", "lager.crash_log", [
-                                                {default, "{{platform_log_dir}}/crash.log"},
-                                                {datatype, file}
-                                               ]}.
-{translation,
- "lager.crash_log",
- fun(Conf) ->
-         case cuttlefish:conf_get("log.crash", Conf) of
-             false -> undefined;
-             _ ->
-                 cuttlefish:conf_get("log.crash.file", Conf, "{{platform_log_dir}}/crash.log")
-         end
- end}.
-%% @doc Maximum size in bytes of individual messages in the crash log
-{mapping, "log.crash.maximum_message_size", "lager.crash_log_msg_size", [
-                                                                         {default, "64KB"},
-                                                                         {datatype, bytesize}
-                                                                        ]}.
-%% @doc Maximum size of the crash log in bytes, before it is rotated
-{mapping, "log.crash.size", "lager.crash_log_size", [
-                                                     {default, "10MB"},
-                                                     {datatype, bytesize}
-                                                    ]}.
-%% @doc The schedule on which to rotate the crash log. For more
-%% information see:
-%% https://github.com/basho/lager/blob/master/README.md#internal-log-rotation
-{mapping, "log.crash.rotation", "lager.crash_log_date", [
-                                                         {default, "$D0"}
-                                                        ]}.
-%% @doc The number of rotated crash logs to keep. When set to
-%% 'current', only the current open log file is kept.
-{mapping, "log.crash.rotation.keep", "lager.crash_log_count", [
-                                                               {default, 5},
-                                                               {datatype, [integer, {atom, current}]},
-                                                               {validators, ["rotation_count"]}
-                                                              ]}.
-{validator,
- "rotation_count",
- "must be 'current' or a positive integer",
- fun(current) -> true;
-    (Int) when is_integer(Int) andalso Int >= 0 -> true;
-    (_) -> false
- end}.
-{translation,
- "lager.crash_log_count",
- fun(Conf) ->
-         case cuttlefish:conf_get("log.crash.rotation.keep", Conf) of
-             current -> 0;
-             Int -> Int
-         end
- end}.
-%% @doc Whether to redirect error_logger messages into lager -
-%% defaults to true
-{mapping, "log.error.redirect", "lager.error_logger_redirect", [
-                                                                {default, on},
-                                                                {datatype, flag},
-                                                                hidden
-                                                               ]}.
-%% @doc Maximum number of error_logger messages to handle in a second
-{mapping, "log.error.messages_per_second", "lager.error_logger_hwm", [
-                                                                      {default, 100},
-                                                                      {datatype, integer},
-                                                                      hidden
-                                                                     ]}.

@@ -15,6 +15,7 @@
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -23,8 +24,12 @@
 -export([
     init/2,
     data_in/2,
-    msg_in/2
+    msg_in/2,
+    subscriber/1
 ]).
+
+subscriber(_) ->
+    undefined.
 
 -record(state, {
     peer :: peer(),
@@ -174,7 +179,7 @@ msg_in(disconnect, _FsmState0) ->
     ignore;
 msg_in(close_timeout, _FsmState0) ->
     vmq_metrics:incr_socket_close_timeout(),
-    lager:debug("stop due to timeout", []),
+    ?LOG_DEBUG("stop due to timeout", []),
     {stop, normal, []}.
 
 -ifdef(TEST).

@@ -40,7 +40,7 @@ init_per_testcase(idx_compat_pre_test, Config) ->
 init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
     application:load(vmq_generic_msg_store),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
+    application:set_env(vmq_generic_msg_store, db_backend, StorageEngine),
     application:ensure_all_started(vmq_generic_msg_store),
     Config.
 
@@ -55,7 +55,6 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, vmq_storage_engine_leveldb},
-     %{group, vmq_storage_engine_dets},
      {group, vmq_storage_engine_ets},
      {group, basic}
     ].
@@ -72,7 +71,6 @@ groups() ->
                  ],
     [
      {vmq_storage_engine_leveldb, [shuffle], StorageTests},
-     {vmq_storage_engine_dets, [shuffle], StorageTests},
      {vmq_storage_engine_ets, [shuffle], StorageTests},
      {basic, [shuffle], BasicTests}
     ].

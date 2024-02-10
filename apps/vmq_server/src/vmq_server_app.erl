@@ -15,6 +15,7 @@
 -module(vmq_server_app).
 
 -behaviour(application).
+-include_lib("kernel/include/logger.hrl").
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -27,7 +28,7 @@
 start(_StartType, _StartArgs) ->
     ok = vmq_metadata:start(),
     ok = vmq_message_store:start(),
-
+    maybe_update_nodetool(),
     case vmq_server_sup:start_link() of
         {error, _} = E ->
             E;
@@ -64,11 +65,41 @@ start_user_plugin(
         ok ->
             ok;
         {error, Reason} ->
-            lager:warning("could not start plugin ~p due to ~p", [PluginName, Reason])
+            ?LOG_WARNING("could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
+    ok = vmq_ranch_config:stop_all_mqtt_listeners(true),
     _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.
+
+maybe_update_nodetool() ->
+    case init:get_argument(proto_dist) of
+        {ok, [[ProtoDist]]} ->
+            Root = code:root_dir(),
+            Nodetool = filename:join([
+                Root, "erts-" ++ erlang:system_info(version), "bin", "nodetool"
+            ]),
+            case escript:extract(Nodetool, []) of
+                {ok, [Shebang, Comment, _, Source]} ->
+                    {ok, UpdatedScriptBin} =
+                        escript:create(binary, [
+                            Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
+                        ]),
+                    try file:write_file(Nodetool, UpdatedScriptBin) of
+                        ok -> ok
+                    catch
+                        E:R ->
+                            ?LOG_INFO("Could not write nodetool due to ~p for reason ~p ~n", [
+                                E, R
+                            ]),
+                            {error, R}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        error ->
+            ignore
+    end.

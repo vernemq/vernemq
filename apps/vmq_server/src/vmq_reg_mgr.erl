@@ -15,6 +15,7 @@
 -module(vmq_reg_mgr).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 %% API functions
@@ -231,13 +232,13 @@ handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
     case [N || {N, false} <- Sessions] of
         [NewNode | _] ->
             %% Best bet to use this session
-            lager:warning(
+            ?LOG_WARNING(
                 "more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p",
                 [QPid, SubscriberId, NewNode]
             ),
             migrate_queue(SubscriberId, QPid, NewNode);
         [] ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found",
                 [QPid, SubscriberId]
             )

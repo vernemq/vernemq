@@ -15,6 +15,8 @@
 -module(vmq_server_sup).
 
 -behaviour(supervisor).
+-include_lib("kernel/include/logger.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -44,6 +46,7 @@ start_link() ->
 init([]) ->
     maybe_change_nodename(),
     persistent_term:put(subscribe_trie_ready, 0),
+    init_systemd_notify(),
     {ok,
         {{one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
@@ -59,7 +62,7 @@ init([]) ->
 maybe_change_nodename() ->
     case vmq_peer_service:members() of
         [Node] when Node =/= node() ->
-            lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
+            ?LOG_INFO("rename VerneMQ node from ~p to ~p", [Node, node()]),
             _ = vmq_peer_service:rename_member(Node, node()),
             vmq_reg:fold_subscribers(
                 fun(SubscriberId, Subs, _) ->
@@ -72,4 +75,14 @@ maybe_change_nodename() ->
             %% we ignore if the node has the same name
             %% or if more than one node is returned (clustered)
             ignore
+    end.
+
+init_systemd_notify() ->
+    %% systemd -> set status to ready and start watchdog
+    Pid = os:getpid(),
+    systemd:notify(ready),
+    case os:getenv("WATCHDOG_PID") of
+        false -> systemd:watchdog(enable);
+        Pid -> systemd:watchdog(enable);
+        _ -> false
     end.

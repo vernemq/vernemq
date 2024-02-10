@@ -15,6 +15,7 @@
 -module(vmq_reg_sup).
 
 -behaviour(supervisor).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -68,10 +69,10 @@ reconfigure_registry(Config) ->
 install_reg_views([RV | RegViews]) ->
     case start_reg_view(RV) of
         {ok, _} ->
-            lager:info("installed reg view ~p", [RV]),
+            ?LOG_INFO("installed reg view ~p", [RV]),
             install_reg_views(RegViews);
         {error, Reason} ->
-            lager:error("can't install reg view ~p due to ~p", [RV, Reason]),
+            ?LOG_ERROR("can't install reg view ~p due to ~p", [RV, Reason]),
             install_reg_views(RegViews)
     end;
 install_reg_views([]) ->
@@ -80,10 +81,10 @@ install_reg_views([]) ->
 uninstall_reg_views([RV | RegViews]) ->
     case stop_reg_view(RV) of
         {error, Reason} ->
-            lager:error("can't uninstall reg view ~p due to ~p", [RV, Reason]),
+            ?LOG_ERROR("can't uninstall reg view ~p due to ~p", [RV, Reason]),
             uninstall_reg_views(RegViews);
         _ ->
-            lager:info("uninstalled reg view ~p", [RV]),
+            ?LOG_INFO("uninstalled reg view ~p", [RV]),
             uninstall_reg_views(RegViews)
     end;
 uninstall_reg_views([]) ->

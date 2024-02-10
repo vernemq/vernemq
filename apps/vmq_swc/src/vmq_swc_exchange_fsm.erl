@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_swc_exchange_fsm).
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_swc.hrl").
 -behaviour(gen_statem).
 
@@ -50,7 +51,7 @@ prepare(
     case vmq_swc_store:lock(Config) of
         ok ->
             %% get remote lock
-            lager:debug("Replica ~p: AE exchange with ~p successfully acquired local lock", [
+            ?LOG_DEBUG("Replica ~p: AE exchange with ~p successfully acquired local lock", [
                 Group, Peer
             ]),
             NodeClock = vmq_swc_store:node_clock(Config),
@@ -59,26 +60,26 @@ prepare(
                 {state_timeout, Timeout, remote_node_clock}
             ]};
         {error, already_locked} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "Replica ~p: AE exchange with ~p terminated due to local store is locked", [
                     Group, Peer
                 ]
             ),
             {stop, normal, State};
         Error ->
-            lager:error("Replica ~p: AE exchange with ~p can't acquire local lock due to ~p", [
+            ?LOG_ERROR("Replica ~p: AE exchange with ~p can't acquire local lock due to ~p", [
                 Group, Peer, Error
             ]),
             {stop, normal, State}
     end;
 prepare(state_timeout, PrepStep, #state{group = Group, peer = Peer} = State) ->
-    lager:warning("Replica ~p: AE exchange with ~p prepare step timed out in ~p", [
+    ?LOG_WARNING("Replica ~p: AE exchange with ~p prepare step timed out in ~p", [
         Group, Peer, PrepStep
     ]),
     {stop, normal, State};
 prepare(cast, {remote_node_clock, {error, Reason}}, #state{group = Group, peer = Peer} = State) ->
     %% Failed to get remote node clock
-    lager:warning("Replica ~p: AE exchange with ~p couldn't request remote node clock due to ~p", [
+    ?LOG_WARNING("Replica ~p: AE exchange with ~p couldn't request remote node clock due to ~p", [
         Group, Peer, Reason
     ]),
     teardown(State);
@@ -87,7 +88,7 @@ prepare(
     {remote_node_clock, NodeClock},
     #state{group = Group, peer = Peer, config = Config, timeout = Timeout} = State0
 ) ->
-    lager:debug("Replica ~p: AE exchange with ~p successfully requested remote node clock", [
+    ?LOG_DEBUG("Replica ~p: AE exchange with ~p successfully requested remote node clock", [
         Group, Peer
     ]),
     remote_watermark_request(Config, Peer),
@@ -96,12 +97,12 @@ prepare(
     ]};
 prepare(cast, {remote_watermark, {error, Reason}}, #state{group = Group, peer = Peer} = State) ->
     %% Failed to get remote node clock
-    lager:warning("Replica ~p: AE exchange with ~p couldn't request remote watermark due to ~p", [
+    ?LOG_WARNING("Replica ~p: AE exchange with ~p couldn't request remote watermark due to ~p", [
         Group, Peer, Reason
     ]),
     teardown(State);
 prepare(cast, {remote_watermark, Watermark}, #state{group = Group, peer = Peer} = State0) ->
-    lager:debug("Replica ~p: AE exchange with ~p successfully requested remote watermark", [
+    ?LOG_DEBUG("Replica ~p: AE exchange with ~p successfully requested remote watermark", [
         Group, Peer
     ]),
     {next_state, update_local, State0#state{remote_watermark = Watermark}, [
@@ -167,14 +168,14 @@ local_sync_repair(
                 [{next_event, internal, start}]}
     end;
 local_sync_repair(cast, Msg, #state{group = Group, peer = Peer} = State) ->
-    lager:error(
+    ?LOG_ERROR(
         "Replica ~p: AE exchange with ~p received unknown message during local sync repair: ~p", [
             Group, Peer, Msg
         ]
     ),
     teardown(State);
 local_sync_repair(state_timeout, sync_repair, #state{group = Group, peer = Peer} = State) ->
-    lager:warning(
+    ?LOG_WARNING(
         "Replica ~p: AE exchange with ~p couldn't sync repair local store due to timeout", [
             Group, Peer
         ]
@@ -184,9 +185,9 @@ local_sync_repair(state_timeout, sync_repair, #state{group = Group, peer = Peer}
 teardown(#state{group = Group, peer = Peer, obj_cnt = ObjCnt} = State) ->
     case State#state.obj_cnt > 0 of
         true ->
-            lager:info("Replica ~p: AE exchange with ~p synced ~p objects", [Group, Peer, ObjCnt]);
+            ?LOG_INFO("Replica ~p: AE exchange with ~p synced ~p objects", [Group, Peer, ObjCnt]);
         false ->
-            lager:debug("Replica ~p: AE exchange with ~p, nothing to synchronize", [Group, Peer])
+            ?LOG_DEBUG("Replica ~p: AE exchange with ~p, nothing to synchronize", [Group, Peer])
     end,
     {stop, normal, State}.
 
@@ -206,7 +207,7 @@ init([Config, Peer, Timeout]) ->
         [{next_event, internal, start}]}.
 
 terminate(Reason, StateName, #state{group = Group, peer = Peer}) ->
-    lager:debug(
+    ?LOG_DEBUG(
         "Replica ~p: AE exchange with ~p terminates with reason ~p in state ~p",
         [Group, Peer, Reason, StateName]
     ),

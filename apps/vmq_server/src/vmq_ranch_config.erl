@@ -15,6 +15,7 @@
 -module(vmq_ranch_config).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -27,7 +28,8 @@
     delete_listener/2,
     restart_listener/2,
     get_listener_config/2,
-    listeners/0
+    listeners/0,
+    listeners/1
 ]).
 
 %% gen_server callbacks
@@ -56,23 +58,13 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-listener_sup_sup(Addr, Port) ->
-    AAddr = addr(Addr),
-    Ref = listener_name(AAddr, Port),
-    case lists:keyfind({ranch_listener_sup, Ref}, 1, supervisor:which_children(ranch_sup)) of
-        false ->
-            {error, not_found};
-        {_, ListenerSupSupPid, supervisor, _} when is_pid(ListenerSupSupPid) ->
-            {ok, ListenerSupSupPid}
-    end.
-
 stop_all_mqtt_listeners(KillSessions) ->
     lists:foreach(
         fun
-            ({mqtt, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqtts, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttws, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttwss, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtt, Addr, Port, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtts, Addr, Port, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttws, Addr, Port, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttwss, Addr, Port, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
             (_) -> ignore
         end,
         listeners()
@@ -83,52 +75,48 @@ stop_listener(Addr, Port) ->
 stop_listener(Addr, Port, KillSessions) when is_list(Port) ->
     stop_listener(Addr, list_to_integer(Port), KillSessions);
 stop_listener(Addr, Port, KillSessions) ->
-    case listener_sup_sup(Addr, Port) of
-        {ok, Pid} when KillSessions ->
-            supervisor:terminate_child(Pid, ranch_conns_sup),
-            supervisor:terminate_child(Pid, ranch_acceptors_sup);
-        {ok, Pid} ->
-            supervisor:terminate_child(Pid, ranch_acceptors_sup);
-        E ->
-            E
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    case ranch_server:get_listener_sup(Ref) of
+        Pid when KillSessions, is_pid(Pid) ->
+            ranch:stop_listener(Ref);
+        Pid when is_pid(Pid) ->
+            ranch:suspend_listener(Ref)
     end.
 
 restart_listener(Addr, Port) ->
-    case listener_sup_sup(Addr, Port) of
-        {ok, Pid} ->
-            case
-                {
-                    supervisor:restart_child(Pid, ranch_conns_sup),
-                    supervisor:restart_child(Pid, ranch_acceptors_sup)
-                }
-            of
-                {{ok, _}, {ok, _}} ->
-                    ok;
-                {{error, running}, {ok, _}} ->
-                    ok;
-                {{error, R1}, {error, R2}} ->
-                    {error, {R1, R2}}
-            end;
-        E ->
-            E
-    end.
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    ranch:resume_listener(Ref).
 
 delete_listener(Addr, Port) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
     delete_listener(Ref).
 
-delete_listener(ListenerRef) ->
-    case supervisor:terminate_child(ranch_sup, {ranch_listener_sup, ListenerRef}) of
-        {error, _} ->
-            ok;
-        ok ->
-            TransportOpts = ranch:get_transport_options(ListenerRef),
-            [_, Transport, _, _, _] = ranch_server:get_listener_start_args(ListenerRef),
-            _ = supervisor:delete_child(ranch_sup, {ranch_listener_sup, ListenerRef}),
-            ranch_server:cleanup_listener_opts(ListenerRef),
-            % this will delete the SocketFile for Unix sockets
-            Transport:cleanup(TransportOpts)
+delete_listener(Ref) ->
+    ranch:stop_listener(Ref).
+
+start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts) ->
+    Ret =
+        case TransportMod of
+            ranch_tcp ->
+                cowboy:start_clear(
+                    Ref,
+                    TransportOptions,
+                    ProtocolOpts
+                );
+            ranch_ssl ->
+                cowboy:start_tls(
+                    Ref,
+                    TransportOptions,
+                    ProtocolOpts
+                )
+        end,
+
+    case Ret of
+        {ok, _} -> ok;
+        Error -> Error
     end.
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
@@ -143,6 +131,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(max_connections)
     ),
+    vmq_ssl_psk:init(Opts),
     NrOfAcceptors = proplists:get_value(
         nr_of_acceptors,
         Opts,
@@ -158,64 +147,107 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
             | transport_opts_for_type(Type, Opts)
         ]
     ),
-    case
-        ranch:start_listener(
-            Ref,
-            TransportMod,
-            TransportOptions,
-            protocol_for_type(Type),
-            ProtocolOpts
-        )
-    of
-        {ok, _} -> ok;
-        Error -> Error
+    case protocol_for_type(Type) of
+        cowboy_clear ->
+            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+        _ ->
+            case
+                ranch:start_listener(
+                    Ref,
+                    TransportMod,
+                    TransportOptions,
+                    protocol_for_type(Type),
+                    ProtocolOpts
+                )
+            of
+                {ok, _} -> ok;
+                Error -> Error
+            end
     end.
-
 listeners() ->
-    lists:foldl(
-        fun
-            ({ranch_server, _, _, _}, Acc) ->
-                Acc;
-            ({{ranch_listener_sup, {Ip, Port}}, Status, supervisor, _}, Acc) ->
-                {ok, {Type, Opts}} = get_listener_config(Ip, Port),
-                MountPoint = proplists:get_value(mountpoint, Opts, ""),
-                MaxConnections = proplists:get_value(
-                    max_connections,
-                    Opts,
-                    vmq_config:get_env(max_connections)
-                ),
-                Status1 =
-                    case Status of
-                        restarting ->
-                            restarting;
-                        undefined ->
-                            stopped;
-                        Pid when is_pid(Pid) ->
-                            case
-                                lists:keyfind(
-                                    ranch_acceptors_sup, 1, supervisor:which_children(Pid)
-                                )
-                            of
-                                false ->
-                                    not_found;
-                                {_, restarting, supervisor, _} ->
-                                    restarting;
-                                {_, undefined, supervisor, _} ->
-                                    stopped;
-                                {_, AcceptorPid, supervisor, _} when is_pid(AcceptorPid) ->
-                                    running
-                            end
-                    end,
-                StrIp =
-                    case Ip of
-                        {local, FS} -> FS;
-                        _ -> inet:ntoa(Ip)
-                    end,
-                StrPort = integer_to_list(Port),
-                [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections} | Acc]
+    listeners(select, false, false).
+
+listeners(with_tls) ->
+    listeners(select, true, false);
+listeners(with_mqtt) ->
+    listeners(select, false, true);
+listeners(with_tls_and_mqtt) ->
+    listeners(select, true, true).
+
+listeners(select, AddTLSInfo, AddMQTTInfo) ->
+    maps:fold(
+        fun({Ip, Port}, ConfigMap, Acc) ->
+            {ok, {Type, Opts}} = get_listener_config(Ip, Port),
+            MountPoint = proplists:get_value(mountpoint, Opts, ""),
+            MaxConnections = proplists:get_value(
+                max_connections,
+                Opts,
+                vmq_config:get_env(max_connections)
+            ),
+            ActiveConnections = maps:get(active_connections, ConfigMap),
+            % the highest number of connections seen
+            AllConnections = maps:get(all_connections, ConfigMap),
+            Status = maps:get(status, ConfigMap),
+            StrIp =
+                case Ip of
+                    {local, FS} -> {local, FS};
+                    _ -> inet:ntoa(Ip)
+                end,
+            StrPort = integer_to_list(Port),
+            AllowedProtocolVersionsList = proplists:get_value(allowed_protocol_versions, Opts, ""),
+            AllowedProtocolVersions = vmq_util:mqtt_version_to_string(AllowedProtocolVersionsList),
+            AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, ""),
+            % TLS
+            CertFile = proplists:get_value(certfile, Opts, ""),
+            TLS = proplists:get_value(tls_version, Opts, ""),
+            CAFile = proplists:get_value(ca_file, Opts, ""),
+            KeyFile = proplists:get_value(keyfile, Opts, ""),
+            RequireCertificate = proplists:get_value(require_certificate, Opts, ""),
+            UseIDAsUsername = proplists:get_value(use_identity_as_username, Opts, ""),
+            PSKSupport = proplists:get_value(psk_support, Opts, ""),
+            PSKFile = proplists:get_value(pskfile, Opts, ""),
+
+            Base = [
+                Type,
+                StrIp,
+                StrPort,
+                Status,
+                MountPoint,
+                MaxConnections,
+                ActiveConnections,
+                AllConnections
+            ],
+            Base2 =
+                case AddTLSInfo of
+                    true ->
+                        Base ++
+                            [
+                                TLS,
+                                CertFile,
+                                CAFile,
+                                KeyFile,
+                                RequireCertificate,
+                                UseIDAsUsername,
+                                PSKSupport,
+                                PSKFile
+                            ];
+                    _ ->
+                        Base
+                end,
+            Base3 =
+                case AddMQTTInfo of
+                    true ->
+                        Base2 ++ [AllowedProtocolVersions, AllowAnonymousOverride];
+                    _ ->
+                        Base2
+                end,
+            [
+                list_to_tuple(Base3)
+                | Acc
+            ]
         end,
         [],
-        supervisor:which_children(ranch_sup)
+        ranch:info()
     ).
 
 get_listener_config(Addr, Port) ->
@@ -241,7 +273,7 @@ reconfigure_listeners(Config) ->
         Config,
         vmq_config:get_env(listeners)
     ),
-    Listeners = supervisor:which_children(ranch_sup),
+    Listeners = ranch_server:get_listener_sups(),
     reconfigure_listeners(TCPListenOptions, ListenerConfig, Listeners).
 reconfigure_listeners(TCPListenOptions, [{T, Config} | Rest], Listeners) ->
     NewListeners = reconfigure_listeners_for_type(T, Config, TCPListenOptions, Listeners),
@@ -266,7 +298,7 @@ reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Lis
         ok ->
             ok;
         {error, Reason} ->
-            lager:error(
+            ?LOG_ERROR(
                 "can't reconfigure ~p listener(~p, ~p) with Options ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             )
@@ -334,22 +366,29 @@ protocol_opts(cowboy_clear, Type, Opts) when
         stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
     });
 protocol_opts(cowboy_clear, _, Opts) ->
-    Routes =
-        case {lists:keyfind(config_mod, 1, Opts), lists:keyfind(config_fun, 1, Opts)} of
-            {{_, ConfigMod}, {_, ConfigFun}} ->
-                try
-                    apply(ConfigMod, ConfigFun, [])
-                catch
-                    E:R ->
-                        lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
-                        []
-                end;
-            _ ->
+    Apply = fun(Mod, Fun, Param) ->
+        try
+            apply(Mod, Fun, Param)
+        catch
+            E:R ->
+                ?LOG_ERROR("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
+        end
+    end,
+    {_, ConfigMod} = lists:keyfind(config_mod, 1, Opts),
+    {_, ConfigFun} = lists:keyfind(config_fun, 1, Opts),
+    Routes =
+        case
+            {ConfigMod, ConfigFun,
+                lists:member({ConfigFun, 1}, apply(ConfigMod, module_info, [exports]))}
+        of
+            {Mod, Fun, false} -> Apply(Mod, Fun, []);
+            {Mod, Fun, true} -> Apply(Mod, Fun, [Opts])
         end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
-    #{env => #{dispatch => Dispatch}};
+    MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
+    #{env => #{dispatch => Dispatch}, max_request_line_length => MaxRequestLength, opts => Opts};
 protocol_opts(vmq_cluster_com, _, Opts) ->
     Opts.
 
@@ -364,15 +403,31 @@ default_session_opts(Opts) ->
             false -> MaybeSSLDefaults;
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults]
         end,
+    MaybeProxyDefaults2 =
+        case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
+            false ->
+                MaybeProxyDefaults;
+            {_, V2} ->
+                [
+                    {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
+                    {proxy_xff_trusted_intermediate, V2},
+                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, "")},
+                    {xff_use_cn_as_username,
+                        proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
+                    | MaybeProxyDefaults
+                ]
+        end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3, 4]),
+    MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
+        {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
         {buffer_sizes, BufferSizes}
-        | MaybeProxyDefaults
+        | MaybeProxyDefaults2
     ].
 
 %%%===================================================================

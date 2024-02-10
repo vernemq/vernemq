@@ -15,6 +15,7 @@
 -module(vmq_mqtt_fsm_util).
 -include("vmq_server.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     send/2,
@@ -65,13 +66,17 @@ plugin_receive_loop(PluginPid, PluginMod) ->
                                 routing_key = RoutingKey,
                                 payload = Payload,
                                 retain = IsRetain,
-                                dup = IsDup
+                                dup = IsDup,
+                                mountpoint = Mountpoint,
+                                properties = PropsMap,
+                                expiry_ts = ExpiryTS
                             }
                         }
                     ) ->
-                        PluginPid ! {deliver, RoutingKey, Payload, QoS, IsRetain, IsDup};
+                        Info = {Mountpoint, PropsMap, ExpiryTS},
+                        PluginPid ! {deliver, RoutingKey, Payload, QoS, IsRetain, IsDup, Info};
                     (Msg) ->
-                        lager:warning("dropped message ~p for plugin ~p", [Msg, PluginMod]),
+                        ?LOG_WARNING("dropped message ~p for plugin ~p", [Msg, PluginMod]),
                         ok
                 end,
                 Msgs
@@ -88,7 +93,7 @@ plugin_receive_loop(PluginPid, PluginMod) ->
                 true ->
                     ok;
                 false ->
-                    lager:warning("plugin queue loop for ~p stopped due to ~p", [PluginMod, Reason])
+                    ?LOG_WARNING("plugin queue loop for ~p stopped due to ~p", [PluginMod, Reason])
             end;
         Other ->
             exit({unknown_msg_in_plugin_loop, Other})
@@ -124,7 +129,9 @@ peertoa({IP, Port}) ->
         {_, _, _, _} ->
             io_lib:format("~s:~p", [inet:ntoa(IP), Port]);
         {_, _, _, _, _, _, _, _} ->
-            io_lib:format("[~s]:~p", [inet:ntoa(IP), Port])
+            io_lib:format("[~s]:~p", [inet:ntoa(IP), Port]);
+        local ->
+            "local"
     end.
 
 -spec terminate_reason(any()) -> any().

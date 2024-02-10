@@ -2,15 +2,13 @@
 -export([setup/0,
          teardown/0,
          reset_tables/0,
-         maybe_start_distribution/1,
          get_suite_rand_seed/0,
          seed_rand/1,
-         rand_bytes/1]).
+         rand_bytes/1,
+         get_free_port/0]).
 
 setup() ->
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
-    ok = maybe_start_distribution(NodeName),
+    vmq_cluster_test_utils:init_distribution([]),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     os:cmd("rm -rf " ++ Datadir),
    % application:load(plumtree),
@@ -33,22 +31,12 @@ setup() ->
     %                                                  {open_retries, 30},
     %                                                  {open_retry_delay, 2000}
     %                                                 ]),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
+    application:set_env(vmq_generic_msg_store, db_backend, vmq_storage_engine_leveldb),
     LogDir = "log." ++ atom_to_list(node()),
-    application:load(lager),
-    application:set_env(lager, handlers, [
-                                          {lager_file_backend,
-                                           [{file, LogDir ++ "/console.log"},
-                                            {level, info},
-                                            {size,10485760},
-                                            {date,"$D0"},
-                                            {count,5}]},
-                                          {lager_file_backend,
-                                           [{file, LogDir ++ "/error.log"},
-                                            {level, error},
-                                            {size,10485760},
-                                            {date,"$D0"},
-                                            {count,5}]}]),
+    filelib:ensure_dir(LogDir),
+
+    logger:remove_handler(test_logger_file),
+    logger:add_handler(test_logger_file, logger_std_h, #{config => #{file => LogDir ++ "/console.log", max_no_bytes => 10485760, max_no_files => 5}, filters => [{test_logger_file, {fun logger_filters:progress/2, stop}}], formatter => {logger_formatter, #{single_line => true}}, level => info}),
     vmq_server:start_no_auth(),
     disable_all_plugins().
 
@@ -58,7 +46,7 @@ random_port() ->
 teardown() ->
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
-    vmq_server:stop(),
+    vmq_server:stop(no_wait),
     vmq_swc:stop(),
     application:unload(vmq_swc),
     application:unload(vmq_server),
@@ -92,16 +80,6 @@ disable_all_plugins() ->
                       (P) ->
                           vmq_plugin_mgr:disable_plugin(P)
                   end, vmq_plugin:info(all)).
-
-maybe_start_distribution(Name) ->
-    case ets:info(sys_dist) of
-        undefined ->
-            %% started without -sname or -name arg
-            {ok, _} = net_kernel:start([Name, shortnames]),
-            ok;
-        _ ->
-            ok
-    end.
 
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],
@@ -149,3 +127,9 @@ seed_rand(Config) ->
 rand_bytes(N) ->
     L = [ rand:uniform(256)-1 || _ <- lists:seq(1,N)],
     list_to_binary(L).
+
+get_free_port() ->
+    {ok, Socket} = gen_tcp:listen(0, [binary, {active, once}]),
+    {ok, Port} = inet:port(Socket),
+    ok = gen_tcp:close(Socket),
+    Port.

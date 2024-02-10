@@ -14,6 +14,7 @@
 
 -module(vmq_reg).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 
 %% API
@@ -531,7 +532,7 @@ publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg = Msg, remote_matche
         ok ->
             Acc#publish_fold_acc{remote_matches = N + 1};
         {error, Reason} ->
-            lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
+            ?LOG_WARNING("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Acc
     end.
 
@@ -587,7 +588,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
     vmq_retain_srv:match_fold(
         fun
             (
-                {T, #retain_msg{
+                {{_M, T}, #retain_msg{
                     payload = Payload,
                     properties = Properties,
                     expiry_ts = ExpiryTs
@@ -608,7 +609,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
                 Msg1 = maybe_add_sub_id({QoS, SubOpts}, Msg),
                 maybe_delete_expired(ExpiryTs, MP, Topic),
                 vmq_queue:enqueue(QPid, {deliver, QoS, Msg1});
-            ({T, Payload}, _) when is_binary(Payload) ->
+            ({{_M, T}, Payload}, _) when is_binary(Payload) ->
                 %% compatibility with old style retained messages.
                 Msg = #vmq_msg{
                     routing_key = T,
@@ -792,7 +793,7 @@ fix_dead_queues(DeadNodes, AccTargets) ->
     %% DeadNodes must be a list of offline VerneMQ nodes. Targets must
     %% be a list of online VerneMQ nodes
     {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}),
-    lager:info("dead queues summary: ~p queues fixed", [N]).
+    ?LOG_INFO("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
     %%% Why not use maybe_remap_subscriber/2:
@@ -823,7 +824,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                         ok ->
                             {DeadNodes, Targets ++ [Target], N + 1};
                         Error ->
-                            lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                            ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                                 SubscriberId, Target, Error
                             ]),
                             {DeadNodes, Targets ++ [Target], N}
@@ -831,7 +832,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                 end,
             case vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000) of
                 {error, Error} ->
-                    lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                    ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                         SubscriberId, Target, Error
                     ]),
                     {DeadNodes, Targets ++ [Target], N};
@@ -948,7 +949,7 @@ direct_plugin_exports(LogName, Opts) ->
     CAPUnsubscribe = maps:get(cap_unsubscribe, Opts, false),
     SGPolicy = maps:get(sg_policy, Opts, prefer_local),
     Mountpoint = maps:get(mountpoint, Opts, ""),
-    RegView = maps:get(reg_view, Opts, vmq_reg_trie),
+    RegView = maps:get(reg_view, Opts, vmq_config:get_env(default_reg_view, vmq_reg_trie)),
 
     CallingPid = self(),
     ClientIdDef = list_to_binary(
@@ -1007,6 +1008,19 @@ direct_plugin_exports(LogName, Opts) ->
             %% - trade-consistency flag
             %% - reg_view
             %% - shared subscription policy
+            %% - user_proeprties
+
+            UserProperties = maps:get(user_property, Opts_, undefined),
+            Properties =
+                case UserProperties of
+                    [] ->
+                        #{};
+                    UserPropertyList when is_list(UserPropertyList) ->
+                        #{p_user_property => UserProperties};
+                    _ ->
+                        #{}
+                end,
+
             Msg = #vmq_msg{
                 routing_key = Topic,
                 mountpoint = maps:get(mountpoint, Opts_, Mountpoint),
@@ -1014,6 +1028,7 @@ direct_plugin_exports(LogName, Opts) ->
                 msg_ref = vmq_mqtt_fsm_util:msg_ref(),
                 qos = maps:get(qos, Opts_, 0),
                 dup = maps:get(dup, Opts_, false),
+                properties = Properties,
                 retain = maps:get(retain, Opts_, false),
                 sg_policy = maps:get(shared_subscription_policy, Opts_, SGPolicy)
             },

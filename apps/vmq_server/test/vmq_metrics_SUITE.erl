@@ -32,6 +32,7 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(systree_interval, 100),
     vmq_server_cmd:set_config(retry_interval, 10),
     application:set_env(vmq_server, vmq_metrics_mfa, {?MODULE, plugin_metrics, []}),
+    application:set_env(vmq_server, http_modules_auth, #{vmq_metrics_http => "noauth"}),
     vmq_server_cmd:listener_start(1888, []),
     vmq_metrics:reset_counters(),
     Config.
@@ -56,7 +57,7 @@ simple_systree_test(_) ->
     Socket = sample_subscribe(),
     SysTopic = "$SYS/"++ atom_to_list(node()) ++ "/mqtt/subscribe/received",
     Publish = packet:gen_publish(SysTopic, 0, <<"1">>, []),
-    ok = packet:expect_packet(gen_tcp, Socket, "publish", Publish, 15000),
+    ok = packet:expect_packet(gen_tcp, Socket, "publish", Publish, 20000),
     gen_tcp:close(Socket).
 
 histogram_systree_test(_) ->
@@ -134,12 +135,14 @@ recv_data(Socket, Want0) ->
 simple_prometheus_test(_) ->
     %% we have to setup the listener here, because vmq_test_utils is overriding
     %% the default set in vmq_server.app.src
-    vmq_server_cmd:listener_start(8888, [{http, true},
+    Port = vmq_test_utils:get_free_port(),
+    Url = "http://localhost:" ++ integer_to_list(Port) ++ "/metrics",
+    vmq_server_cmd:listener_start(Port, [{http, true},
                                          {config_mod, vmq_metrics_http},
                                          {config_fun, routes}]),
     application:ensure_all_started(inets),
     SubSocket = sample_subscribe(),
-    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8888/metrics"),
+    {ok, {_Status, _Headers, Body}} = httpc:request(Url),
     Lines = re:split(Body, "\n"),
     Node = atom_to_list(node()),
     true = lists:member(

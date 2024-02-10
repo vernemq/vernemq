@@ -18,6 +18,7 @@
 -behaviour(gen_server).
 
 -include_lib("vmq_metrics.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([start_link/0]).
@@ -125,7 +126,7 @@ handle_info(timeout, undefined) ->
         true ->
             case vmq_config:get_env(graphite_host) of
                 undefined ->
-                    lager:error("can't connect to Graphite due to no host configured.", []),
+                    ?LOG_ERROR("can't connect to Graphite due to no host configured.", []),
                     {noreply, undefined, 5000};
                 Host ->
                     Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
@@ -141,7 +142,7 @@ handle_info(timeout, undefined) ->
                             ),
                             {noreply, Socket, Interval};
                         {error, Reason} ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't connect to Graphite due to ~p.",
                                 [Reason]
                             ),

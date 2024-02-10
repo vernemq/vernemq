@@ -15,6 +15,7 @@
 -module(vmq_mqtt5_fsm).
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
@@ -22,7 +23,8 @@
     init/3,
     data_in/2,
     msg_in/2,
-    info/2
+    info/2,
+    subscriber/1
 ]).
 
 -export([msg_ref/0]).
@@ -121,6 +123,11 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
+subscriber({connected, State}) ->
+    State#state.subscriber_id;
+subscriber(_) ->
+    undefined.
+
 init(
     Peer,
     Opts,
@@ -138,6 +145,8 @@ init(
         Opts
     ),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
+    MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 0),
+    set_maxlifetime_timer(MaxLifetime),
 
     PreAuthUser =
         case lists:keyfind(preauth, 1, Opts) of
@@ -175,7 +184,6 @@ init(
     _ = vmq_metrics:incr(?MQTT5_CONNECT_RECEIVED),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
-
     %% Flow Control
     FcReceiveMaxClient = maybe_get_receive_maximum(
         Properties,
@@ -225,7 +233,7 @@ init(
                 {NewState, Out} -> {{connected, set_last_time_active(true, NewState)}, Out}
             end;
         false ->
-            lager:warning(
+            ?LOG_WARNING(
                 "invalid protocol version for ~p ~p",
                 [SubscriberId, ProtoVer]
             ),
@@ -418,13 +426,13 @@ pre_connect_auth(
             {pre_connect_auth, State, [serialise_frame(Frame)]};
         {error, #{reason_code := RCN} = Res} ->
             Props0 = maps:with([?P_REASON_STRING], maps:get(properties, Res, #{})),
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, RCN]
             ),
             terminate(RCN, Props0, State);
         {error, Reason} = E ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, Reason]
             ),
@@ -521,7 +529,7 @@ connected(
     NewState =
         case Dropped > 0 of
             true ->
-                lager:warning(
+                ?LOG_WARNING(
                     "subscriber ~p dropped ~p messages",
                     [SubscriberId, Dropped]
                 ),
@@ -577,7 +585,7 @@ connected(#mqtt5_pubrec{message_id = MessageId, reason_code = RC}, State) when R
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
             {State, [serialise_frame(PubRelFrame)]};
         not_found ->
-            lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND}),
             Frame = #mqtt5_pubrel{
                 message_id = MessageId, reason_code = ?M5_PACKET_ID_NOT_FOUND, properties = #{}
@@ -634,7 +642,7 @@ connected(#mqtt5_pubcomp{message_id = MessageId, reason_code = RC}, State) ->
             });
         % error or wrong waiting_ack, definitely not well behaving client
         not_found ->
-            lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             _ = vmq_metrics:incr(?MQTT5_PUBCOMP_INVALID_ERROR),
             %% TODOv5: we should probably not terminate normally here
             %% but use one of the new reason codes.
@@ -772,13 +780,13 @@ connected(
             {State, [serialise_frame(Frame)]};
         {error, #{reason_code := RCN} = Res} ->
             Props0 = maps:with([?P_REASON_STRING], maps:get(properties, Res, #{})),
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, RCN]
             ),
             terminate(RCN, Props0, State);
         {error, Reason} = E ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, Reason]
             ),
@@ -802,8 +810,13 @@ connected(#mqtt5_disconnect{properties = Properties, reason_code = RC}, State) -
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
     terminate_by_client(RC, Properties, State);
 connected({disconnect, Reason}, State) ->
-    lager:debug("stop due to disconnect", []),
+    ?LOG_DEBUG("stop due to disconnect", []),
     terminate(Reason, State);
+connected(
+    disconnect_max_conn_lifetime, State
+) ->
+    ?LOG_DEBUG("stop due to max connection lifetime reached", []),
+    terminate(?ADMINISTRATIVE_ACTION, State);
 connected(
     check_keepalive,
     #state{
@@ -816,9 +829,16 @@ connected(
     Now = os:timestamp(),
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
-            lager:warning("client ~p with username ~p stopped due to keepalive expired", [
-                SubscriberId, UserName
-            ]),
+            case proplists:get_value(keepalive_as_warning, vmq_config:get_env(logging, []), true) of
+                false ->
+                    ?LOG_INFO("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ]);
+                _ ->
+                    ?LOG_WARNING("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ])
+            end,
             _ = vmq_metrics:incr(?MQTT5_CLIENT_KEEPALIVE_EXPIRED),
             terminate(?KEEP_ALIVE_TIMEOUT, State);
         false ->
@@ -849,7 +869,9 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    ?LOG_WARNING("stopped connected session for client ~p, due to unexpected frame type ~p", [
+        State#state.subscriber_id, Unexpected
+    ]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().
@@ -923,7 +945,7 @@ terminate(
         end,
     case suppress_lwt(Reason, State) of
         true ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "last will and testament suppressed on session takeover for subscriber ~p",
                 [SubscriberId]
             );
@@ -992,13 +1014,13 @@ check_enhanced_auth(
             {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [serialise_frame(Frame1)]};
         {error, #{reason_code := RCN} = Res} ->
             Props0 = maps:with([?P_REASON_STRING], maps:get(properties, Res, #{})),
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, RCN]
             ),
             connack_terminate(RCN, Props0, State);
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, Reason]
             ),
@@ -1049,7 +1071,7 @@ check_client_id(
     SubscriberId = {MountPoint, ClientId},
     check_user(F, OutProps, State#state{subscriber_id = SubscriberId});
 check_client_id(#mqtt5_connect{client_id = Id}, _OutProps, State) ->
-    lager:warning("invalid client id ~p", [Id]),
+    ?LOG_WARNING("invalid client id ~p", [Id]),
     connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State).
 
 check_user(
@@ -1069,7 +1091,7 @@ check_user(
                         NewState#state{session_expiry_interval = SessionExpiryInterval}
                     );
                 {error, no_matching_hook_found} ->
-                    lager:error(
+                    ?LOG_ERROR(
                         "can't authenticate client ~p from ~s due to no_matching_hook_found",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
@@ -1083,21 +1105,21 @@ check_user(
                         ],
                         maps:get(properties, Vals, #{})
                     ),
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), RCN]
                     ),
                     connack_terminate(RCN, Props0, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), Error]
                     ),
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            QueueOpts = queue_opts([], Props),
+            QueueOpts = queue_opts([], Props, State),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(
                 F,
@@ -1151,7 +1173,7 @@ register_subscriber(
                 State#state{queue_pid = QPid, next_msg_id = MsgId}
             );
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't register client ~p with username ~p due to ~p",
                 [SubscriberId, User, Reason]
             ),
@@ -1211,7 +1233,7 @@ check_will(
                 })
             ]};
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't authenticate last will\n"
                 "                          for client ~p due to ~p",
                 [SubscriberId, Reason]
@@ -1335,7 +1357,7 @@ auth_on_register(Password, Props, State) ->
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
-            {ok, queue_opts([], Props), #{}, State};
+            {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->
             Args = maps:to_list(Args0),
             set_sock_opts(prop_val(tcp_opts, Args, [])),
@@ -1360,6 +1382,8 @@ auth_on_register(Password, Props, State) ->
             ),
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
+            set_maxlifetime_timer(prop_val(max_connection_lifetime, Args, 0)),
+
             set_max_outgoing_msg_size(prop_val(max_packet_size, Args, max_outgoing_msg_size())),
             set_request_problem_information(
                 prop_val(request_problem_info, Args, request_problem_information())
@@ -1385,7 +1409,8 @@ auth_on_register(Password, Props, State) ->
                 topic_aliases_in = ?state_val(topic_aliases_in, Args, State),
                 cap_settings = ChangedCAPSettings
             },
-            {ok, queue_opts(Args, maps:merge(Props, ChangedProps)), ChangedProps, ChangedState};
+            {ok, queue_opts(Args, maps:merge(Props, ChangedProps), ChangedState), ChangedProps,
+                ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -1522,7 +1547,7 @@ auth_on_publish(
             ),
             {error, {RCN, Props}};
         {error, Re} ->
-            lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
+            ?LOG_ERROR("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
     end.
 
@@ -1775,15 +1800,27 @@ handle_waiting_msgs(#state{waiting_msgs = Msgs, queue_pid = QPid} = State) ->
 
 handle_messages([#deliver{qos = 0} = D | Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(D, State),
-    handle_messages(Rest, [Frame | Frames], PubCnt, NewState, Waiting);
-handle_messages([#deliver{} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
-    case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
-        error ->
-            % reached outgoing flow control max, queue up rest of messages
-            handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
-        Cnt ->
-            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
-            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+handle_messages([#deliver{qos = QoS, msg = Msg} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
+    NewQoS = maybe_upgrade_qos(QoS, Msg#vmq_msg.qos, State),
+    case NewQoS of
+        0 ->
+            {Frame, NewState} = prepare_frame(Obj, State),
+            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+        % only QoS1 / QoS2 count towards the receive_max_client
+        _ ->
+            case
+                fc_incr_cnt(
+                    State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages
+                )
+            of
+                error ->
+                    % reached outgoing flow control max, queue up rest of messages
+                    handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
+                Cnt ->
+                    {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
+                    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+            end
     end;
 handle_messages(
     [{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}} | Rest], Frames, PubCnt, State0, Waiting
@@ -1958,7 +1995,9 @@ get_msg_id(_, undefined, #state{next_msg_id = MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
+    list_to_binary([
+        "anon-", string:trim(base64:encode_to_string(crypto:strong_rand_bytes(21)), both, "+=/")
+    ]).
 
 set_keepalive_check_timer(0) ->
     ok;
@@ -1966,6 +2005,11 @@ set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
     %% however we're losing precision. But that's ok for the keepalive timer.
     _ = send_after(KeepAlive * 750, check_keepalive),
+    ok.
+set_maxlifetime_timer(0) ->
+    ok;
+set_maxlifetime_timer(MaxLifetime) ->
+    _ = send_after(MaxLifetime * 1000, disconnect_max_conn_lifetime),
     ok.
 
 -spec send_after(non_neg_integer(), any()) -> reference().
@@ -2030,9 +2074,9 @@ queue_opts_from_properties(Properties) ->
         Properties
     ).
 
-queue_opts(Args, Properties) ->
+queue_opts(Args, Properties, State) ->
     PropertiesOpts = queue_opts_from_properties(Properties),
-    Opts = maps:from_list(Args),
+    Opts = maps:from_list([{upgrade_qos, State#state.upgrade_qos} | Args]),
     Opts1 = maps:merge(PropertiesOpts, Opts),
     maps:merge(vmq_queue:default_opts(), Opts1).
 

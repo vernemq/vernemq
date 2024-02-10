@@ -1,0 +1,11 @@
+---
+contact_links:
+  - name: VerneMQ Mailing List
+    url: https://groups.google.com/g/vernemq-users
+    about: The official VerneMQ mailing list. Discuss all things VerneMQ, basic and advanced.
+  - name: VerneMQ on Erlang Forums
+    url: https://erlangforums.com/c/vernemq-forum/82
+    about: Alternatively ask about technical issues here.
+  - name: Twitter
+    url: https://twitter.com/vernemq
+    about: Follow or talk about VerneMQ on Twitter

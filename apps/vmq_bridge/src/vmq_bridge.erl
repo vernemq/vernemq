@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_bridge).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_mqtt_client).
 
@@ -91,7 +92,7 @@ on_connect({coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 on_connect_error(Reason, State) ->
-    lager:error("connection failed due to ~p", [Reason]),
+    ?LOG_ERROR("connection failed due to ~p", [Reason]),
     {ok, State}.
 
 on_disconnect(State) ->
@@ -104,9 +105,9 @@ on_subscribe(Topics, {coord, CoordPid} = State) ->
     ],
     case FailedTopics of
         [] ->
-            lager:info("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
+            ?LOG_INFO("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
         _ ->
-            lager:warning(
+            ?LOG_WARNING(
                 "Bridge Pid ~p had subscription failure codes in SUBACK for topics ~p~n", [
                     CoordPid, FailedTopics
                 ]
@@ -207,7 +208,7 @@ handle_info(
         subscribe_fun = SubscribeFun
     } = State
 ) ->
-    lager:info("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
+    ?LOG_INFO("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote = Subscriptions}};
@@ -236,7 +237,7 @@ handle_info(
     ),
     {noreply, State};
 handle_info(
-    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup},
+    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup, _Info},
     #state{subs_local = Subscriptions, client_pid = ClientPid} = State
 ) ->
     %% forward matching, locally published messages to the remote broker.

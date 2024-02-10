@@ -15,6 +15,7 @@
 -module(vmq_cluster_mon).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API functions
 -export([start_link/0]).
@@ -122,11 +123,11 @@ handle_info(timeout, State) ->
     vmq_peer_service:add_event_handler(vmq_cluster, []),
     {noreply, State};
 handle_info({nodedown, Node}, State) ->
-    lager:warning("cluster node ~p DOWN", [Node]),
+    ?LOG_WARNING("cluster node ~p DOWN", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({nodeup, Node}, State) ->
-    lager:info("cluster node ~p UP", [Node]),
+    ?LOG_INFO("cluster node ~p UP", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({gen_event_EXIT, vmq_cluster, _}, State) ->

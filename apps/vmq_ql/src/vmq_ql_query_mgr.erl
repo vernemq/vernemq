@@ -15,6 +15,7 @@
 -module(vmq_ql_query_mgr).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -185,7 +186,7 @@ handle_cast(cancel, State) ->
     {stop, normal, State}.
 
 handle_info({'DOWN', _, process, Owner, Reason}, #state{owner = Owner} = State) ->
-    lager:debug("VMQL query owner ~p stopped due to ~p", [Owner, Reason]),
+    ?LOG_DEBUG("VMQL query owner ~p stopped due to ~p", [Owner, Reason]),
     {stop, normal, State};
 handle_info(
     {query_error, Node, JobPid, Reason},

@@ -16,6 +16,7 @@
 -behaviour(cowboy_websocket).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -define(SEC_WEBSOCKET_PROTOCOL, <<"sec-websocket-protocol">>).
 
@@ -64,9 +65,19 @@ init(Req, Opts) ->
                         src_port := SrcPort
                     } ->
                         {SrcAddr, SrcPort};
-                    % WS request without proxy_protocol
+                    % WS request without proxy_protocol (might have XFF)
                     error ->
-                        cowboy_req:peer(Req0)
+                        XFF_On = proplists:get_value(proxy_xff_support, Opts, false),
+                        case XFF_On of
+                            true ->
+                                {ok, NewPeer} = vmq_proxy_xff:new_peer(
+                                    Req0,
+                                    proplists:get_value(proxy_xff_trusted_intermediate, Opts, "")
+                                ),
+                                NewPeer;
+                            _ ->
+                                cowboy_req:peer(Req0)
+                        end
                 end,
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState =
@@ -83,9 +94,23 @@ init(Req, Opts) ->
                         end;
                     %mqttws
                     _ ->
-                        case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true) of
+                        case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, false) of
                             false ->
-                                FsmMod:init(Peer, Opts);
+                                % No proxy protocol but we still might have a x-forwarded CN
+                                RequireXFFCN = proplists:get_value(
+                                    xff_use_cn_as_username, Opts, false
+                                ),
+                                case RequireXFFCN of
+                                    false ->
+                                        FsmMod:init(Peer, Opts);
+                                    true ->
+                                        CNHeaderName = proplists:get_value(
+                                            xff_cn_header, Opts, <<"x-ssl-client-cn">>
+                                        ),
+                                        HN = ensure_binary(CNHeaderName),
+                                        XFFCN = cowboy_req:header(HN, Req),
+                                        FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                end;
                             true ->
                                 case ProxyInfo0 of
                                     error ->
@@ -95,9 +120,10 @@ init(Req, Opts) ->
                                     % back to the provided MQTT username.
                                     % We expected SSL information from the Proxy protocol but did not get
                                     % any.
+                                    #{ssl := #{cn := CN}} ->
+                                        FsmMod:init(Peer, [{preauth, CN} | Opts]);
                                     #{command := _} ->
-                                        #{ssl := #{cn := CN}} = ProxyInfo0,
-                                        FsmMod:init(Peer, [{preauth, CN} | Opts])
+                                        FsmMod:init(Peer, Opts)
                                 end
                         end
                 end,
@@ -196,19 +222,25 @@ handle_fsm_return({throttle, MilliSecs, FsmState, Rest, Out}, State) ->
 handle_fsm_return({ok, FsmState, Out}, State) ->
     maybe_reply(Out, State#state{fsm_state = FsmState});
 handle_fsm_return({stop, normal, Out}, State) ->
-    lager:debug("ws session normally stopped", []),
+    ?LOG_DEBUG("ws session normally stopped", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
 handle_fsm_return({stop, shutdown, Out}, State) ->
-    lager:debug("ws session stopped due to shutdown", []),
+    ?LOG_DEBUG("ws session stopped due to shutdown", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
-handle_fsm_return({stop, Reason, Out}, State) ->
-    lager:warning("ws session stopped abnormally due to '~p'", [Reason]),
+handle_fsm_return({stop, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
+    SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+    ?LOG_WARNING("ws session for client ~p stopped abnormally due to '~p'", [
+        SubscriberId, Reason
+    ]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
-handle_fsm_return({error, Reason, Out}, State) ->
-    lager:warning("ws session error, force terminate due to '~p'", [Reason]),
+handle_fsm_return({error, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
+    SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+    ?LOG_WARNING("ws session error for client ~p, force terminate due to '~p'", [
+        SubscriberId, Reason
+    ]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated}).
 
@@ -222,7 +254,7 @@ maybe_reply(Out, State) ->
     end.
 
 add_websocket_sec_header(Req) ->
-    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req) of
+    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req, []) of
         [] ->
             {error, unsupported_protocol};
         SubProtocols ->
@@ -246,3 +278,7 @@ select_protocol([Want | Rest], Have) ->
 
 add_socket(Socket, State) ->
     State#state{socket = Socket}.
+
+ensure_binary(L) when is_list(L) -> list_to_binary(L);
+ensure_binary(L) when is_binary(L) -> L;
+ensure_binary(undefined) -> undefined.

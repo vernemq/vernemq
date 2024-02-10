@@ -34,10 +34,10 @@ fields_config() ->
 fold_init_rows(_, Fun, Acc, [Query]) ->
     Topic = re:split(maps:get({topic, equals}, Query, <<"#">>), <<"/">>),
     Payload = maps:get({payload, equals}, Query, undefined),
-    MP = maps:get({mp, equals}, Query, ""),
+    MP = maps:get({mountpoint, equals}, Query, ""),
     FoldFun =
         fun
-            ({T, #retain_msg{payload = P}}, AccAcc) ->
+            ({{_M, T}, #retain_msg{payload = P}}, AccAcc) ->
                 case match(Topic, T, Payload, P) of
                     true ->
                         Row = #{
@@ -49,7 +49,7 @@ fold_init_rows(_, Fun, Acc, [Query]) ->
                     false ->
                         AccAcc
                 end;
-            ({T, P}, AccAcc) ->
+            ({{_M, T}, P}, AccAcc) ->
                 case match(Topic, T, Payload, P) of
                     true ->
                         Row = #{
@@ -62,7 +62,7 @@ fold_init_rows(_, Fun, Acc, [Query]) ->
                         AccAcc
                 end
         end,
-    vmq_retain_srv:match_fold(FoldFun, Acc, MP, Topic).
+    vmq_retain_srv:match_fold(FoldFun, Acc, ensure_list(MP), Topic).
 
 match(WantTopic, GotTopic, WantPayload, GotPayload) ->
     vmq_topic:match(GotTopic, WantTopic) andalso match_payload(WantPayload, GotPayload).
@@ -75,3 +75,6 @@ match_payload(_, _) ->
     false.
 
 row_init(Row) -> [Row].
+
+ensure_list(L) when is_list(L) -> L;
+ensure_list(L) when is_binary(L) -> binary_to_list(L).

@@ -28,6 +28,9 @@ function auth_on_register(reg)
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_session == true)
+    if reg.client_id == "change-modifiers-id" then
+       return {max_connection_lifetime = 4711, max_message_size = 1001}
+    end
     if reg.client_id == "changed-subscriber-id" then
          -- we must change subscriber_id
         print("auth_on_register changed subscriber_id called")
@@ -202,7 +205,7 @@ function auth_on_register_m5(reg)
     elseif reg.client_id == "changed-username" then
        -- we must change username
        print("auth_on_register_m5 changed username called")
-       return {username = "override-username"} 
+       return {username = "override-username"}
     else
         print("auth_on_register_m5 called")
         return validate_client_id(reg.client_id)
