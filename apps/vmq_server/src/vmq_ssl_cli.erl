@@ -97,7 +97,7 @@ process_cert_files_and_check(FileNames, SecondsIn) ->
 
 transform_cert_data_exp(FileName, CertData) ->
     [
-        {'Filenename', list_to_binary(FileName)},
+        {'File', list_to_binary(FileName)},
         {'Not_Before', to_date(proplists:get_value(not_before, CertData))},
         {'Not_After', to_date(proplists:get_value(not_after, CertData))},
         {'SecExp', sec_to_exp(proplists:get_value(not_after, CertData))},
@@ -106,7 +106,7 @@ transform_cert_data_exp(FileName, CertData) ->
 
 transform_cert_data(FileName, CertData) ->
     [
-        {'Filenename', list_to_binary(FileName)},
+        {'File', list_to_binary(FileName)},
         {'Not_Before', to_date(proplists:get_value(not_before, CertData))},
         {'Not_After', to_date(proplists:get_value(not_after, CertData))},
         {'CN', proplists:get_value(common_name, CertData)},
