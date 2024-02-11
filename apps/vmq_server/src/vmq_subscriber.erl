@@ -32,8 +32,7 @@
     get_nodes/1,
     get_sessions/1,
     change_node_all/3,
-    change_node/4,
-    check_format/1
+    change_node/4
 ]).
 
 -ifdef(TEST).
@@ -174,27 +173,6 @@ change_node_all([Node | Rest], NewNode, Subs, CleanSession, ChNodes) ->
     );
 change_node_all([], _, Subs, _, ChNodes) ->
     {Subs, ChNodes}.
-
--spec check_format(any()) -> subs().
-check_format(Subs0) ->
-    maybe_convert_v0(Subs0).
-
-%% @doc convert deprecated subscription format to current format (v1). The
-%% new format was introduced in VerneMQ 0.15.1.
--spec maybe_convert_v0(any()) -> subs().
-maybe_convert_v0([{Topic, _, _} | _] = Version0Subs) when is_list(Topic) ->
-    %% Per default converted subscriptions use initially clean session=false,
-    %% because we don't know better, and it will be subsequentially adjusted
-    %% anyways.
-    maybe_convert_v0(Version0Subs, new(false));
-maybe_convert_v0(Subs) ->
-    Subs.
-
-maybe_convert_v0([{Topic, QoS, Node} | Version0Subs], NewStyleSubs) ->
-    {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
-    maybe_convert_v0(Version0Subs, NewSubs);
-maybe_convert_v0([], NewStyleSubs) ->
-    NewStyleSubs.
 
 %
 % Expected two sorted lists and compares each element. Returns A -- B and B -- A.
