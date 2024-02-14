@@ -50,7 +50,7 @@ join(_, Node, _Auto) ->
 
 attempt_join(Node) ->
     {_NrOfGroups, SwcGroups} = persistent_term:get({vmq_swc_plugin, swc}),
-    PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join),
+    PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join, true),
     case PreventNonEmptyJoin of
         true ->
             case vmq_swc_plugin:history(SwcGroups) of
