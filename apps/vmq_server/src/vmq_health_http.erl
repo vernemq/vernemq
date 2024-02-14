@@ -23,16 +23,16 @@
 routes() ->
     [
         {"/health", ?MODULE, []},
-        {"/health_ping", ?MODULE, []},
-        {"/health_listeners", ?MODULE, []},
-        {"/health_listeners_full_cluster", ?MODULE, []}
+        {"/health/ping", ?MODULE, []},
+        {"/health/listeners", ?MODULE, []},
+        {"/health/listeners_full_cluster", ?MODULE, []}
     ].
 
 init(Req, Opts) ->
     Path = cowboy_req:path(Req),
     {Code, Payload} =
         case Path of
-            <<"/health_ping">> ->
+            <<"/health/ping">> ->
                 {200, [{<<"status">>, <<"OK">>}]};
             <<"/health">> ->
                 case check_health_concerns() of
@@ -44,7 +44,7 @@ init(Req, Opts) ->
                             {<<"reasons">>, Concerns}
                         ]}
                 end;
-            <<"/health_listeners">> ->
+            <<"/health/listeners">> ->
                 case listeners_status() of
                     ok ->
                         {200, [{<<"status">>, <<"OK">>}]};
@@ -54,7 +54,7 @@ init(Req, Opts) ->
                             {<<"reason">>, Reason}
                         ]}
                 end;
-            <<"/health_listeners_full_cluster">> ->
+            <<"/health/listeners_full_cluster">> ->
                 case check_full_health_concerns() of
                     [] ->
                         {200, [{<<"status">>, <<"OK">>}]};
