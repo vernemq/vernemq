@@ -69,15 +69,14 @@ prefixes_test(Cfg) ->
                  {"bridge-out", out, 0, "local-out-prefix", "remote-out-prefix"}]
      }),
     BridgePid = get_bridge_pid(),
-
     %% Start the 'broker' and let the bridge connect
-    {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
-    {ok, BrokerSocket} = gen_tcp:accept(SSocket, 5000),
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
-                                                 {proto_ver, mqtt_version(Cfg)}]),
+    {proto_ver, mqtt_version(Cfg)}]),
     Connack = packet:gen_connack(0),
-    ok = gen_tcp:send(BrokerSocket, Connack),
+    {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
+    {ok, BrokerSocket} = gen_tcp:accept(SSocket),
     ok = packet:expect_packet(BrokerSocket, "connect", Connect),
+    ok = gen_tcp:send(BrokerSocket, Connack),
 
     Subscribe = packet:gen_subscribe(1, "remote-in-prefix/bridge-in", 0),
     ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),

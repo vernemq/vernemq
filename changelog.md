@@ -16,6 +16,7 @@
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
 - New feature: Add configuration option disconnect_on_unauthorized_publish_v3 to force disconnect on unauthorized publish even for MQTT clients before v3.1.1
+- New feature: Add persistent message queueing functionality to `vmq_bridge` Plugin, using [ReplayQ](https://github.com/emqx/replayq)
 
 
 ## VerneMQ 1.13.0
@@ -65,6 +66,7 @@
   `total_active_connections`. Adapt Status page. This also fixes an error,
   where the status page would show a false connection count.
 - Add `active_conns` and `all_conns` info to `vmq-admin listener show`.
+
 ## VerneMQ 1.12.6.2
 
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.
