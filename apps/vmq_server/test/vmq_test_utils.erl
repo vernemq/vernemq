@@ -31,22 +31,12 @@ setup() ->
     %                                                  {open_retries, 30},
     %                                                  {open_retry_delay, 2000}
     %                                                 ]),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
+    application:set_env(vmq_generic_msg_store, db_backend, vmq_storage_engine_leveldb),
     LogDir = "log." ++ atom_to_list(node()),
-    application:load(lager),
-    application:set_env(lager, handlers, [
-                                          {lager_file_backend,
-                                           [{file, LogDir ++ "/console.log"},
-                                            {level, info},
-                                            {size,10485760},
-                                            {date,"$D0"},
-                                            {count,5}]},
-                                          {lager_file_backend,
-                                           [{file, LogDir ++ "/error.log"},
-                                            {level, error},
-                                            {size,10485760},
-                                            {date,"$D0"},
-                                            {count,5}]}]),
+    filelib:ensure_dir(LogDir),
+
+    logger:remove_handler(test_logger_file),
+    logger:add_handler(test_logger_file, logger_std_h, #{config => #{file => LogDir ++ "/console.log", max_no_bytes => 10485760, max_no_files => 5}, filters => [{test_logger_file, {fun logger_filters:progress/2, stop}}], formatter => {logger_formatter, #{single_line => true}}, level => info}),
     vmq_server:start_no_auth(),
     disable_all_plugins().
 

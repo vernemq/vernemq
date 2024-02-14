@@ -10,7 +10,6 @@
         crypto,
         public_key,
         ssl,
-        lager,
         clique,
         poolboy,
         jsx,

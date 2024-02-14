@@ -16,6 +16,7 @@
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_publish_hook).
 -behaviour(auth_on_subscribe_hook).
+-include_lib("kernel/include/logger.hrl").
 
 -export([register_hooks/0]).
 -export([
@@ -38,7 +39,7 @@ register_hooks() ->
 
 -spec auth_on_register(_, _, _, _, _) -> 'ok'.
 auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
-    lager:info(
+    ?LOG_INFO(
         "auth subscriber ~p from ~p\n"
         "              with username ~p and password ~p, cleansession: ~p",
         [SubscriberId, SrcIp, User, Password, CleanSession]
@@ -47,7 +48,7 @@ auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
 
 -spec auth_on_subscribe(_, _, _) -> 'ok'.
 auth_on_subscribe(User, SubscriberId, Topics) ->
-    lager:info(
+    ?LOG_INFO(
         "auth subscriber subscriptions ~p\n"
         "              from ~p with username ~p",
         [Topics, SubscriberId, User]
@@ -56,7 +57,7 @@ auth_on_subscribe(User, SubscriberId, Topics) ->
 
 -spec auth_on_publish(_, _, _, _, _, _) -> 'ok'.
 auth_on_publish(User, SubscriberId, MsgRef, Topic, _Payload, _IsRetain) ->
-    lager:debug(
+    ?LOG_DEBUG(
         "auth subscriber publish ~p with\n"
         "             topic ~p from ~p with username ~p",
         [MsgRef, Topic, SubscriberId, User]

@@ -14,6 +14,7 @@
 
 -module(vmq_generic_msg_store).
 -include("vmq_generic_msg_store.hrl").
+-include_lib("kernel/include/logger.hrl").
 -behaviour(gen_server).
 
 %% API
@@ -184,9 +185,11 @@ init([InstanceId]) ->
     %% Initialize random seed
     rand:seed(exsplus, os:timestamp()),
 
-    {ok, EngineModule} = application:get_env(vmq_generic_msg_store, msg_store_engine),
+    EngineModule = application:get_env(
+        vmq_generic_msg_store, db_backend, vmq_storage_engine_leveldb
+    ),
     Opts = application:get_env(vmq_generic_msg_store, msg_store_opts, []),
-    DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
+    DataDir1 = application:get_env(vmq_generic_msg_store, store_dir, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
     process_flag(trap_exit, true),
@@ -256,7 +259,7 @@ handle_info({initialize_from_storage, InstanceId}, State) ->
         0 ->
             ok;
         N ->
-            lager:info(
+            ?LOG_INFO(
                 "indexed ~p offline messages in msg store instance ~p",
                 [N, InstanceId]
             )
@@ -372,7 +375,7 @@ handle_req(
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case decr_ref(Refs, MsgRef) of
         not_found ->
-            lager:warning("delete failed ~p due to not found", [MsgRef]);
+            ?LOG_WARNING("delete failed ~p due to not found", [MsgRef]);
         0 ->
             %% last one to be deleted
             apply(EngineModule, write, [

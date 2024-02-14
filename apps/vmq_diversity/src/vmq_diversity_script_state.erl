@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_script_state).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
@@ -106,7 +107,7 @@ init([Id, Script, ScriptMgrPid]) ->
                 keep = KeepState
             }};
         {error, Reason} ->
-            lager:error("can't load script ~p due to ~p", [Script, Reason]),
+            ?LOG_ERROR("can't load script ~p due to ~p", [Script, Reason]),
             %% normal stop as we don't want to exhaust the supervisor strategy
             {stop, normal}
     end.
@@ -141,10 +142,10 @@ handle_call(get_num_states, _From, #state{luastate = LuaState, keep = Keep} = St
 handle_call(reload, _From, #state{id = Id, script = Script} = State) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
-            lager:info("successfully reloaded script ~p", [Script]),
+            ?LOG_INFO("successfully reloaded script ~p", [Script]),
             {reply, ok, State#state{luastate = LuaState}};
         {error, Reason} ->
-            lager:error("can't reload script due to ~p, keeping old version", [Reason]),
+            ?LOG_ERROR("can't reload script due to ~p, keeping old version", [Reason]),
             {reply, {error, Reason}, State}
     end.
 
@@ -180,13 +181,13 @@ handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
                 {Val, ch_state(NewLuaState, State)}
         catch
             error:{lua_error, Reason, _} ->
-                lager:error(
+                ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
                     [Function, Args, State#state.script, Reason]
                 ),
                 {error, State};
             E:R ->
-                lager:error(
+                ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
                     [Function, Args, State#state.script, {E, R}]
                 ),

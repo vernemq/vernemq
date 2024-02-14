@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_script).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -72,7 +73,7 @@ call_function(Pid, Function, Args) ->
     %% calls into the Lua environment.
     case catch gen_server:call(Pid, {call_function, Function, Args}, infinity) of
         {'EXIT', Reason} ->
-            lager:error("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
+            ?LOG_ERROR("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
             {error, Reason};
         Ret ->
             Ret

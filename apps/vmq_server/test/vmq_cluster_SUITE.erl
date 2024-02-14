@@ -1,4 +1,5 @@
 -module(vmq_cluster_SUITE).
+-include_lib("kernel/include/logger.hrl").
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -24,11 +25,10 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     Config0 = vmq_cluster_test_utils:init_distribution(Config),
-    lager:info("node name ~p", [node()]),
+    ?LOG_INFO("node name ~p", [node()]),
     [S | Config0].
 
 end_per_suite(_Config) ->
-    application:stop(lager),
     _Config.
 
 init_per_testcase(convert_new_msgs_to_old_format, Config) ->
@@ -465,7 +465,8 @@ cluster_leave_test(Config) ->
     {_, [{_, Node, Port} | RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
 
     {_Peers, NodeNames, _} = lists:unzip3(Nodes),
-    [rpc:call(N, lager, set_loglevel, [lager_console_backend, debug]) || N <- NodeNames],
+    [rpc:call(N, vmq_log, set_loglevel, [consolefile, debug]) || N <- NodeNames],
+    [rpc:call(N, vmq_log, set_loglevel, [test_logger_file, debug]) || N <- NodeNames],
 
     Topic = "cluster/leave/topic",
     ToMigrate = 100,
@@ -540,8 +541,9 @@ cluster_leave_dead_node_test(Config) ->
     [Nodename | _] = nodenames(Config),
 
     {_Peers, NodeNames, _} = lists:unzip3(Nodes),
-    [rpc:call(N, lager, set_loglevel, [lager_console_backend, debug]) || N <- NodeNames],
-    Topic = "cluster/leave/dead/topic",
+    [rpc:call(N, vmq_log, set_loglevel, [consolefile, debug]) || N <- NodeNames],
+    [rpc:call(N, vmq_log, set_loglevel, [test_logger_file, debug]) || N <- NodeNames],
+            Topic = "cluster/leave/dead/topic",
     %% create 10 sessions on first Node
     _ = [begin
              Connect =

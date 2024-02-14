@@ -14,6 +14,7 @@
 
 -module(vmq_queue).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 
 -behaviour(gen_fsm).
@@ -243,7 +244,7 @@ online({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, online, insert(Msg, State)};
 online(Event, State) ->
-    lager:error("got unknown event in online state ~p", [Event]),
+    ?LOG_ERROR("got unknown event in online state ~p", [Event]),
     {next_state, online, State}.
 
 online({set_opts, SessionPid, Opts}, _From, #state{opts = OldOpts} = State) ->
@@ -264,7 +265,7 @@ online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, Fr
     %% and wait with the reply until all the sessions
     %% have been disconnected
     #state{id = SubscriberId} = State,
-    lager:debug("client ~p disconnected due to multiple sessions not allowed", [SubscriberId]),
+    ?LOG_DEBUG("client ~p disconnected due to multiple sessions not allowed", [SubscriberId]),
     disconnect_sessions(?SESSION_TAKEN_OVER, State),
     {next_state, state_change(add_session, online, wait_for_offline), State#state{
         waiting_call = {add_session, SessionPid, Opts, From}
@@ -291,14 +292,14 @@ online({cleanup, Reason}, From, State) when
         waiting_call = {{cleanup, Reason}, From}
     }};
 online(Event, _From, State) ->
-    lager:error("got unknown sync event in online state ~p", [Event]),
+    ?LOG_ERROR("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
 wait_for_offline({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, wait_for_offline, insert(Msg, State)};
 wait_for_offline(Event, State) ->
-    lager:error("got unknown event in wait_for_offline state ~p", [Event]),
+    ?LOG_ERROR("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
 
 wait_for_offline({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
@@ -376,7 +377,7 @@ wait_for_offline(
     %% this queue is completely wiped, before we allow new sessions to join.
     {reply, {error, {cleanup, Reason}}, wait_for_offline, State};
 wait_for_offline(Event, _From, State) ->
-    lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
+    ?LOG_ERROR("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
 
 drain(
@@ -436,7 +437,7 @@ drain(drain_over, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, drain, State};
 drain(Event, State) ->
-    lager:error("got unknown event in drain state ~p", [Event]),
+    ?LOG_ERROR("got unknown event in drain state ~p", [Event]),
     {next_state, drain, State}.
 
 drain({enqueue_many, Msgs}, _From, #state{drain_over_timer = TRef} = State) ->
@@ -449,12 +450,12 @@ drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer = TRef} = State
     gen_fsm:send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
 drain({add_session, NewSessionPid, NewOpts}, From, State) ->
-    lager:info("got add_session event from ~p for PID ~p with options ~p in drain state", [
+    ?LOG_INFO("got add_session event from ~p for PID ~p with options ~p in drain state", [
         From, NewSessionPid, NewOpts
     ]),
     {reply, {error, draining}, drain, State};
 drain(Event, _From, State) ->
-    lager:error("got unknown sync event in drain state ~p", [Event]),
+    ?LOG_ERROR("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.
 
 offline(init_offline_queue, #state{id = SId} = State) ->
@@ -467,7 +468,7 @@ offline(init_offline_queue, #state{id = SId} = State) ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline, maybe_set_expiry_timer(State)};
         {error, Reason} ->
-            lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [
+            ?LOG_ERROR("can't initialize queue from offline storage due to ~p, retry in 1 sec", [
                 Reason
             ]),
             gen_fsm:send_event_after(1000, init_offline_queue),
@@ -503,7 +504,7 @@ offline(publish_last_will, State) ->
     State1 = unset_will_timer(publish_last_will(State)),
     {next_state, offline, State1};
 offline(Event, State) ->
-    lager:error("got unknown event in offline state ~p", [Event]),
+    ?LOG_ERROR("got unknown event in offline state ~p", [Event]),
     {next_state, offline, State}.
 offline({add_session, SessionPid, Opts}, _From, State) ->
     ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
@@ -524,7 +525,7 @@ offline({cleanup, _Reason}, _From, #state{id = SId, offline = #queue{queue = Q}}
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     {stop, normal, ok, State};
 offline(Event, _From, State) ->
-    lager:error("got unknown sync event in offline state ~p", [Event]),
+    ?LOG_ERROR("got unknown sync event in offline state ~p", [Event]),
     {reply, {error, offline}, offline, State}.
 
 %%%===================================================================
@@ -710,7 +711,7 @@ handle_info(
     %% using the vmq_reg_leader process. However this could
     %% theoretically happen in case of an inconsistent (but
     %% un-detected) cluster state.  we don't drain in this case.
-    lager:error(
+    ?LOG_ERROR(
         "can't drain queue '~p' for [~p][~p] due to ~p",
         [SId, self(), RemoteQueue, Reason]
     ),
@@ -732,7 +733,7 @@ handle_info(
         waiting_call = {migrate, RemoteQueue, _From}
     } = State
 ) ->
-    lager:warning(
+    ?LOG_WARNING(
         "drain queue '~p' for [~p][~p] remote_enqueue failed due to ~p",
         [SId, self(), RemoteQueue, Reason]
     ),
@@ -744,7 +745,7 @@ handle_info(
 handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
     handle_session_down(Pid, StateName, State);
 handle_info(Info, StateName, State) ->
-    lager:error("got unknown handle_info in ~p state ~p", [StateName, Info]),
+    ?LOG_ERROR("got unknown handle_info in ~p state ~p", [StateName, Info]),
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, _State) ->
@@ -944,7 +945,7 @@ handle_waiting_acks_and_msgs(
                 ),
             State#state{offline = NewOfflineQueue, initial_msg_id = NextMsgId};
         N ->
-            lager:debug("handle waiting acks for multiple sessions (~p) not possible", [N]),
+            ?LOG_DEBUG("handle waiting acks for multiple sessions (~p) not possible", [N]),
             %% it doesn't make sense to keep the waiting acks around
             %% however depending on the balancing strategy it would
             %% make sense to re-enqueue messages for other active
@@ -1341,7 +1342,7 @@ unset_expiry_timer(#state{expiry_timer = Ref} = State) ->
     State#state{expiry_timer = undefined}.
 
 state_change(Msg, OldStateName, NewStateName) ->
-    lager:debug("transition from ~p --> ~p because of ~p", [OldStateName, NewStateName, Msg]),
+    ?LOG_DEBUG("transition from ~p --> ~p because of ~p", [OldStateName, NewStateName, Msg]),
     NewStateName.
 
 set_general_opts(
@@ -1405,7 +1406,7 @@ decompress_queue(SId, [MsgRef | Rest], Acc) when is_binary(MsgRef) ->
                 [#deliver{qos = QoS, msg = Msg#vmq_msg{persisted = false}} | Acc]
             );
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't decompress queue item with msg_ref ~p for subscriber ~p due to ~p",
                 [MsgRef, SId, Reason]
             ),

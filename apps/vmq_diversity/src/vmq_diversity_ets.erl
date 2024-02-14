@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_ets).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -103,6 +104,6 @@ table_id(BTableName, As, St) ->
         ATableName -> ATableName
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BTableName]),
+            ?LOG_ERROR("unknown pool ~p", [BTableName]),
             badarg_error(unknown_pool, As, St)
     end.

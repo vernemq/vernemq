@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_http).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -62,7 +63,7 @@ request(Method, [BPoolId, Url | Rest0] = As, St) when is_binary(Url) ->
             {NewTable, NewSt} = luerl:encode(Table, St),
             {[NewTable], NewSt};
         {error, Reason} ->
-            lager:error("http request failure for ~p ~p due to ~p", [Method, Url, Reason]),
+            ?LOG_ERROR("http request failure for ~p ~p due to ~p", [Method, Url, Reason]),
             {[false], St}
     end.
 
@@ -131,6 +132,6 @@ pool_id(BPoolId, As, St) ->
         APoolId -> APoolId
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            ?LOG_ERROR("unknown pool ~p", [BPoolId]),
             badarg_error(unknown_pool, As, St)
     end.

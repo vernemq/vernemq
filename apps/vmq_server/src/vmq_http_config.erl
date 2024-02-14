@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_http_config).
+-include_lib("kernel/include/logger.hrl").
+
 -export([config/1, auth_mode/2]).
 
 -callback routes() -> [{string(), atom(), any()}].
@@ -36,7 +38,7 @@ config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
         config(Rest, Routes ++ ModRoutes)
     catch
         E:R ->
-            lager:error("can't call ~p:routes() due to ~p ~p", [HttpModule, E, R]),
+            ?LOG_ERROR("can't call ~p:routes() due to ~p ~p", [HttpModule, E, R]),
             config(Rest, Routes)
     end;
 config([], Routes) ->

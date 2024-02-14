@@ -21,6 +21,7 @@
 ]).
 
 -include("vmq_metrics.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(clique_handler).
 
@@ -480,13 +481,13 @@ wait_till_all_offline(_, 0) ->
 wait_till_all_offline(Sleep, N) ->
     case vmq_queue_sup_sup:summary() of
         {0, 0, Drain, Offline, Msgs} ->
-            lager:info(
+            ?LOG_INFO(
                 "all queues offline: ~p draining, ~p offline, ~p msgs",
                 [Drain, Offline, Msgs]
             ),
             ok;
         {Online, WaitForOffline, Drain, Offline, Msgs} ->
-            lager:info(
+            ?LOG_INFO(
                 "intermediate queue summary: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs",
                 [Online, WaitForOffline, Drain, Offline, Msgs]
             ),
@@ -761,6 +762,7 @@ usage() ->
         "    api-key     Manage API keys for the HTTP management interface\n",
         "    trace       Trace various aspects of VerneMQ\n",
         "    tls         Manage TLS/SSL\n",
+        "    log         Manage log\n",
         remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
         "  Use --help after a sub-command for more details.\n"
     ].
@@ -885,8 +887,6 @@ ensure_all_stopped([kernel | Apps], Res) ->
 ensure_all_stopped([stdlib | Apps], Res) ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([sasl | Apps], Res) ->
-    ensure_all_stopped(Apps, Res);
-ensure_all_stopped([lager | Apps], Res) ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([clique | Apps], Res) ->
     ensure_all_stopped(Apps, Res);

@@ -66,8 +66,7 @@ stop() ->
             ranch,
             crypto,
             ssl,
-            os_mon,
-            lager
+            os_mon
         ]
     ],
     ok.
@@ -87,8 +86,7 @@ stop(no_wait) ->
             ranch,
             crypto,
             ssl,
-            os_mon,
-            lager
+            os_mon
         ]
     ],
     ok.

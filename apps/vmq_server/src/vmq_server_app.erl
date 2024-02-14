@@ -15,6 +15,7 @@
 -module(vmq_server_app).
 
 -behaviour(application).
+-include_lib("kernel/include/logger.hrl").
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -64,7 +65,7 @@ start_user_plugin(
         ok ->
             ok;
         {error, Reason} ->
-            lager:warning("could not start plugin ~p due to ~p", [PluginName, Reason])
+            ?LOG_WARNING("could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
 
 -spec stop(_) -> 'ok'.
@@ -91,7 +92,7 @@ maybe_update_nodetool() ->
                         ok -> ok
                     catch
                         E:R ->
-                            lager:info("Could not write nodetool due to ~p for reason ~p ~n", [
+                            ?LOG_INFO("Could not write nodetool due to ~p for reason ~p ~n", [
                                 E, R
                             ]),
                             {error, R}

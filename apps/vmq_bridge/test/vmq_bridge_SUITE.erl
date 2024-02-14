@@ -382,7 +382,7 @@ mqtt_version(Config) ->
     proplists:get_value(mqtt_version, Config).
 
 disconnect_helper(BridgeProc) when is_pid(BridgeProc) ->
-    BridgeProc ! {deliver, [<<"bridge">>, <<"disconnect">>, <<"test">>], <<"disconnect-message">>, 0, false, false}.
+    BridgeProc ! {deliver, [<<"bridge">>, <<"disconnect">>, <<"test">>], <<"disconnect-message">>, 0, false, false, {[],#{},[]}}.
 
 
 start_bridge_plugin(Opts) ->
@@ -431,11 +431,11 @@ get_bridge_pid() ->
     Pid.
 
 pub_to_bridge(BridgePid, Topic, Payload, QoS) ->
-    BridgePid ! {deliver, Topic, Payload, QoS, false, false},
+    BridgePid ! {deliver, Topic, Payload, QoS, false, false, {[],#{},[]}},
     ok.
 
 pub_to_bridge(BridgePid, Payload, QoS) ->
-    BridgePid ! {deliver, [<<"bridge">>, <<"topic">>], Payload, QoS, false, false}.
+    BridgePid ! {deliver, [<<"bridge">>, <<"topic">>], Payload, QoS, false, false, {[],#{},[]}}.
 
 brigdge_reg(ReportProc) ->
     bridge_reg(ReportProc, []).

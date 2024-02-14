@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_lager).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -29,19 +30,19 @@ table() ->
     ].
 
 info([Bin], St) when is_binary(Bin) ->
-    lager:info(esc(Bin), []),
+    ?LOG_INFO(esc(Bin), []),
     {[], St}.
 
 error([Bin], St) when is_binary(Bin) ->
-    lager:error(esc(Bin), []),
+    ?LOG_ERROR(esc(Bin), []),
     {[], St}.
 
 debug([Bin], St) when is_binary(Bin) ->
-    lager:debug(esc(Bin), []),
+    ?LOG_DEBUG(esc(Bin), []),
     {[], St}.
 
 warning([Bin], St) when is_binary(Bin) ->
-    lager:warning(esc(Bin), []),
+    ?LOG_WARNING(esc(Bin), []),
     {[], St}.
 
 esc(Log) when is_binary(Log) ->

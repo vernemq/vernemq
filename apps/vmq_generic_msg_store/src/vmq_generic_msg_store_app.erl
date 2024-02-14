@@ -23,6 +23,8 @@
 %% API
 %%====================================================================
 start(_StartType, _StartArgs) ->
+    Buckets = application:get_env(vmq_generic_msg_store, nr_of_buckets, 12),
+    persistent_term:put({vmq_msg_store, bucks}, Buckets),
     vmq_generic_msg_store_sup:start_link().
 
 %%--------------------------------------------------------------------

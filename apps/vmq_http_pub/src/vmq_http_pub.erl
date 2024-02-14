@@ -11,6 +11,7 @@
 %% limitations under the License.
 
 -module(vmq_http_pub).
+-include_lib("kernel/include/logger.hrl").
 -behaviour(vmq_http_config).
 
 %% cowboy rest handler callbacks
@@ -496,10 +497,10 @@ process_post(Req, State) ->
         400 ->
             incr_mqtt_error();
         401 ->
-            lager:error("Authentication failure."),
+            ?LOG_ERROR("Authentication failure."),
             incr_mqtt_auth_error();
         403 ->
-            lager:error("Authorization failure."),
+            ?LOG_ERROR("Authorization failure."),
             incr_mqtt_auth_error();
         _ ->
             ok
@@ -610,7 +611,7 @@ auth_on_register(Peer, SubscriberId, User, Password) ->
         {ok, Args} ->
             {ok, Args};
         {error, Reason} ->
-            lager:error("can't auth register ~p due to ~p", [HookArgs, Reason]),
+            ?LOG_ERROR("can't auth register ~p due to ~p", [HookArgs, Reason]),
             {error, Reason}
     end.
 
@@ -623,10 +624,10 @@ auth_on_publish(SubscriberId, User, Topic, QoS, Payload) ->
             {ok, Args};
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             % we do not support changed payload
-            lager:error("ChangePayload is not supported."),
+            ?LOG_ERROR("ChangePayload is not supported."),
             {error, not_allowed};
         {error, Reason} ->
-            lager:error("can't auth publish ~p due to ~p", [HookArgs, Reason]),
+            ?LOG_ERROR("can't auth publish ~p due to ~p", [HookArgs, Reason]),
             {error, not_allowed}
     end.
 
