@@ -147,10 +147,8 @@ init(Req, Opts) ->
             {vmq_cowboy_websocket, Req, {error, unsupported_protocol}}
     end.
 
-websocket_init({error, E}) when
-    E == unsupported_protocol;
-    E == no_xff_cn_username
-->
+websocket_init({error, E}) ->
+    ?LOG_DEBUG("websocket init error ~p~n", [E]),
     _ = vmq_metrics:incr_socket_open(),
     {stop, #state{fsm_state = terminated}};
 websocket_init(State) ->
