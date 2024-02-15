@@ -108,8 +108,16 @@ init(Req, Opts) ->
                                             xff_cn_header, Opts, <<"x-ssl-client-cn">>
                                         ),
                                         HN = ensure_binary(CNHeaderName),
-                                        XFFCN = cowboy_req:header(HN, Req),
-                                        FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                        case cowboy_req:header(HN, Req0) of
+                                            undefined ->
+                                                {vmq_cowboy_websocket, Req0,
+                                                    {error, no_xff_cn_username}};
+                                            <<>> ->
+                                                {vmq_cowboy_websocket, Req0,
+                                                    {error, no_xff_cn_username}};
+                                            XFFCN ->
+                                                FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                        end
                                 end;
                             true ->
                                 case ProxyInfo0 of
@@ -142,7 +150,8 @@ init(Req, Opts) ->
             {vmq_cowboy_websocket, Req, {error, unsupported_protocol}}
     end.
 
-websocket_init({error, unsupported_protocol}) ->
+websocket_init({error, E}) ->
+    ?LOG_DEBUG("websocket init error ~p~n", [E]),
     _ = vmq_metrics:incr_socket_open(),
     {stop, #state{fsm_state = terminated}};
 websocket_init(State) ->
