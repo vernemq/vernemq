@@ -1237,11 +1237,12 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         payload = Payload,
         retain = IsRetained,
         dup = IsDup,
-        qos = MsgQoS
+        qos = MsgQoS,
+        properties = Props0
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {NewTopic, NewPayload} =
-        case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained) of
+        case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained, Props0) of
             {error, _} ->
                 %% no on_deliver hook specified... that's ok
                 {Topic, Payload};
@@ -1277,16 +1278,11 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
             }}
     end.
 
--spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> any().
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
-    HookArgs0 = [User, SubscriberId, Topic, Payload],
-    case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
-        {error, _} ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
-            vmq_plugin:all_till_ok(on_deliver, HookArgs1);
-        Other ->
-            Other
-    end.
+-spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag(), any()) ->
+    any().
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties],
+    vmq_plugin:all_till_ok(on_deliver, HookArgs).
 
 -spec maybe_publish_last_will(state(), any()) -> ok.
 maybe_publish_last_will(_, ?CLIENT_DISCONNECT) ->

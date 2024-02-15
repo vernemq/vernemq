@@ -217,14 +217,14 @@ hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, <<"rewr
 hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, Payload, _IsRetain) ->
     throw({expected_payload, <<"rewritten">>, got, Payload}).
 
-hook_on_deliver(_User, {"", <<"dlvr-rewrite-test">>}, [<<"dlvr">>, <<"rewrite">>, <<"payload">>],
-                <<"message">>) ->
+hook_on_deliver(_User, {"", <<"dlvr-rewrite-test">>}, _, [<<"dlvr">>, <<"rewrite">>, <<"payload">>],
+                <<"message">>, _, _) ->
     {ok, <<"deliver rewritten">>};
-hook_on_deliver(_User, {"", <<"dlvr-rewrite-test">>}, [<<"dlvr">>, <<"rewrite">>, <<"me">>],
-                <<"message">>) ->
+hook_on_deliver(_User, {"", <<"dlvr-rewrite-test">>}, _, [<<"dlvr">>, <<"rewrite">>, <<"me">>],
+                <<"message">>, _, _) ->
     {ok, [{topic, [<<"dlvr">>, <<"rewrite">>, <<"payload">>]},
           {payload, <<"deliver rewritten">>}]};
-hook_on_deliver(_, _, _, _) -> ok.
+hook_on_deliver(_, _, _, _, _, _, _) -> ok.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -238,7 +238,7 @@ enable_auth_on_publish() ->
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 enable_on_deliver() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-      on_deliver, ?MODULE, hook_on_deliver, 4).
+      on_deliver, ?MODULE, hook_on_deliver, 7).
 enable_hook_on_publish_modified_payload() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
       on_publish, ?MODULE, hook_on_publish_modified_payload, 6).
@@ -250,7 +250,7 @@ disable_auth_on_publish() ->
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 disable_on_deliver() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-      on_deliver, ?MODULE, hook_on_deliver, 4).
+      on_deliver, ?MODULE, hook_on_deliver, 7).
 disable_hook_on_publish_modified_payload() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
       on_publish, ?MODULE, hook_on_publish_modified_payload, 6).

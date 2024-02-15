@@ -25,7 +25,7 @@
 -behaviour(on_publish_hook).
 -behaviour(on_subscribe_hook).
 -behaviour(on_unsubscribe_hook).
--behaviour(on_deliver_hook).
+%-behaviour(on_deliver_hook).
 -behaviour(on_offline_message_hook).
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
@@ -50,7 +50,7 @@
     on_publish/6,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/6,
+    on_deliver/7,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/1,
@@ -487,9 +487,9 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+-spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nullify(UserName)},
@@ -498,7 +498,8 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {properties, Props}
     ]).
 
 -spec on_deliver_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->

@@ -139,7 +139,16 @@ function on_deliver(pub)
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
     assert(pub.payload == "hello world")
-    assert(pub.retain == false)
+    if (pub.retain == true) then
+      properties = pub.properties
+      assert(properties.p_correlation_data == "correlation_data")
+      assert(properties.p_response_topic == "response/topic")
+      assert(properties.p_payload_format_indicator == "utf8")
+      assert(properties.p_content_type == "content_type")
+      assert(properties.p_user_property[1].k1 == "v1")
+      assert(properties.p_user_property[2].k2 == "v2")
+    end
+ 
     print("on_deliver called")
     return true
 end
