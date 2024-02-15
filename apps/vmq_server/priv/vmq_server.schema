@@ -34,24 +34,6 @@
                                                                                                 {datatype, flag}
                                                                                                ]}.
 
-%% @doc Allows a client to logon multiple times using the same client
-%% id (non-standard behaviour!). This feature is DEPRECATED and will
-%% be removed in VerneMQ 2.0.
-{mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [
-                                                               {default, off},
-                                                               {datatype, flag}
-                                                              ]}.
-
-{translation, "vmq_server.allow_multiple_sessions",
- fun(Conf) ->
-         case cuttlefish:conf_get("allow_multiple_sessions", Conf) of
-             true ->
-                 cuttlefish:warn("allow_multiple_sessions is deprecated and will be removed in VerneMQ 2.0"),
-                 true;
-             false -> false
-         end
- end}.
-
 %% @doc Client registrations can be either happen in a coordinated or
 %% uncoordinated fashion. Uncoordinated registrations are faster and
 %% will cause other clients with the same client-id to be eventually
@@ -60,26 +42,6 @@
 {mapping, "coordinate_registrations", "vmq_server.coordinate_registrations",
  [{default, on},
   {datatype, flag}]}.
-
-%% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
-%% how the messages are delivered to multiple sessions. Default is 'fanout' which
-%% specifies to deliver every message to all connected sessions. 'balance' specifies
-%% that the messages will be randomly balanced to the connected sessions.
-%% (non-standard behaviour!).
-{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [
-                                                               {default, fanout},
-                                                               {datatype, atom},
-                                                               hidden
-                                                              ]}.
-
-{translation, "vmq_server.queue_deliver_mode",
- fun(Conf) ->
-         case cuttlefish:conf_get("queue_deliver_mode", Conf) of
-             fanout -> fanout;
-             balance -> balance;
-             _ -> cuttlefish:invalid("queue_deliver_mode must be either 'fanout' or 'balance'!")
-         end
- end}.
 
 %% @doc queue_type enables to change the default queue delivery behaviour from
 %% 'fifo' to 'lifo'. In order to make this work the underlying message store
@@ -312,24 +274,6 @@
                                                               {default, 0},
                                                               {datatype, integer}
                                                              ]}.
-
-%% @doc deprecated - use `max_message_size` instead.
-{mapping, "message_size_limit", "vmq_server.message_size_limit", [
-                                                                  {default, 0},
-                                                                  {datatype, integer},
-                                                                  hidden
-                                                                 ]}.
-{translation, "vmq_server.message_size_limit",
- fun(Conf) ->
-         Size = cuttlefish:conf_get("message_size_limit", Conf),
-         case Size of
-            0 ->
-                Size;
-            _ ->
-                cuttlefish:warn("message_size_limit is deprecated and has no effect, use max_message_size instead"),
-                Size
-         end
- end}.
 
 %% @doc If a message is published with a QoS lower than the QoS of the subscription it is
 %% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
