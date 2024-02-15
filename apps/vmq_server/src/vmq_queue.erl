@@ -214,10 +214,10 @@ save_sync_send_all_state_event(Queue, Event) ->
 
 default_opts() ->
     #{
-        allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
+        allow_multiple_sessions => false,
         max_online_messages => vmq_config:get_env(max_online_messages),
         max_offline_messages => vmq_config:get_env(max_offline_messages),
-        queue_deliver_mode => vmq_config:get_env(queue_deliver_mode),
+        queue_deliver_mode => fanout,
         queue_type => vmq_config:get_env(queue_type),
         max_drain_time => vmq_config:get_env(max_drain_time),
         max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step),
