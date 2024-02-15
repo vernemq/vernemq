@@ -108,9 +108,12 @@ init(Req, Opts) ->
                                             xff_cn_header, Opts, <<"x-ssl-client-cn">>
                                         ),
                                         HN = ensure_binary(CNHeaderName),
-                                        case cowboy_req:header(HN, Req) of
+                                        case cowboy_req:header(HN, Req0) of
+                                            undefined ->
+                                                {vmq_cowboy_websocket, Req0,
+                                                    {error, no_xff_cn_username}};
                                             <<>> ->
-                                                {vmq_cowboy_websocket, Req,
+                                                {vmq_cowboy_websocket, Req0,
                                                     {error, no_xff_cn_username}};
                                             XFFCN ->
                                                 FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
