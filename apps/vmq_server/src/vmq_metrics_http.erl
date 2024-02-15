@@ -50,7 +50,8 @@ content_types_provided(Req, State) ->
 reply_to_text(Req, State) ->
     %% Prometheus output
     Metrics = vmq_metrics:metrics(#{aggregate => false}),
-    Output = prometheus_output(Metrics, {#{}, []}),
+    Namespace = vmq_config:get_env(prometheus_namespace, ""),
+    Output = prometheus_output(Metrics, {#{}, []}, Namespace),
     {Output, Req, State}.
 
 prometheus_output(
@@ -63,9 +64,11 @@ prometheus_output(
         }
         | Metrics
     ],
-    {EmittedAcc, OutAcc}
+    {EmittedAcc, OutAcc},
+    Namespace
 ) ->
-    BinMetric = atom_to_binary(Metric, utf8),
+    BinMetric0 = atom_to_binary(Metric, utf8),
+    BinMetric = erlang:iolist_to_binary([Namespace, BinMetric0]),
     Node = atom_to_binary(node(), utf8),
     {Count, Sum, Buckets} = Val,
     CountLine = line(<<BinMetric/binary, "_count">>, Node, Labels, integer_to_binary(Count)),
@@ -95,12 +98,14 @@ prometheus_output(
         ),
     case EmittedAcc of
         #{Metric := _} ->
-            prometheus_output(Metrics, {EmittedAcc, [Lines | OutAcc]});
+            prometheus_output(Metrics, {EmittedAcc, [Lines | OutAcc]}, Namespace);
         _ ->
             HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
             TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
             prometheus_output(
-                Metrics, {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Lines] | OutAcc]}
+                Metrics,
+                {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Lines] | OutAcc]},
+                Namespace
             )
     end;
 prometheus_output(
@@ -108,23 +113,27 @@ prometheus_output(
         {#metric_def{type = Type, name = Metric, description = Descr, labels = Labels}, Val}
         | Metrics
     ],
-    {EmittedAcc, OutAcc}
+    {EmittedAcc, OutAcc},
+    Namespace
 ) ->
-    BinMetric = atom_to_binary(Metric, utf8),
+    BinMetric0 = erlang:atom_to_binary(Metric, utf8),
+    BinMetric = erlang:iolist_to_binary([Namespace, BinMetric0]),
     BinVal = integer_to_binary(Val),
     Node = atom_to_binary(node(), utf8),
     Line = line(BinMetric, Node, Labels, BinVal),
     case EmittedAcc of
         #{Metric := _} ->
-            prometheus_output(Metrics, {EmittedAcc, [Line | OutAcc]});
+            prometheus_output(Metrics, {EmittedAcc, [Line | OutAcc]}, Namespace);
         _ ->
             HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
             TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
             prometheus_output(
-                Metrics, {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Line] | OutAcc]}
+                Metrics,
+                {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Line] | OutAcc]},
+                Namespace
             )
     end;
-prometheus_output([], {_, OutAcc}) ->
+prometheus_output([], {_, OutAcc}, _) ->
     %% Make sure the metrics with HELP and TYPE annotations are
     %% emitted first.
     lists:reverse(OutAcc).
