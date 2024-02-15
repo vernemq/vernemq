@@ -142,10 +142,8 @@ modifiers(auth_on_register) ->
         {shared_subscription_policy, fun val_atom/1},
         {retry_interval, fun val_int/1},
         {upgrade_qos, fun val_bool/1},
-        {allow_multiple_sessions, fun val_bool/1},
         {max_online_messages, fun val_int/1},
         {max_offline_messages, fun val_int/1},
-        {queue_deliver_mode, fun val_atom/1},
         {queue_type, fun val_atom/1},
         {max_drain_time, fun val_int/1},
         {max_msgs_per_drain_step, fun val_int/1}
