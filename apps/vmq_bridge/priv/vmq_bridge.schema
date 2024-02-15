@@ -59,6 +59,36 @@
                                                        hidden
                                                       ]}. 
 
+%% @doc Set the persistent queue option for this bridge. By default this is off, 
+%% meaning the queued messages are stored in memory only. If set to on, 
+%% queued messages will be stored persistently on disk. If you're using 
+%% persistency, make sure to configure the queue_dir option.
+{mapping, "vmq_bridge.tcp.$name.persistent_queue", "vmq_bridge.config", [
+                                                                 {default, off},
+                                                                 {datatype, flag},
+                                                                 {include_default, "br0"},
+                                                                 {commented, off}
+                                                                ]}. 
+{mapping, "vmq_bridge.ssl.$name.persistent_queue", "vmq_bridge.config", [
+                                                       {default, off},
+                                                       {datatype, flag},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Set the directory where queued messages for this bridge will be stored, if persistent_queue is set to on.
+%% It is recommended to set this to a unique directory. If you're using multiple persistent bridge instances, 
+%% then omitting this option can lead to serious problems. 
+{mapping, "vmq_bridge.tcp.$name.queue_dir", "vmq_bridge.config", [
+                                                             {datatype, directory},
+                                                             {include_default, "br0"},
+                                                             {commented, "/qdata/br0"}
+                                                            ]}. 
+{mapping, "vmq_bridge.ssl.$name.queue_dir", "vmq_bridge.config", [
+                                                       {datatype, directory},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}. 
+
 %% @doc Configure a username for the bridge. This is used for authentication 
 %% purposes when connecting to a broker that support MQTT v3.1 and requires a 
 %% username and/or password to connect. See also the password option.
@@ -84,6 +114,36 @@
                                                             ]}. 
 {mapping, "vmq_bridge.ssl.$name.password", "vmq_bridge.config", [
                                                        {datatype, string},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}.
+
+%% @doc Configure segment size (in Bytes) for the persistent queue.
+{mapping, "vmq_bridge.tcp.$name.segment_size", "vmq_bridge.config", [
+                                                             {default, 4096},
+                                                             {datatype, bytesize},
+                                                             {include_default, "br0"},
+                                                             {commented, 4096}
+                                                            ]}. 
+{mapping, "vmq_bridge.ssl.$name.segment_size", "vmq_bridge.config", [
+                                                       {default, 4096},
+                                                       {datatype, bytesize},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}.
+
+%% @doc Number of messages that will be read from Queue and published at once.
+%% Only after the entire batch has been completed (e.g. all messages were pubacked if QoS 1),
+%% will the next batch be read. Set this to a lower setting if  you encounter bandwidth problems. 
+{mapping, "vmq_bridge.tcp.$name.outgoing_batch_size", "vmq_bridge.config", [
+                                                             {default, 100},
+                                                             {datatype, integer},
+                                                             {include_default, "br0"},
+                                                             {commented, 100}
+                                                            ]}. 
+{mapping, "vmq_bridge.ssl.$name.outgoing_batch_size", "vmq_bridge.config", [
+                                                       {default, 100},
+                                                       {datatype, integer},
                                                        {include_default, "sbr0"},
                                                        hidden
                                                       ]}.
@@ -195,6 +255,23 @@
                                                                    {default, 0},
                                                                    hidden
                                                                   ]}.
+
+%% @doc Percentage of max_outgoing_buffered_messages that will be used for the pubrel queue. 
+%% The pubrel queue is only relevant, when bridging topics with QoS 2. In that case it is highly recommended,
+%% to set this option. Allowed values: 0-100, e.g. value of 10 means 10%.
+%% If this is set to 0, the pubrel queue will be disabled (default).
+%% Caution: the segment_size should not be bigger than max_outgoing_buffered_messages * (pubrel_queue_ratio/100).
+{mapping, "vmq_bridge.tcp.$name.pubrel_queue_ratio", "vmq_bridge.config", [
+                                                                    {datatype, {percent, integer}},
+                                                                    {default, 0},
+                                                                    {include_default, "br0"},
+                                                                    {commented, 10}
+                                                                   ]}.
+{mapping, "vmq_bridge.ssl.$name.pubrel_queue_ratio", "vmq_bridge.config", [
+                                                                       {datatype, {percent, integer}},
+                                                                       {default, 0},
+                                                                       hidden
+                                                                      ]}.
 
 %% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. 
@@ -368,9 +445,10 @@
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
-         Mappings = ["cleansession", "client_id", "keepalive_interval", 
+         Mappings = ["cleansession", "client_id", "keepalive_interval", "segment_size", "outgoing_batch_size",
+                    "persistent_queue", "queue_dir",
                     "username", "password", "restart_timeout", "try_private", "topic",
-                     "max_outgoing_buffered_messages", "mqtt_version"],
+                     "max_outgoing_buffered_messages", "pubrel_queue_ratio", "mqtt_version"],
                     %% SSL specific
          SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth", 
          "customize_hostname_check", "sni"],
@@ -421,23 +499,33 @@
          {TCPIPs, TCPCleanSessions} = lists:unzip(F("vmq_bridge.tcp", "cleansession", BoolVal)),
          {TCPIPs, TCPClientIds} = lists:unzip(F("vmq_bridge.tcp", "client_id", ClientIdVal)),
          {TCPIPs, TCPKeepAlive} = lists:unzip(F("vmq_bridge.tcp", "keepalive_interval", IntVal)),
+         {TCPIPs, TCPPersistentQueue} = lists:unzip(F("vmq_bridge.tcp", "persistent_queue", BoolVal)),
+         {TCPIPs, TCPQueueDir} = lists:unzip(F("vmq_bridge.tcp", "queue_dir", StringVal)),
+         {TCPIPs, TCPSegmentSize} = lists:unzip(F("vmq_bridge.tcp", "segment_size", IntVal)),
+         {TCPIPs, TCPOutBatchSize} = lists:unzip(F("vmq_bridge.tcp", "outgoing_batch_size", IntVal)),
          {TCPIPs, TCPUserNames} = lists:unzip(F("vmq_bridge.tcp", "username", StringVal)),
          {TCPIPs, TCPPasswords} = lists:unzip(F("vmq_bridge.tcp", "password", StringVal)),
          {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("vmq_bridge.tcp", "restart_timeout", IntVal)),
          {TCPIPs, TCPTryPrivates} = lists:unzip(F("vmq_bridge.tcp", "try_private", BoolVal)),
          {TCPIPs, TCPMQTTProtos} = lists:unzip(F("vmq_bridge.tcp", "mqtt_version", IntAtomVal)),
          {TCPIPs, TCPMaxBuffer} = lists:unzip(F("vmq_bridge.tcp", "max_outgoing_buffered_messages", IntVal)),
+         {TCPIPs, TCPQueueRatio} = lists:unzip(F("vmq_bridge.tcp", "pubrel_queue_ratio", IntVal)),
          {TCPIPs, TCPTopics} = lists:unzip(F("vmq_bridge.tcp", "topic", TopicVal)),
 
          {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
          {SSLIPs, SSLClientIds} = lists:unzip(F("vmq_bridge.ssl", "client_id", ClientIdVal)),
          {SSLIPs, SSLKeepAlive} = lists:unzip(F("vmq_bridge.ssl", "keepalive_interval", IntVal)),
+         {SSLIPs, SSLPersistentQueue} = lists:unzip(F("vmq_bridge.ssl", "persistent_queue", BoolVal)),
+         {SSLIPs, SSLQueueDir} = lists:unzip(F("vmq_bridge.ssl", "queue_dir", StringVal)),
+         {SSLIPs, SSLSegmentSize} = lists:unzip(F("vmq_bridge.ssl", "segment_size", IntVal)),
+         {SSLIPs, SSLOutBatchSize} = lists:unzip(F("vmq_bridge.ssl", "outgoing_batch_size", IntVal)),
          {SSLIPs, SSLUserNames} = lists:unzip(F("vmq_bridge.ssl", "username", StringVal)),
          {SSLIPs, SSLPasswords} = lists:unzip(F("vmq_bridge.ssl", "password", StringVal)),
          {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("vmq_bridge.ssl", "restart_timeout", IntVal)),
          {SSLIPs, SSLTryPrivates} = lists:unzip(F("vmq_bridge.ssl", "try_private", BoolVal)),
          {SSLIPs, SSLMQTTProtos} = lists:unzip(F("vmq_bridge.ssl", "mqtt_version", IntAtomVal)),
          {SSLIPs, SSLMaxBuffer} = lists:unzip(F("vmq_bridge.ssl", "max_outgoing_buffered_messages", IntVal)),
+         {SSLIPs, SSLQueueRatio} = lists:unzip(F("vmq_bridge.ssl", "pubrel_queue_ratio", IntVal)),
          {SSLIPs, SSLTopics} = lists:unzip(F("vmq_bridge.ssl", "topic", TopicVal)),
 
          % SSL
@@ -454,24 +542,34 @@
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
-                                       TCPKeepAlive, 
+                                       TCPKeepAlive,
+                                       TCPSegmentSize,
+                                       TCPPersistentQueue,
+                                       TCPQueueDir,
+                                       TCPOutBatchSize, 
                                        TCPRestartTimeouts,
                                        TCPUserNames, 
                                        TCPPasswords,
                                        TCPTryPrivates,
                                        TCPMQTTProtos,
                                        TCPMaxBuffer,
+                                       TCPQueueRatio,
                                        TCPTopics])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
                                        SSLClientIds, 
                                        SSLKeepAlive, 
+                                       SSLSegmentSize,
+                                       SSLPersistentQueue,
+                                       SSLQueueDir,
+                                       SSLOutBatchSize,
                                        SSLRestartTimeouts,
                                        SSLUserNames, 
                                        SSLPasswords,
                                        SSLTryPrivates,
                                        SSLMQTTProtos,
                                        SSLMaxBuffer,
+                                       SSLQueueRatio,
                                        SSLTopics,
                                        SSLCAFiles, 
                                        SSLCertFiles,

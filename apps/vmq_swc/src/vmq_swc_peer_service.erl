@@ -49,6 +49,22 @@ join(_, Node, _Auto) ->
     attempt_join(Node).
 
 attempt_join(Node) ->
+    {_NrOfGroups, SwcGroups} = persistent_term:get({vmq_swc_plugin, swc}),
+    PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join, true),
+    case PreventNonEmptyJoin of
+        true ->
+            case vmq_swc_plugin:history(SwcGroups) of
+                {0, 0, true} ->
+                    connect_node(Node);
+                _ ->
+                    lager:info("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),
+                    {error, non_empty_node}
+            end;
+        _ ->
+            connect_node(Node)
+    end.
+
+connect_node(Node) ->
     ?LOG_INFO("Sent join request to: ~p~n", [Node]),
     case net_kernel:connect_node(Node) of
         false ->
