@@ -67,7 +67,7 @@ init(Req, Opts) ->
                         {SrcAddr, SrcPort};
                     % WS request without proxy_protocol (might have XFF)
                     error ->
-                        XFF_On = proplists:get_value(proxy_xff_support, Opts, false),
+                        XFF_On = proplists:get_value(xff_proxy, Opts, false),
                         case XFF_On of
                             true ->
                                 {ok, NewPeer} = vmq_proxy_xff:new_peer(
@@ -100,10 +100,11 @@ init(Req, Opts) ->
                                 RequireXFFCN = proplists:get_value(
                                     xff_use_cn_as_username, Opts, false
                                 ),
+                                XFF_On1 = proplists:get_value(xff_proxy, Opts, false),
                                 case RequireXFFCN of
                                     false ->
                                         FsmMod:init(Peer, Opts);
-                                    true ->
+                                    true when XFF_On1 == true ->
                                         CNHeaderName = proplists:get_value(
                                             xff_cn_header, Opts, <<"x-ssl-client-cn">>
                                         ),
@@ -117,7 +118,9 @@ init(Req, Opts) ->
                                                     {error, no_xff_cn_username}};
                                             XFFCN ->
                                                 FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
-                                        end
+                                        end;
+                                    _ ->
+                                        {vmq_cowboy_websocket, Req0, {error, xff_not_allowed}}
                                 end;
                             true ->
                                 case ProxyInfo0 of
@@ -150,7 +153,7 @@ init(Req, Opts) ->
             {vmq_cowboy_websocket, Req, {error, unsupported_protocol}}
     end.
 
-websocket_init({error, E}) ->
+websocket_init(#state{fsm_state = {vmq_cowboy_websocket, _, E}} = _State) ->
     ?LOG_DEBUG("websocket init error ~p~n", [E]),
     _ = vmq_metrics:incr_socket_open(),
     {stop, #state{fsm_state = terminated}};
