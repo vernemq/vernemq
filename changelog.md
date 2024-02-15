@@ -1,3 +1,4 @@
+- Add simple options to HTTP health listener (health/ping)
 - Remove deprecated allow_multiple_sessions 
 - Improve systemd support: Add support of systemd-notify
 - New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
