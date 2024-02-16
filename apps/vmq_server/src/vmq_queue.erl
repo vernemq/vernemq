@@ -1,4 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ and
+%% Contributors (https://vernemq.com/)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,6 +20,7 @@
 -include("vmq_server.hrl").
 
 -behaviour(gen_fsm).
+-behaviour(vmq_queue_impl).
 
 -ifdef(nowarn_gen_fsm).
 -compile([
