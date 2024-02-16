@@ -1,3 +1,6 @@
+- New feature: Support prometheus namespace
+- Remove deprecated subscriber format (#2247) 
+- Protect against empty XFF CN/Username
 - Add simple options to HTTP health listener (health/ping)
 - Remove deprecated allow_multiple_sessions 
 - Improve systemd support: Add support of systemd-notify

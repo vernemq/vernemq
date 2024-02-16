@@ -215,8 +215,7 @@ ensure_subscription_replicated(Node, ClientId, Topic, N) ->
             timer:sleep(10),
             ensure_subscription_replicated(Node, ClientId, Topic, N - 1);
         Subs0 ->
-            Subs1 = vmq_subscriber:check_format(Subs0),
-            case topic_exists(Topic, Subs1) of
+            case topic_exists(Topic, Subs0) of
                 false ->
                     timer:sleep(10),
                     ensure_subscription_replicated(Node, ClientId, Topic, N - 1);
