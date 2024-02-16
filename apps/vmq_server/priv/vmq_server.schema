@@ -1890,6 +1890,22 @@
                                                        hidden
                                                       ]}.
 
+%% @doc Prometheus namespace prefix 
+{mapping, "prometheus_namespace", "vmq_server.prometheus_namespace", [
+                                                        {default, "vernemq_"},
+                                                        {datatype, string}
+                                                       ]}.
+
+{translation, "vmq_server.prometheus_namespace",
+ fun(Conf) ->
+     S = cuttlefish:conf_get("prometheus_namespace", Conf),
+     case S of
+         "\"\"" -> <<>>;
+            S   -> S
+     end
+ end}.
+
+
 %% @doc Enable the Graphite Reporter. Ensure to also configure a
 %% proper graphite.host
 {mapping, "graphite_enabled", "vmq_server.graphite_enabled", [
