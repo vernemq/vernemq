@@ -139,7 +139,9 @@ on_deliver(#'eventssidecar.v1.OnDeliver'{username = BinPid,
              qos = 1,
              topic = ?TOPIC,
              payload = ?PAYLOAD,
-             is_retain = false}) ->
+             is_retain = false,
+             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}
+             }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_ok.
 
@@ -149,7 +151,8 @@ on_delivery_complete(#'eventssidecar.v1.OnDeliveryComplete'{username = BinPid,
                        qos = 1,
                        topic = ?TOPIC,
                        payload = ?PAYLOAD,
-                       is_retain = false}) ->
+                       is_retain = false,
+                       matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_delivery_complete_ok.
 

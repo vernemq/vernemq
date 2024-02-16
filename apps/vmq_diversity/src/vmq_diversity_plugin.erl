@@ -48,13 +48,13 @@
     on_publish/7,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/6,
+    on_deliver/7,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/2,
     on_client_gone/2,
     on_session_expired/1,
-    on_delivery_complete/6,
+    on_delivery_complete/7,
     auth_on_register_m5/6,
     on_register_m5/4,
     auth_on_publish_m5/7,
@@ -582,7 +582,7 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
             ])
     end.
 
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nilify(UserName)},
@@ -594,7 +594,7 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {retain, IsRetain}
     ]).
 
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_delivery_complete, [
         {username, nilify(UserName)},

@@ -332,9 +332,12 @@ connected(
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS} ->
+        #vmq_msg{
+            routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS, acl_name = Name
+        } ->
+            vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
-                Username, SubscriberId, QoS, Topic, Payload, IsRetain
+                Username, SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = Name}
             ]),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
@@ -352,9 +355,12 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS} ->
+        #vmq_msg{
+            routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS, acl_name = Name
+        } ->
+            vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
-                Username, SubscriberId, QoS, Topic, Payload, IsRetain
+                Username, SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = Name}
             ]),
             PubRelFrame = #mqtt_pubrel{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
@@ -967,14 +973,17 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
         SubscriberId,
         Msg,
         fun(MaybeChangedMsg, HookArgs, SessCtrl) ->
+            [_User, _SubscriberId, _QoS, _Topic, _Payload, _IsRetain, #matched_acl{name = Name}] =
+                HookArgs,
+            ChangedMsg = MaybeChangedMsg#vmq_msg{acl_name = Name},
             case
                 on_publish_hook(
-                    vmq_reg:publish(RegView, ClientId, MaybeChangedMsg),
+                    vmq_reg:publish(RegView, ClientId, ChangedMsg),
                     HookArgs
                 )
             of
                 ok ->
-                    {ok, MaybeChangedMsg, SessCtrl};
+                    {ok, ChangedMsg, SessCtrl};
                 E ->
                     E
             end
@@ -1213,11 +1222,16 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         retain = IsRetained,
         dup = IsDup,
         qos = MsgQoS,
-        non_retry = NonRetry
+        non_retry = NonRetry,
+        acl_name = Name
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {NewTopic, NewPayload} =
-        case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained) of
+        case
+            on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained, #matched_acl{
+                name = Name
+            })
+        of
             {error, _} ->
                 %% no on_deliver hook specified... that's ok
                 {Topic, Payload};
@@ -1265,12 +1279,16 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
             end
     end.
 
--spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> any().
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+-spec on_deliver_hook(
+    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl()
+) -> any().
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload],
     case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
         {error, _} ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            #matched_acl{name = Name} = MatchedAcl,
+            vmq_metrics:incr_matched_topic(Name, deliver, QoS),
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl],
             vmq_plugin:all_till_ok(on_deliver, HookArgs1);
         Other ->
             Other

@@ -24,13 +24,13 @@
     on_publish/7,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/6,
+    on_deliver/7,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/2,
     on_client_gone/2,
     on_session_expired/1,
-    on_delivery_complete/6
+    on_delivery_complete/7
 ]).
 
 %% API
@@ -290,23 +290,25 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(on_unsubscribe, {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics]}).
 
--spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+-spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl()) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_deliver,
-        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain},
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl},
         UserName
     ).
 
--spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+-spec on_delivery_complete(
+    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl()
+) ->
     'next'.
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_delivery_complete,
-        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain}
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl}
     ).
 
 -spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.

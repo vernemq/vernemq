@@ -100,7 +100,12 @@ encode({on_unsubscribe, Timestamp, {MP, ClientId, UserName, Topics}}) ->
             timestamp = convert_timestamp(Timestamp)
         })
     );
-encode({on_deliver, Timestamp, {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain}}) ->
+encode(
+    {on_deliver, Timestamp,
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain, #matched_acl{
+            name = Name, pattern = Pattern
+        }}}
+) ->
     encode_envelope(
         "OnDeliver",
         on_deliver_pb:encode_msg(#'eventssidecar.v1.OnDeliver'{
@@ -111,10 +116,18 @@ encode({on_deliver, Timestamp, {MP, ClientId, UserName, QoS, Topic, Payload, IsR
             qos = QoS,
             is_retain = IsRetain,
             payload = Payload,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{
+                name = Name, pattern = Pattern
+            }
         })
     );
-encode({on_delivery_complete, Timestamp, {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain}}) ->
+encode(
+    {on_delivery_complete, Timestamp,
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain, #matched_acl{
+            name = Name, pattern = Pattern
+        }}}
+) ->
     encode_envelope(
         "OnDeliveryComplete",
         on_delivery_complete_pb:encode_msg(#'eventssidecar.v1.OnDeliveryComplete'{
@@ -125,7 +138,10 @@ encode({on_delivery_complete, Timestamp, {MP, ClientId, UserName, QoS, Topic, Pa
             qos = QoS,
             is_retain = IsRetain,
             payload = Payload,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{
+                name = Name, pattern = Pattern
+            }
         })
     );
 encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRetain}}) ->

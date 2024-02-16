@@ -366,7 +366,7 @@ match(TIn, T, Tbl, Type, Key, Qos) ->
                     },
                     {true, MatchedAcl};
                 [{_, _, Label}] ->
-                    incr_matched_topic(Label, Type, Qos),
+                    vmq_metrics:incr_matched_topic(Label, Type, Qos),
                     MatchedAcl = #matched_acl{
                         name = Label, pattern = iolist_to_binary(vmq_topic:unword(T))
                     },
@@ -380,22 +380,6 @@ match(TIn, T, Tbl, Type, Key, Qos) ->
         _ ->
             false
     end.
-
-incr_matched_topic(<<>>, _Type, _Qos) ->
-    ok;
-incr_matched_topic(undefined, _Type, _Qos) ->
-    ok;
-incr_matched_topic(Label, Type, Qos) ->
-    OperationName =
-        case Type of
-            read -> subscribe;
-            write -> publish
-        end,
-    _ = vmq_metrics:incr_topic_counter(
-        {topic_matches, OperationName, [
-            {acl_matched, Label}, {qos, integer_to_list(Qos)}
-        ]}
-    ).
 
 topic(User, {MP, ClientId}, Topic) ->
     subst(list_to_binary(MP), User, ClientId, Topic, []).
