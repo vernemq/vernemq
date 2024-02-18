@@ -18,6 +18,8 @@
 init_per_suite(_Config) ->
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
+    application:ensure_all_started(credentials_obfuscation),
+    credentials_obfuscation:set_secret(<<"Testing">>),
     vmq_plugin_mgr:enable_plugin(vmq_diversity),
     {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_diversity) ++ "/test/plugin_test.lua"),
     cover:start(),
@@ -36,6 +38,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [auth_on_register_test,
+     auth_on_register_obf_test,
      auth_on_publish_test,
      auth_on_subscribe_test,
      on_register_test,
@@ -79,6 +82,12 @@ auth_on_register_test(_) ->
         [peer(), change_modifiers_id(), username(), password(), true]),
     {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_username(), username(), password(), true]).
+
+auth_on_register_obf_test(_) ->
+    {encrypted, Password} = credentials_obfuscation:encrypt(<<"test-password">>),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                      [peer(), allowed_subscriber_id(), username(), Password, true]).
+
 
 props() ->
     #{p_user_property => [{<<"key1">>, <<"val1">>}]}.
@@ -310,7 +319,7 @@ changed_username() ->
     {"", <<"changed-username">>}.
 
 username() -> <<"test-user">>.
-password() -> <<"test-password">>.
+password() -> credentials_obfuscation:encrypt(<<"test-password">>).
 topic() -> [<<"test">>, <<"topic">>].
 payload() -> <<"hello world">>.
 subopts() ->

@@ -224,13 +224,18 @@ code_change(_OldVsn, State, _Extra) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
     Res = all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(UserName)},
-        {password, nilify(Password)},
+        {password, nilify(Pwd)},
         {clean_session, CleanSession}
     ]),
     conv_res(auth_on_reg, Res).
@@ -238,13 +243,18 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
     Res = all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(UserName)},
-        {password, nilify(Password)},
+        {password, nilify(Pwd)},
         {clean_start, CleanStart},
         {properties, conv_args_props(Props)}
     ]),

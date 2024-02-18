@@ -45,6 +45,19 @@ start_link() ->
         ]}}.
 init([]) ->
     maybe_change_nodename(),
+    case
+        proplists:get_value(
+            obfuscation_secret, application:get_env(vmq_server, logging, []), <<"random">>
+        )
+    of
+        <<"random">> ->
+            Bytes = crypto:strong_rand_bytes(128),
+            credentials_obfuscation:set_secret(Bytes);
+        A when is_binary(A) -> credentials_obfuscation:set_secret(A);
+        _ ->
+            Bytes = crypto:strong_rand_bytes(128),
+            credentials_obfuscation:set_secret(Bytes)
+    end,
     persistent_term:put(subscribe_trie_ready, 0),
     init_systemd_notify(),
     {ok,

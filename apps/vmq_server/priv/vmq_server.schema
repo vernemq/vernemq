@@ -93,6 +93,12 @@
                                                                             hidden
                                                                            ]}.
 
+%% @doc Secret to be used for crendentials obfuscation. Default is "random" which 
+%% generates a random string. 
+{mapping, "logging.obfuscation_secret", "vmq_server.logging", [
+                                                            {datatype, [string]},
+                                                            {default, "random"}
+                                                           ]}.
 %% @doc Client disconnect due to keepalive is by default a warning. In unstable networks
 %% it might be "expected" behaviour to have a lot of those warnings. This allows to 
 %% downgrade the warning to an info message.
@@ -103,7 +109,8 @@
 
 {translation, "vmq_server.logging",
  fun(Conf) ->
-    [{keep_alive_as_warning, cuttlefish:conf_get("logging.keepalive_as_warning", Conf, true)}]
+    [{keep_alive_as_warning, cuttlefish:conf_get("logging.keepalive_as_warning", Conf, true)},
+     {obfuscation_secret, cuttlefish:conf_get("logging.obfuscation_secret", Conf, random)}]
  end}.
 
 %% @doc Allows to select a new default reg_view.

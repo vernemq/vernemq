@@ -31,12 +31,13 @@ require "auth/auth_commons"
 -- IF YOU USE THE KEY/VALUE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED 
 -- IN THE FOLLOWING SCRIPT.
 function auth_on_register(reg)
-    if reg.username ~= nil and reg.password ~= nil then
+    pwd = obf.decrypt(reg.password)
+    if reg.username ~= nil and pwd ~= nil then
         key = json.encode({reg.mountpoint, reg.client_id, reg.username})
         res = redis.cmd(pool, "get " .. key)
         if res then
             res = json.decode(res)
-            if res.passhash == bcrypt.hashpw(reg.password, res.passhash) then
+            if res.passhash == bcrypt.hashpw(pwd, res.passhash) then
                 cache_insert(
                     reg.mountpoint, 
                     reg.client_id, 

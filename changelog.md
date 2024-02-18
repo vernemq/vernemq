@@ -1,5 +1,7 @@
+- Introduce credentials obfusication that avoid printing secrets to logs and stack traces (breaking change)
 - New feature: Support prometheus namespace
-- Remove deprecated subscriber format (#2247) 
+- New feature: Add logger support, instead of lager
+- Remove deprecated subscriber format (#2247)
 - Protect against empty XFF CN/Username
 - Add simple options to HTTP health listener (health/ping)
 - Remove deprecated allow_multiple_sessions 

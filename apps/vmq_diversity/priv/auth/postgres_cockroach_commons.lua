@@ -107,7 +107,8 @@ function auth_on_register_common(db_library, reg)
             reg.username)
          if #results == 1 then
             row = results[1]
-            if row.passhash == do_hash(method, reg.password, row.passhash) then
+            pwd = obf.decrypt(reg.password)
+            if row.passhash == do_hash(method, pwd, row.passhash) then
                cache_result(reg, row)
                return true
             else
@@ -127,6 +128,7 @@ function auth_on_register_common(db_library, reg)
          else
             return false
          end
+         pwd = obf.decrypt(reg.password)
          results = db_library.execute(
             pool,
             [[SELECT publish_acl::TEXT, subscribe_acl::TEXT
@@ -139,7 +141,8 @@ function auth_on_register_common(db_library, reg)
             reg.mountpoint,
             reg.client_id,
             reg.username,
-            reg.password)
+            pwd 
+           )
          if #results == 1 then
             row = results[1]
             cache_result(reg, row)

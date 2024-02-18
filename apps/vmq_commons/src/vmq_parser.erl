@@ -239,7 +239,7 @@ parse_username(_, 1, _) ->
 parse_password(Rest, _, 0, Conn) ->
     {ok, Rest, Conn};
 parse_password(<<Len:16/big, Password:Len/binary, Rest/binary>>, 1, 1, Conn) ->
-    {ok, Rest, Conn#mqtt_connect{password = Password}};
+    {ok, Rest, Conn#mqtt_connect{password = credentials_obfuscation:encrypt(Password)}};
 parse_password(_, 0, 1, _) ->
     {error, username_flag_not_set};
 parse_password(_, _, 1, _) ->
@@ -400,6 +400,7 @@ flag(1) -> 1;
 flag(false) -> 0;
 flag(true) -> 1;
 flag(V) when is_binary(V) orelse is_list(V) -> 1;
+flag({encrypted, V}) when is_binary(V) -> 1;
 %% for test purposes
 flag(empty) -> 1;
 flag(_) -> 0.
@@ -419,6 +420,9 @@ utf8(empty) ->
     <<0:16/big>>;
 utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
+utf8({encrypted, Bin}) ->
+    Plain = credentials_obfuscation:decrypt({encrypted, Bin}),
+    <<(byte_size(Plain)):16/big, Plain/binary>>;
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
@@ -434,7 +438,9 @@ gen_connect(ClientId, Opts) ->
         clean_session = proplists:get_value(clean_session, Opts, true),
         keep_alive = proplists:get_value(keepalive, Opts, 60),
         username = ensure_binary(proplists:get_value(username, Opts)),
-        password = ensure_binary(proplists:get_value(password, Opts)),
+        password =
+            credentials_obfuscation:encrypt(ensure_binary(proplists:get_value(password, Opts))),
+
         proto_ver = proplists:get_value(proto_ver, Opts, 3),
         will_topic = ensure_binary(proplists:get_value(will_topic, Opts)),
         will_qos = proplists:get_value(will_qos, Opts, 0),
