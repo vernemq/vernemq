@@ -3024,14 +3024,8 @@ topic_metric_name({Metric, SubMetric, Labels}) ->
 
 events_sampled_metric_name(H, C, SDType) ->
     Name = list_to_atom("vmq_events_" ++ SDType),
-    Labels =
-        case H of
-            on_publish -> [{acl_name, C}];
-            on_deliver -> [{user, C}];
-            _ -> []
-        end,
-    Labels2 = [{hook, atom_to_list(H)} | Labels],
+    Labels = [{hook, atom_to_list(H)}, {acl_name, C}],
     Description = list_to_binary(
         "The number of events " ++ SDType ++ " due to sampling enabled."
     ),
-    {[Name | Labels2], Name, Description, Labels2}.
+    {[Name | Labels], Name, Description, Labels}.

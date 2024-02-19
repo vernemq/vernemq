@@ -63,8 +63,8 @@
   end
 }.
 
-%% @doc Configure the sampling for on_deliver events based on user names
-{mapping, "sample.on_deliver.$user.percentage", "vmq_events_sidecar.sampler.on_deliver", 
+%% @doc Configure the sampling for on_deliver events based on ACL names
+{mapping, "sample.on_deliver.$acl.percentage", "vmq_events_sidecar.sampler.on_deliver", 
  [{datatype, integer}]}.
 
 {translation, "vmq_events_sidecar.sampler.on_deliver",

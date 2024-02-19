@@ -31,7 +31,7 @@ start_link() ->
                 ),
 
                 Sampler = application:get_env(
-                    vmq_events_sidecar, 'sampler', []
+                    vmq_events_sidecar, sampler, []
                 ),
                 SamplingHooks = [
                     on_publish,

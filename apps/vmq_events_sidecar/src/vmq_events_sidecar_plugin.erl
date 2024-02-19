@@ -292,12 +292,14 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
 
 -spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl()) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl) ->
+on_deliver(
+    UserName, SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = ACL} = MatchedAcl
+) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_deliver,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl},
-        UserName
+        ACL
     ).
 
 -spec on_delivery_complete(
