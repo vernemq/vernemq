@@ -513,7 +513,7 @@ age_entries(T) ->
 del_aged_entries() ->
     lists:foreach(fun del_aged_entries/1, ?TABLES).
 del_aged_entries(T) ->
-    ets:match_delete(T, {'_', 2}).
+    ets:match_delete(T, {'_', 2, '_'}).
 
 iterate(T, Fun) ->
     iterate(T, Fun, ets:first(T)).
@@ -600,6 +600,7 @@ check_rid(Claims, UserName) ->
 acl_test_() ->
     [
         {"Simple ACL Test - vmq_reg_trie", ?setup(fun simple_acl/1)},
+        {"Simple ACL Test - Delete aged acl test", ?setup(fun delete_aged_acl_test/1)},
         {"Simple ACL Test - vmq_reg_redis_trie",
             {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun simple_acl/1}}
     ].
@@ -936,6 +937,61 @@ simple_acl(_) ->
         ?_assertEqual(
             {<<"a/b ">>, <<"a">>},
             split_topic_label(<<"a/b label a b\n">>)
+        )
+    ].
+delete_aged_acl_test(_) ->
+    ACL = [
+        <<"topic a/b/c label abc\n">>,
+        <<"user test\n">>,
+        <<"topic a/b/c/# label simple_read_write\n">>,
+        <<"pattern read a/%m/%u/%c label pattern_read\n">>,
+        <<"pattern write a/%m/%u/%c\n">>,
+        <<"token read example/%(c, :, 3) label token_read\n">>,
+        <<"token write a/b/%( c  , :, 3)/+ label token_write">>
+    ],
+    load_from_list(ACL),
+    NewACL = [
+        <<"topic a/b/d label abd\n">>,
+        <<"user test\n">>,
+        <<"topic a/b/d/# label simple_read_write\n">>,
+        <<"pattern read b/%m/%u/%clabel pattern_read\n">>,
+        <<"pattern write b/%m/%u/%c\n">>,
+        <<"token read example_acl/%(c, :, 3) label token_read\n">>,
+        <<"token write a/c/%( c  , :, 3)/+ label token_write">>
+    ],
+    load_from_list(NewACL),
+    [
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_read_pattern, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_write_pattern, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_read_all, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_write_all, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_read_user, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_write_user, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_read_token, {'_', 2, '$1'})
+        ),
+        ?_assertEqual(
+            [],
+            ets:match(vmq_enhanced_auth_acl_write_token, {'_', 2, '$1'})
         )
     ].
 -endif.
