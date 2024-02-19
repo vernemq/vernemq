@@ -64,9 +64,6 @@
 -define(DELETE_SUBSCRIBER, delete_subscriber).
 -define(FETCH_SUBSCRIBER, fetch_subscriber).
 -define(FETCH_MATCHED_TOPIC_SUBSCRIBERS, fetch_matched_topic_subscribers).
--define(INITIALIZE_TRIE_OPERATION, initialize_trie).
--define(ADD_COMPLEX_TOPICS_OPERATION, add_complex_topics).
--define(DELETE_COMPLEX_TOPICS_OPERATION, delete_complex_topics).
 -define(ENQUEUE_MSG, enqueue_msg).
 -define(POLL_MAIN_QUEUE, poll_main_queue).
 -define(GET_LIVE_NODES, get_live_nodes).

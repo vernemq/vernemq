@@ -4,7 +4,7 @@
 -include("vmq_server.hrl").
 
 %% API
--export([query/4, query/5, pipelined_query/3]).
+-export([query/4, query/5]).
 
 -define(TIMEOUT, 5000).
 
@@ -65,50 +65,5 @@ query(Client, QueryCmd, Cmd, Operation, Timeout) ->
             {operation, Operation}
         ]},
         vmq_util:ts() - V1
-    ),
-    Result.
-
-pipelined_query(Client, QueryList, Operation) ->
-    [_ | PipelinedCmd] = lists:foldl(
-        fun([Cmd | _], Acc) -> "|" ++ atom_to_list(Cmd) ++ Acc end, "", QueryList
-    ),
-
-    vmq_metrics:incr_redis_cmd({?PIPELINE, Operation}),
-    V1 = vmq_util:ts(),
-
-    Pid =
-        case Client of
-            C when is_pid(Client) -> C;
-            Named -> whereis(Named)
-        end,
-    Result =
-        try eredis:qp(Pid, QueryList) of
-            {error, no_connection} ->
-                vmq_metrics:incr_redis_cmd_err({?PIPELINE, Operation}),
-                lager:debug("No connection with Redis"),
-                {error, no_connection};
-            Res ->
-                IsErrPresent = lists:foldl(
-                    fun
-                        ({ok, _}, Acc) -> Acc;
-                        ({error, _Reason}, _Acc) -> true
-                    end,
-                    false,
-                    Res
-                ),
-                if
-                    IsErrPresent -> vmq_metrics:incr_redis_cmd_err({?PIPELINE, Operation});
-                    true -> ok
-                end,
-                Res
-        catch
-            Type:Exception ->
-                vmq_metrics:incr_redis_cmd_err({?PIPELINE, Operation}),
-                lager:error("Cannot ~p:~p due to ~p:~p", [?PIPELINE, Operation, Type, Exception]),
-                {error, Exception}
-        end,
-
-    vmq_metrics:pretimed_measurement(
-        {redis_cmd, run, [{cmd, PipelinedCmd}, {operation, Operation}]}, vmq_util:ts() - V1
     ),
     Result.

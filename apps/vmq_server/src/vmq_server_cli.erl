@@ -73,9 +73,7 @@ register_cli() ->
 
     vmq_tracer_cli:register_cli(),
 
-    vmq_reg_redis_trie_add_wildcard_topics_cmd(),
-    vmq_reg_redis_trie_remove_wildcard_topics_cmd(),
-    vmq_reg_redis_trie_show_wildcard_topics_cmd(),
+    vmq_trie_show_complex_topics_cmd(),
 
     ok.
 
@@ -95,15 +93,9 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
 
-    clique:register_usage(["vmq-admin", "reg_redis_trie"], reg_redis_trie_usage()),
+    clique:register_usage(["vmq-admin", "trie"], reg_redis_trie_usage()),
     clique:register_usage(
-        ["vmq-admin", "reg_redis_trie", "add"], add_wildcard_topic_usage()
-    ),
-    clique:register_usage(
-        ["vmq-admin", "reg_redis_trie", "remove"], remove_wildcard_topic_usage()
-    ),
-    clique:register_usage(
-        ["vmq-admin", "reg_redis_trie", "show"], show_wildcard_topic_usage()
+        ["vmq-admin", "trie", "show"], show_complex_topics_usage()
     ),
 
     ok.
@@ -442,38 +434,8 @@ vmq_mgmt_list_api_keys_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-vmq_reg_redis_trie_add_wildcard_topics_cmd() ->
-    Cmd = ["vmq-admin", "reg_redis_trie", "add"],
-    KeySpecs = [reg_redis_trie_keyspec()],
-    FlagSpecs = [],
-    Callback =
-        fun
-            (_, [{wildcard_topics, Value}], []) ->
-                vmq_reg_redis_trie:add_complex_topics(Value),
-                [clique_status:text("Done")];
-            (_, _, _) ->
-                Text = clique_status:text(add_wildcard_topic_usage()),
-                [clique_status:alert([Text])]
-        end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_reg_redis_trie_remove_wildcard_topics_cmd() ->
-    Cmd = ["vmq-admin", "reg_redis_trie", "remove"],
-    KeySpecs = [reg_redis_trie_keyspec()],
-    FlagSpecs = [],
-    Callback =
-        fun
-            (_, [{wildcard_topics, Value}], []) ->
-                vmq_reg_redis_trie:delete_complex_topics(Value),
-                [clique_status:text("Done")];
-            (_, _, _) ->
-                Text = clique_status:text(remove_wildcard_topic_usage()),
-                [clique_status:alert([Text])]
-        end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_reg_redis_trie_show_wildcard_topics_cmd() ->
-    Cmd = ["vmq-admin", "reg_redis_trie", "show", "wildcard_topics"],
+vmq_trie_show_complex_topics_cmd() ->
+    Cmd = ["vmq-admin", "trie", "show"],
     KeySpecs = [],
     FlagSpecs = [],
     Callback =
@@ -485,45 +447,10 @@ vmq_reg_redis_trie_show_wildcard_topics_cmd() ->
                 ],
                 [clique_status:table(Table)];
             (_, _, _) ->
-                Text = clique_status:text(show_wildcard_topic_usage()),
+                Text = clique_status:text(show_complex_topics_usage()),
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-reg_redis_trie_keyspec() ->
-    {wildcard_topics, [
-        {typecast, fun
-            (Value) when is_list(Value) ->
-                Topics = vmq_schema_util:parse_list(Value),
-                [IsValidTopicList | TopicList] = lists:foldl(
-                    fun(T, Acc) ->
-                        [IsValid | ParsedTopics] = Acc,
-                        case IsValid of
-                            true ->
-                                case vmq_topic:validate_topic(subscribe, list_to_binary(T)) of
-                                    {ok, ParsedTopic} ->
-                                        [
-                                            vmq_topic:contains_wildcard(ParsedTopic)
-                                            | [ParsedTopic | ParsedTopics]
-                                        ];
-                                    _ ->
-                                        [false]
-                                end;
-                            _ ->
-                                Acc
-                        end
-                    end,
-                    [true],
-                    Topics
-                ),
-                case IsValidTopicList of
-                    true -> TopicList;
-                    _ -> {error, {invalid_value, Topics}}
-                end;
-            (Value) ->
-                {error, {invalid_value, Value}}
-        end}
-    ]}.
 
 start_usage() ->
     [
@@ -649,38 +576,22 @@ api_add_key_usage() ->
 
 get_reg_redis_trie_usage_lead_line() ->
     case ?RegView == vmq_reg_redis_trie of
-        true -> "    reg_redis_trie  Manage complex topics whitelisting\n";
+        true -> "    trie                    Manage complex topics whitelisting\n";
         _ -> ""
     end.
 
 reg_redis_trie_usage() ->
     [
-        "vmq-admin reg_redis_trie <sub-command>\n\n",
+        "vmq-admin trie <sub-command>\n\n",
         "  Manage complex topics whitelisting.\n\n",
         "  Sub-commands:\n",
-        "    add         Whitelists the complex topics\n",
-        "    remove      Remove the complex topics from the whitelist\n\n",
         "    show        Shows the whitelisted complex topics\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
-add_wildcard_topic_usage() ->
+show_complex_topics_usage() ->
     [
-        "vmq-admin reg_redis_trie add wildcard_topics=\"[\\\"<wildcard/+/topic>\\\",\\\"<wildcard/+/topic2/#>\\\"]\"\n\n",
-        "  Whitelists the complex topics.",
-        "\n\n"
-    ].
-
-remove_wildcard_topic_usage() ->
-    [
-        "vmq-admin reg_redis_trie remove wildcard_topics=\"[\\\"<wildcard/+/topic>\\\",\\\"<wildcard/+/topic2/#>\\\"]\"\n\n",
-        "  Removes the complex topics from the whitelist.",
-        "\n\n"
-    ].
-
-show_wildcard_topic_usage() ->
-    [
-        "vmq-admin reg_redis_trie show wildcard_topics\n\n",
+        "vmq-admin trie show\n\n",
         "  Shows the whitelisted complex topics.",
         "\n\n"
     ].

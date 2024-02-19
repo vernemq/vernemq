@@ -119,7 +119,11 @@
         %{systree_retain, false},
         %{systree_reg_view, vmq_reg_trie},
 
-        {cache_shared_subscriptions_locally, false}
+        {cache_shared_subscriptions_locally, false},
+
+        % Complex topic
+        {complex_trie_file, "priv/vmq.trie"},
+        {complex_trie_reload_interval, 10}
 
         % end env
     ]}

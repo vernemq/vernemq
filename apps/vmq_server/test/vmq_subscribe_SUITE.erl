@@ -217,7 +217,8 @@ subscription_ids(Cfg) ->
 
     {ok, CT1} = vmq_topic:validate_topic(subscribe, list_to_binary(BT ++ "/l1/#")),
     {ok, CT2} = vmq_topic:validate_topic(subscribe, list_to_binary(BT ++ "/+/t6")),
-    vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
+    vmq_reg_redis_trie:add_complex_topic("", CT1),
+    vmq_reg_redis_trie:add_complex_topic("", CT2),
 
     {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Sub1),
@@ -289,7 +290,8 @@ subscription_ids(Cfg) ->
     ok = ExpPub(BT ++ "/no-overlap-ss", <<"msg6">>, [9]),
 
     {error, timeout} = gen_tcp:recv(Socket, 0, 100),
-    vmq_reg_redis_trie:delete_complex_topics([CT1, CT2]),
+    vmq_reg_redis_trie:delete_complex_topic("", CT1),
+    vmq_reg_redis_trie:delete_complex_topic("", CT2),
     ok.
 
 subscribe_qos0_test(_) ->

@@ -153,13 +153,5 @@ init_state(State) ->
     {ok, Interval} = application:get_env(?APP, interval),
     ok = vmq_enhanced_auth:init(),
     ok = vmq_enhanced_auth:load_from_file(File),
-    {NewI, NewTRef} =
-        case Interval of
-            0 ->
-                {0, undefined};
-            I ->
-                IinMs = abs(I * 1000),
-                NTRef = erlang:send_after(IinMs, self(), reload),
-                {IinMs, NTRef}
-        end,
+    {NewI, NewTRef} = vmq_util:set_interval(Interval, self()),
     State#state{file = File, interval = NewI, timer = NewTRef}.

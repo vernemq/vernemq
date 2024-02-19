@@ -8,7 +8,11 @@
 -module(vmq_util).
 
 %% API
--export([ts/0, timed_measurement/4]).
+-export([
+    ts/0,
+    timed_measurement/4,
+    set_interval/2
+]).
 
 ts() ->
     {Mega, Sec, Micro} = os:timestamp(),
@@ -21,3 +25,15 @@ timed_measurement({_, _} = Metric, Module, Function, Args) ->
     Val = Ts2 - Ts1,
     vmq_metrics:pretimed_measurement(Metric, Val),
     Ret.
+
+-spec set_interval(Interval :: integer(), Pid :: pid()) ->
+    {integer(), reference()} | {0, undefined}.
+set_interval(Interval, Pid) ->
+    case Interval of
+        0 ->
+            {0, undefined};
+        I ->
+            IinMs = abs(I * 1000),
+            NTRef = erlang:send_after(IinMs, Pid, reload),
+            {IinMs, NTRef}
+    end.

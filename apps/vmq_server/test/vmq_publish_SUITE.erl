@@ -701,7 +701,7 @@ pattern_test(SubTopic, PubTopic, Config) ->
     {ok, CT} = vmq_topic:validate_topic(subscribe, list_to_binary(SubTopic)),
     case vmq_topic:contains_wildcard(CT) of
         true ->
-            vmq_reg_redis_trie:add_complex_topics([CT]);
+            vmq_reg_redis_trie:add_complex_topic("", CT);
         _ ->
             ok
     end,
@@ -735,7 +735,7 @@ pattern_test(SubTopic, PubTopic, Config) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket),
-    vmq_reg_redis_trie:delete_complex_topics([CT]),
+    vmq_reg_redis_trie:delete_complex_topic("", CT),
     ok.
 
 not_allowed_publish_close_qos0_mqtt_3_1(_) ->
