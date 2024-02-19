@@ -36,8 +36,12 @@
 
 -record(state, {status = init}).
 -record(trie, {edge, node_id}).
--record(trie_node, {node_id, edge_count = 0, topic}).
 -record(trie_edge, {node_id, word}).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
+-endif.
 
 %%%===================================================================
 %%% API
@@ -153,7 +157,9 @@ add_complex_topics(Topics) ->
 add_complex_topic(MP, Topic) ->
     MPTopic = {MP, Topic},
     case ets:lookup(vmq_redis_trie_node, MPTopic) of
-        [#trie_node{topic = Topic}] ->
+        [TrieNode = #trie_node{topic = undefined}] ->
+            ets:insert(vmq_redis_trie_node, TrieNode#trie_node{topic = Topic});
+        [#trie_node{topic = _Topic}] ->
             ignore;
         _ ->
             %% add trie path
@@ -180,6 +186,10 @@ delete_complex_topics(Topics) ->
 delete_complex_topic(MP, Topic) ->
     NodeId = {MP, Topic},
     case ets:lookup(vmq_redis_trie_node, NodeId) of
+        [#trie_node{topic = undefined}] ->
+            ok;
+        [TrieNode = #trie_node{edge_count = EdgeCount}] when EdgeCount > 0 ->
+            ets:insert(vmq_redis_trie_node, TrieNode#trie_node{topic = undefined});
         [_] ->
             ets:delete(vmq_redis_trie_node, NodeId),
             trie_delete_path(MP, lists:reverse(vmq_topic:triples(Topic)));
@@ -192,7 +202,9 @@ get_complex_topics() ->
         vmq_topic:unword(T)
      || T <- ets:select(vmq_redis_trie_node, [
             {
-                #trie_node{node_id = {"", '$1'}, topic = '$1', edge_count = 0},
+                #trie_node{
+                    node_id = {"", '$1'}, topic = '$1', edge_count = '_'
+                },
                 [{'=/=', '$1', undefined}],
                 ['$1']
             }
@@ -402,9 +414,494 @@ trie_delete_path(MP, [{Node, Word, _} | RestPath]) ->
     Edge = #trie_edge{node_id = NodeId, word = Word},
     ets:delete(vmq_redis_trie, Edge),
     case ets:lookup(vmq_redis_trie_node, NodeId) of
-        [_] ->
+        [TrieNode = #trie_node{edge_count = EdgeCount, topic = undefined}] when EdgeCount > 1 ->
+            ets:insert(vmq_redis_trie_node, TrieNode#trie_node{edge_count = EdgeCount - 1});
+        [#trie_node{topic = undefined}] ->
             ets:delete(vmq_redis_trie_node, NodeId),
             trie_delete_path(MP, RestPath);
+        [TrieNode = #trie_node{edge_count = EdgeCount}] ->
+            ets:insert(vmq_redis_trie_node, TrieNode#trie_node{edge_count = EdgeCount - 1});
         [] ->
             ignore
     end.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+%%%%%%%%%%%%%
+%%% Tests
+%%%%%%%%%%%%%
+
+complex_topic_test_() ->
+    [
+        {"Add complex topic", ?setup(fun add_complex_topic_test/1)},
+        {"Add existing topic", ?setup(fun add_existing_topic_test/1)},
+        {"Sub-topic whitelisting", ?setup(fun add_sub_topic_test/1)},
+        {"Delete complex topics", ?setup(fun delete_complex_topic_test/1)},
+        {"Delete all complex topics", ?setup(fun delete_all_complex_topic_test/1)},
+        {"Delete whitelisted sub-topics", ?setup(fun delete_whitelisted_subtopic_test/1)},
+        {"Delete whitelisted parent-topics", ?setup(fun delete_whitelisted_parent_topic_test/1)},
+        {"Delete non whitelisted sub-topics", ?setup(fun delete_non_whitelisted_subtopic_test/1)},
+        {"Delete non existing topics", ?setup(fun delete_non_existing_topic_test/1)},
+        {"Show individual whitelisted topics", ?setup(fun show_complex_topics_test/1)},
+        {"Match individual whitelisted topics", ?setup(fun match_complex_topics_test/1)},
+        {"Match after deleting topics", ?setup(fun match_complex_topics_after_delete_test/1)},
+        {"Match complex topic with hash", ?setup(fun match_complex_topic_with_hash_test/1)}
+    ].
+
+setup() ->
+    TABLE_OPTS = [public, named_table, {read_concurrency, true}],
+    ets:new(vmq_redis_trie_node, [{keypos, 2} | TABLE_OPTS]),
+    ets:new(vmq_redis_trie, [{keypos, 2} | TABLE_OPTS]),
+    vmq_reg_redis_trie.
+
+teardown(RegView) ->
+    case RegView of
+        vmq_reg_redis_trie ->
+            ets:delete(vmq_redis_trie),
+            ets:delete(vmq_redis_trie_node);
+        _ ->
+            ok
+    end.
+
+add_complex_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"abc">>, <<"+">>, <<"+">>],
+    Topic4 = [<<"pqr">>, <<"+">>, <<"1">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic3),
+    add_complex_topic("", Topic4),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 2, undefined},
+                {trie_node, {[], [<<"abc">>]}, 2, undefined},
+                {trie_node, {[], [<<"abc">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"+">>, <<"+">>]}, 0, [<<"abc">>, <<"+">>, <<"+">>]},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 2, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"2">>
+                ]},
+                {trie_node, {[], [<<"pqr">>]}, 1, undefined},
+                {trie_node, {[], [<<"pqr">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"pqr">>, <<"+">>, <<"1">>]}, 0, [<<"pqr">>, <<"+">>, <<"1">>]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], root}, <<"pqr">>}, [<<"pqr">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"+">>}, [<<"abc">>, <<"+">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"+">>]}, <<"+">>}, [
+                    <<"abc">>, <<"+">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"2">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"2">>
+                ]},
+                {trie, {trie_edge, {[], [<<"pqr">>]}, <<"+">>}, [<<"pqr">>, <<"+">>]},
+                {trie, {trie_edge, {[], [<<"pqr">>, <<"+">>]}, <<"1">>}, [
+                    <<"pqr">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+add_existing_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic1),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+add_sub_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+delete_complex_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"abc">>, <<"pqr">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic3),
+    delete_complex_topic("", Topic2),
+    delete_complex_topic("", Topic3),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+delete_all_complex_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"abc">>, <<"pqr">>, <<"+">>],
+    Topic4 = [<<"#">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic3),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic4),
+    delete_complex_topic("", Topic1),
+    delete_complex_topic("", Topic4),
+    delete_complex_topic("", Topic3),
+    delete_complex_topic("", Topic2),
+    [
+        ?_assertEqual(
+            [],
+            ets:tab2list(vmq_redis_trie_node)
+        ),
+        ?_assertEqual(
+            [],
+            ets:tab2list(vmq_redis_trie)
+        )
+    ].
+delete_whitelisted_subtopic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic3 = [<<"abc">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic3),
+    delete_complex_topic("", Topic2),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 2, undefined},
+                {trie_node, {[], [<<"abc">>, <<"+">>]}, 0, [<<"abc">>, <<"+">>]},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"+">>}, [<<"abc">>, <<"+">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+delete_whitelisted_parent_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    delete_complex_topic("", Topic1),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+delete_non_whitelisted_subtopic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    Topic3 = [<<"abc">>],
+    add_complex_topic("", Topic1),
+    delete_complex_topic("", Topic2),
+    delete_complex_topic("", Topic3),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+delete_non_existing_topic_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"pqr">>, <<"xyz">>, <<"+">>],
+    Topic3 = [<<"abcd">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    delete_complex_topic("", Topic2),
+    delete_complex_topic("", Topic3),
+    [
+        ?_assertEqual(
+            [
+                {trie_node, {[], root}, 1, undefined},
+                {trie_node, {[], [<<"abc">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, 1, undefined},
+                {trie_node, {[], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]}, 0, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie_node))
+        ),
+        ?_assertEqual(
+            [
+                {trie, {trie_edge, {[], root}, <<"abc">>}, [<<"abc">>]},
+                {trie, {trie_edge, {[], [<<"abc">>]}, <<"xyz">>}, [<<"abc">>, <<"xyz">>]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>]}, <<"+">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>
+                ]},
+                {trie, {trie_edge, {[], [<<"abc">>, <<"xyz">>, <<"+">>]}, <<"1">>}, [
+                    <<"abc">>, <<"xyz">>, <<"+">>, <<"1">>
+                ]}
+            ],
+            lists:usort(ets:tab2list(vmq_redis_trie))
+        )
+    ].
+show_complex_topics_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"abc">>, <<"+">>, <<"1">>, <<"2">>],
+    Topic4 = [<<"#">>],
+    SubTopic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    SubTopic2 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", SubTopic2),
+    add_complex_topic("", Topic3),
+    add_complex_topic("", Topic4),
+    add_complex_topic("", SubTopic1),
+    delete_complex_topic("", SubTopic2),
+    [
+        ?_assertEqual(
+            [
+                [<<"abc/xyz/+/1/+">>],
+                [<<"abc/+/1/2">>],
+                [<<"abc/xyz/+/1">>],
+                [<<"abc/xyz/+/2">>],
+                [<<"#">>]
+            ],
+            [
+                [iolist_to_binary((Topic))]
+             || Topic <- get_complex_topics()
+            ]
+        )
+    ].
+match_complex_topics_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"pqr">>, <<"efg">>, <<"#">>],
+    SubTopic1 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic3),
+    add_complex_topic("", SubTopic1),
+    [
+        % exact topic matching
+        ?_assertEqual(
+            [[<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"two">>, <<"2">>])
+        ),
+        % wildcard mathing (+)
+        ?_assertEqual(
+            [[<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>, <<"1">>, <<"two">>])
+        ),
+        ?_assertEqual(
+            [[<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"three">>, <<"1">>, <<"four">>])
+        ),
+        % wildcard mathing (#)
+        ?_assertEqual(
+            [[<<"pqr">>, <<"efg">>, <<"#">>]],
+            match([], [<<"pqr">>, <<"efg">>, <<"1">>, <<"2">>])
+        ),
+        ?_assertEqual(
+            [[<<"pqr">>, <<"efg">>, <<"#">>]],
+            match([], [<<"pqr">>, <<"efg">>, <<"3">>, <<"4">>])
+        ),
+        % sub-topic matching
+        ?_assertEqual(
+            [[<<"abc">>, <<"xyz">>, <<"+">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>])
+        ),
+        % non whitelisted sub-topic matching
+        ?_assertEqual(
+            [],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>, <<"1">>])
+        )
+    ].
+match_complex_topics_after_delete_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>, <<"+">>],
+    Topic2 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"2">>],
+    Topic3 = [<<"pqr">>, <<"#">>],
+    SubTopic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    SubTopic2 = [<<"abc">>, <<"xyz">>, <<"+">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    add_complex_topic("", Topic3),
+    add_complex_topic("", SubTopic1),
+    add_complex_topic("", SubTopic2),
+    % delete parent path of sub-topic1
+    delete_complex_topic("", Topic1),
+    % delete topic same prefix of sub-topic1
+    delete_complex_topic("", Topic2),
+    % delete sub-topic
+    delete_complex_topic("", SubTopic2),
+    [
+        ?_assertEqual(
+            [],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>, <<"1">>, <<"two">>])
+        ),
+        ?_assertEqual(
+            [],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>])
+        ),
+        ?_assertEqual(
+            [],
+            match([], [<<"abc">>, <<"xyz">>, <<"two">>, <<"2">>])
+        ),
+        ?_assertEqual(
+            [[<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>, <<"1">>])
+        ),
+        ?_assertEqual(
+            [[<<"pqr">>, <<"#">>]],
+            match([], [<<"pqr">>, <<"efg">>, <<"1">>, <<"2">>])
+        )
+    ].
+match_complex_topic_with_hash_test(_) ->
+    Topic1 = [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>],
+    Topic2 = [<<"#">>],
+    add_complex_topic("", Topic1),
+    add_complex_topic("", Topic2),
+    [
+        ?_assertEqual(
+            [[<<"#">>], [<<"abc">>, <<"xyz">>, <<"+">>, <<"1">>]],
+            match([], [<<"abc">>, <<"xyz">>, <<"one">>, <<"1">>])
+        )
+    ].
+-endif.
