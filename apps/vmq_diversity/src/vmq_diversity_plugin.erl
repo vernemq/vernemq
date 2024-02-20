@@ -24,7 +24,7 @@
 -behaviour(on_publish_hook).
 -behaviour(on_subscribe_hook).
 -behaviour(on_unsubscribe_hook).
-%-behaviour(on_deliver_hook).
+-behaviour(on_deliver_hook).
 -behaviour(on_offline_message_hook).
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
