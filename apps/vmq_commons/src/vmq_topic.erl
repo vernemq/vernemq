@@ -1,5 +1,6 @@
-%% Copyright 2019 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -33,6 +34,7 @@
 %% The length is limited to 64k but within that there are no limits to the number of levels in a topic tree.
 %%
 %% There can be any number of root nodes; that is, there can be any number of topic trees.
+%% (explanation by Feng Lee (orig. emqtt), as well as inspiration for some code snippets in module)
 %% ------------------------------------------------------------------------
 
 -export([
