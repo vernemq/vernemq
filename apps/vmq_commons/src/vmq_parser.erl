@@ -452,9 +452,7 @@ gen_connect(ClientId, Opts) ->
         clean_session = proplists:get_value(clean_session, Opts, true),
         keep_alive = proplists:get_value(keepalive, Opts, 60),
         username = ensure_binary(proplists:get_value(username, Opts)),
-        password =
-            credentials_obfuscation:encrypt(ensure_binary(proplists:get_value(password, Opts))),
-
+        password = ensure_binary(proplists:get_value(password, Opts)),
         proto_ver = proplists:get_value(proto_ver, Opts, 3),
         will_topic = ensure_binary(proplists:get_value(will_topic, Opts)),
         will_qos = proplists:get_value(will_qos, Opts, 0),

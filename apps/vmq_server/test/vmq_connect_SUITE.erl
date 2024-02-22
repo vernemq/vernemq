@@ -9,6 +9,7 @@
 init_per_suite(Config) ->
     cover:start(),
     application:ensure_started(credentials_obfuscation),
+    credentials_obfuscation:set_secret(<<"Testing">>),
     vmq_test_utils:setup(),
     [{ct_hooks, vmq_cth}|Config].
 

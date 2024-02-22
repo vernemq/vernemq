@@ -9,6 +9,8 @@
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
+    application:ensure_started(credentials_obfuscation),    
+    credentials_obfuscation:set_secret(<<"Testing">>),
     Config.
 
 end_per_suite(_Config) ->
