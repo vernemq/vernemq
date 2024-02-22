@@ -814,10 +814,8 @@ gen_connect(ClientId, Opts) ->
         clean_start = proplists:get_value(clean_start, Opts, true),
         keep_alive = proplists:get_value(keepalive, Opts, 60),
         username = ensure_binary(proplists:get_value(username, Opts)),
-        password = credentials_obfuscation:encrypt(
-            ensure_binary(proplists:get_value(password, Opts))
-        ),
-
+        password =
+            ensure_binary(proplists:get_value(password, Opts)),
         proto_ver = ?PROTOCOL_5,
         lwt = proplists:get_value(lwt, Opts, undefined),
         properties = proplists:get_value(properties, Opts, #{})
