@@ -1,7 +1,8 @@
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2015 Helium Systems, Inc.  All Rights Reserved.
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/) 
+%% and Individual Contributors.
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
