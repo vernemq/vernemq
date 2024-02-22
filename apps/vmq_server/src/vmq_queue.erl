@@ -1,5 +1,5 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/) 
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
 %% and Individual Contributors.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");

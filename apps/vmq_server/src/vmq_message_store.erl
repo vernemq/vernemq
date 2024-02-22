@@ -1,5 +1,5 @@
 %% Copyright 2019 Octavo Labs AG Zurich Switzerland (http://octavolabs.com)
-%% Copyright 2019-2024 Octavo Labs/VerneMQ (https://vernemq.com/) 
+%% Copyright 2019-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
 %% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.

@@ -1,4 +1,4 @@
-%% Copyright 2024- Octavo Labs/VerneMQ (https://vernemq.com/) 
+%% Copyright 2024- Octavo Labs/VerneMQ (https://vernemq.com/)
 %% and Individual Contributors.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
