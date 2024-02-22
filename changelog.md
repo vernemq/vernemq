@@ -1,3 +1,5 @@
+## VerneMQ 2.0 Release Candidate
+
 - Introduce credentials obfusication that avoid printing secrets to logs and stack traces (breaking change)
 - New feature: Support prometheus namespace
 - New feature: Add logger support, instead of lager
