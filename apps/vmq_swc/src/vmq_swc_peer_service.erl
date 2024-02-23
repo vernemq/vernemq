@@ -58,7 +58,7 @@ attempt_join(Node) ->
                 {0, 0, true} ->
                     connect_node(Node);
                 _ ->
-                    lager:info("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),
+                    ?LOG_INFO("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),
                     {error, non_empty_node}
             end;
         _ ->
