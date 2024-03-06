@@ -182,7 +182,8 @@ hook_keyspec() ->
                             "on_client_offline",
                             "on_client_gone",
                             "on_delivery_complete",
-                            "on_session_expired"
+                            "on_session_expired",
+                            "on_message_drop"
                         ]
                     )
                 of

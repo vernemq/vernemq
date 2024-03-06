@@ -10,3 +10,4 @@
 -define(REASON, 'REASON_NORMAL_DISCONNECT').
 -define(LABEL, <<"test-label">>).
 -define(PATTERN, <<"test/pattern">>).
+-define(MESSAGE_DROP_REASON, <<"queue_full">>).

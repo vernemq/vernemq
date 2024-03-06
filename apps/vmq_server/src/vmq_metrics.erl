@@ -1295,7 +1295,8 @@ sidecar_events_def() ->
             ?ON_CLIENT_WAKEUP,
             ?ON_CLIENT_OFFLINE,
             ?ON_CLIENT_GONE,
-            ?ON_SESSION_EXPIRED
+            ?ON_SESSION_EXPIRED,
+            ?ON_MESSAGE_DROP
         ],
     [
         m(
@@ -2953,7 +2954,9 @@ met2idx({?MQTT_DISONNECT, ?REASON_TCP_CLOSED}) -> 348;
 met2idx({?MQTT_DISONNECT, ?REASON_UNSPECIFIED}) -> 349;
 met2idx(shared_subscription_group_publish_attempt_failed) -> 350;
 met2idx(?METRIC_WEB_SOCKET_OPEN) -> 351;
-met2idx(?METRIC_WEB_SOCKET_CLOSE) -> 352.
+met2idx(?METRIC_WEB_SOCKET_CLOSE) -> 352;
+met2idx({?SIDECAR_EVENTS, ?ON_MESSAGE_DROP}) -> 353;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_MESSAGE_DROP}) -> 354.
 
 -ifdef(TEST).
 clear_stored_rates() ->

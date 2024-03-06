@@ -53,7 +53,8 @@ all() ->
      on_offline_message_test,
      on_client_wakeup_test,
      on_client_offline_test,
-     on_client_gone_test
+     on_client_gone_test,
+     on_message_drop_test
     ].
 
 
@@ -154,6 +155,13 @@ on_session_expired_test(_) ->
     [ok] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
     ok = exp_response(on_session_expired_ok),
     disable_hook(on_session_expired).
+
+on_message_drop_test(_) ->
+    enable_hook(on_message_drop),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
+    ok = exp_response(on_message_drop_ok),
+    disable_hook(on_message_drop).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

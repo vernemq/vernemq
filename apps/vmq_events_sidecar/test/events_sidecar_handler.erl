@@ -12,6 +12,7 @@
 -include_lib("vmq_proto/include/on_client_gone_pb.hrl").
 -include_lib("vmq_proto/include/on_client_wakeup_pb.hrl").
 -include_lib("vmq_proto/include/on_session_expired_pb.hrl").
+-include_lib("vmq_proto/include/on_message_drop_pb.hrl").
 -include_lib("vmq_proto/include/any_pb.hrl").
 
 -export([start_tcp_server/0,
@@ -85,7 +86,9 @@ decode({_, "type.googleapis.com/eventssidecar.v1.OnPublish", Value}) ->
 decode({_, "type.googleapis.com/eventssidecar.v1.OnSessionExpired", Value}) ->
     on_session_expired_pb:decode_msg(Value, 'eventssidecar.v1.OnSessionExpired');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnClientWakeUp", Value}) ->
-    on_client_wakeup_pb:decode_msg(Value, 'eventssidecar.v1.OnClientWakeUp').
+    on_client_wakeup_pb:decode_msg(Value, 'eventssidecar.v1.OnClientWakeUp');
+decode({_, "type.googleapis.com/eventssidecar.v1.OnMessageDrop", Value}) ->
+    on_message_drop_pb:decode_msg(Value, 'eventssidecar.v1.OnMessageDrop').
 
 %% callbacks for each hook
 on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
@@ -185,6 +188,17 @@ on_session_expired(#'eventssidecar.v1.OnSessionExpired'{mountpoint = ?MOUNTPOINT
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_session_expired_ok.
 
+on_message_drop(#'eventssidecar.v1.OnMessageDrop'{
+             mountpoint = ?MOUNTPOINT_BIN,
+             client_id = BinPid,
+             qos = 1,
+             topic = ?TOPIC,
+             payload = ?PAYLOAD,
+             reason = ?MESSAGE_DROP_REASON
+            }) ->
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! on_message_drop_ok.
+
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnRegister') ->
     on_register(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnSubscribe') ->
@@ -206,8 +220,9 @@ process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnDeliveryComplete')
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnSessionExpired') ->
     on_session_expired(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnDeliver') ->
-    on_deliver(Event).
-
+    on_deliver(Event);
+process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnMessageDrop') ->
+    on_message_drop(Event).
 
 get_socket() ->
   receive

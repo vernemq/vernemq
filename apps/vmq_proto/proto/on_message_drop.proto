@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "matched_acl.proto";
+
+package eventssidecar.v1;
+
+message OnMessageDrop {
+    google.protobuf.Timestamp timestamp = 1;
+    string client_id = 2;
+    string mountpoint = 3;
+    int32 qos = 4;
+    string topic = 5;
+    bytes payload = 6;
+    string reason = 7;
+}

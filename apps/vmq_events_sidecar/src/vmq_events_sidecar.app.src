@@ -26,7 +26,8 @@
             {vmq_events_sidecar_plugin, on_client_offline, 2, []},
             {vmq_events_sidecar_plugin, on_session_expired, 1, []},
             {vmq_events_sidecar_plugin, on_delivery_complete, 7, []},
-            {vmq_events_sidecar_plugin, on_client_gone, 2, []}
+            {vmq_events_sidecar_plugin, on_client_gone, 2, []},
+            {vmq_events_sidecar_plugin, on_message_drop, 3, []}
         ]}
     ]},
     {modules, []},

@@ -2,7 +2,7 @@
 %% ex: ft=erlang
 
 %% @doc To register events sidecar webhooks, a list of hook names needs to be configured.
-%% Valid hook names: [on_register, on_publish, on_subscribe, on_unsubscribe, on_deliver, on_offline_message, on_client_wakeup, on_client_offline, on_client_gone, on_delivery_complete, on_session_expired]
+%% Valid hook names: [on_register, on_publish, on_subscribe, on_unsubscribe, on_deliver, on_offline_message, on_client_wakeup, on_client_offline, on_client_gone, on_delivery_complete, on_session_expired, on_message_drop]
 {mapping, "vmq_events_sidecar.hooks", "vmq_events_sidecar.hooks",
  [
   {validators, ["hook_names"]},
@@ -21,7 +21,8 @@
                   on_client_offline,
                   on_client_gone,
                   on_delivery_complete,
-                  on_session_expired],
+                  on_session_expired,
+                  on_message_drop],
     HooksList = vmq_schema_util:parse_list(Hooks),
     lists:all(fun(Hook) -> lists:member(Hook, ValidHooks) end, HooksList)
  end}.

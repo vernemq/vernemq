@@ -94,6 +94,7 @@
 -define(ON_CLIENT_WAKEUP, on_client_wakeup).
 -define(ON_CLIENT_GONE, on_client_gone).
 -define(ON_SESSION_EXPIRED, on_session_expired).
+-define(ON_MESSAGE_DROP, on_message_drop).
 
 -define(METRIC_QUEUE_SETUP, queue_setup).
 -define(METRIC_QUEUE_INITIALIZED_FROM_STORAGE, queue_initialized_from_storage).

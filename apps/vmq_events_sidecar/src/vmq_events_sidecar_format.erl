@@ -12,6 +12,7 @@
 -include_lib("vmq_proto/include/on_client_gone_pb.hrl").
 -include_lib("vmq_proto/include/on_client_wakeup_pb.hrl").
 -include_lib("vmq_proto/include/on_session_expired_pb.hrl").
+-include_lib("vmq_proto/include/on_message_drop_pb.hrl").
 -include_lib("vmq_proto/include/any_pb.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
@@ -155,6 +156,21 @@ encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRet
             payload = Payload,
             retain = IsRetain,
             timestamp = convert_timestamp(Timestamp)
+        })
+    );
+encode(
+    {on_message_drop, Timestamp, {MP, ClientId, QoS, Topic, Payload, Reason}}
+) ->
+    encode_envelope(
+        "OnMessageDrop",
+        on_message_drop_pb:encode_msg(#'eventssidecar.v1.OnMessageDrop'{
+            client_id = ClientId,
+            mountpoint = MP,
+            qos = QoS,
+            topic = Topic,
+            payload = Payload,
+            timestamp = convert_timestamp(Timestamp),
+            reason = atom_to_list(Reason)
         })
     );
 encode({on_client_wakeup, Timestamp, {MP, ClientId}}) ->

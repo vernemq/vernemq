@@ -18,6 +18,7 @@
 -behaviour(on_client_gone_hook).
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
+-behaviour(on_message_drop_hook).
 
 -export([
     on_register/4,
@@ -30,7 +31,8 @@
     on_client_offline/2,
     on_client_gone/2,
     on_session_expired/1,
-    on_delivery_complete/7
+    on_delivery_complete/7,
+    on_message_drop/3
 ]).
 
 %% API
@@ -337,6 +339,21 @@ on_client_gone(SubscriberId, Reason) ->
 on_session_expired(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(on_session_expired, {MP, ClientId}).
+
+-spec on_message_drop(subscriber_id(), fun(), reason()) -> 'next'.
+on_message_drop(SubscriberId, Fun, Reason) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    case Fun() of
+        {Topic, QoS, Payload, _Props} ->
+            send_event(
+                on_message_drop, {MP, ClientId, QoS, unword(Topic), Payload, Reason}
+            );
+        _ ->
+            lager:error("unexpected pattern in on_message_drop hook for ~p due to reason ~p", [
+                SubscriberId, Reason
+            ]),
+            next
+    end.
 
 %%%===================================================================
 %%% Internal functions
