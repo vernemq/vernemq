@@ -108,6 +108,8 @@
 -define(METRIC_SOCKET_OPEN, socket_open).
 -define(METRIC_SOCKET_CLOSE, socket_close).
 -define(METRIC_SOCKET_CLOSE_TIMEOUT, socket_close_timeout).
+-define(METRIC_WEB_SOCKET_OPEN, web_socket_open).
+-define(METRIC_WEB_SOCKET_CLOSE, web_socket_close).
 -define(METRIC_SOCKET_ERROR, socket_error).
 -define(METRIC_BYTES_RECEIVED, bytes_received).
 -define(METRIC_BYTES_SENT, bytes_sent).

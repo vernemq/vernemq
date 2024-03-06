@@ -25,6 +25,8 @@
     incr_socket_open/0,
     incr_socket_close/0,
     incr_socket_close_timeout/0,
+    incr_web_socket_open/0,
+    incr_web_socket_close/0,
     incr_socket_error/0,
     incr_bytes_received/1,
     incr_bytes_sent/1,
@@ -161,6 +163,12 @@ incr_socket_close() ->
 
 incr_socket_close_timeout() ->
     incr_item(?METRIC_SOCKET_CLOSE_TIMEOUT, 1).
+
+incr_web_socket_open() ->
+    incr_item(?METRIC_WEB_SOCKET_OPEN, 1).
+
+incr_web_socket_close() ->
+    incr_item(?METRIC_WEB_SOCKET_CLOSE, 1).
 
 incr_socket_error() ->
     incr_item(?METRIC_SOCKET_ERROR, 1).
@@ -1325,6 +1333,20 @@ counter_entries_def() ->
             socket_close,
             socket_close,
             <<"The number of times an MQTT socket has been closed.">>
+        ),
+        m(
+            counter,
+            [],
+            web_socket_open,
+            web_socket_open,
+            <<"The number of times an MQTT connection over web-socket has been opened.">>
+        ),
+        m(
+            counter,
+            [],
+            web_socket_close,
+            web_socket_close,
+            <<"The number of times an MQTT connection over web-socket has been closed.">>
         ),
         m(
             counter,
@@ -2929,7 +2951,9 @@ met2idx({?MQTT_DISONNECT, ?REASON_UNEXPECTED_FRAME_TYPE}) -> 346;
 met2idx({?MQTT_DISONNECT, ?REASON_EXIT_SIGNAL_RECEIVED}) -> 347;
 met2idx({?MQTT_DISONNECT, ?REASON_TCP_CLOSED}) -> 348;
 met2idx({?MQTT_DISONNECT, ?REASON_UNSPECIFIED}) -> 349;
-met2idx(shared_subscription_group_publish_attempt_failed) -> 350.
+met2idx(shared_subscription_group_publish_attempt_failed) -> 350;
+met2idx(?METRIC_WEB_SOCKET_OPEN) -> 351;
+met2idx(?METRIC_WEB_SOCKET_CLOSE) -> 352.
 
 -ifdef(TEST).
 clear_stored_rates() ->

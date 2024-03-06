@@ -81,9 +81,11 @@ init(Req, Opts) ->
 
 websocket_init({error, unsupported_protocol}) ->
     _ = vmq_metrics:incr_socket_open(),
+    _ = vmq_metrics:incr_web_socket_open(),
     {stop, #state{fsm_state = terminated}};
 websocket_init(State) ->
     _ = vmq_metrics:incr_socket_open(),
+    _ = vmq_metrics:incr_web_socket_open(),
     {ok, State, hibernate}.
 
 websocket_handle(_, #state{fsm_state = terminated} = State) ->
@@ -141,10 +143,12 @@ websocket_info(_Info, State) ->
 
 terminate(_Reason, _Req, #state{fsm_state = terminated}) ->
     _ = vmq_metrics:incr_socket_close(),
+    _ = vmq_metrics:incr_web_socket_close(),
     ok;
 terminate(_Reason, _Req, #state{fsm_mod = FsmMod, fsm_state = FsmState}) ->
     _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState),
     _ = vmq_metrics:incr_socket_close(),
+    _ = vmq_metrics:incr_web_socket_close(),
     ok.
 
 %% Internal
