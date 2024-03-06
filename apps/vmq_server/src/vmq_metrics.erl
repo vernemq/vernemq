@@ -102,7 +102,8 @@
     incr_shared_subscription_group_publish_attempt_failed/0,
 
     incr_events_sampled/2,
-    incr_events_dropped/2
+    incr_events_dropped/2,
+    update_config_version_metric/2
 ]).
 
 -export([
@@ -133,6 +134,7 @@
 -define(TIMER_TABLE, vmq_metrics_timers).
 -define(TOPIC_LABEL_TABLE, topic_labels).
 -define(EVENTS_SAMPLING_TABLE, vmq_metrics_events_sampling).
+-define(CONFIG_VERION_TABLE, config_version_table).
 
 -record(state, {
     info = #{}
@@ -434,13 +436,14 @@ metrics(Opts) ->
     {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
     {TopicMetricsDefs, TopicMetricsValues} = topic_metrics(),
     {EventsSamplingMetricsDefs, EventsSamplingMetricsValues} = events_sampling_metrics(),
+    {ConfigVersionMetricsDefs, ConfigVersionMetricsValues} = config_version_metrics(),
 
     MetricDefs =
         metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++ TopicMetricsDefs ++
-            EventsSamplingMetricsDefs,
+            EventsSamplingMetricsDefs ++ ConfigVersionMetricsDefs,
     MetricValues =
         metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++ TopicMetricsValues ++
-            EventsSamplingMetricsValues,
+            EventsSamplingMetricsValues ++ ConfigVersionMetricsValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -666,6 +669,40 @@ incr_matched_topic(Name, Type, Qos) ->
         ]}
     ).
 
+config_version_metric_defs() ->
+    {Defs, _} = config_version_metrics(),
+    Defs.
+
+config_version_metrics() ->
+    ets:foldl(
+        fun({Metric, TotalCount}, {DefsAcc, ValsAcc}) ->
+            {UniqueId, MetricName, Description, Labels} = config_version_metric_name(Metric),
+            {[m(gauge, Labels, UniqueId, MetricName, Description) | DefsAcc], [
+                {UniqueId, TotalCount} | ValsAcc
+            ]}
+        end,
+        {[], []},
+        ?CONFIG_VERION_TABLE
+    ).
+
+-spec update_config_version_metric(
+    MetricName :: acl_version | complex_trie_version, Version :: list()
+) -> ok.
+update_config_version_metric(MetricName, Version) ->
+    Metric = {MetricName, [{version, Version}]},
+    case ets:lookup(?CONFIG_VERION_TABLE, Metric) of
+        [_] ->
+            ok;
+        _ ->
+            try
+                ets:match_delete(?CONFIG_VERION_TABLE, {{MetricName, '_'}, 1}),
+                ets:insert_new(?CONFIG_VERION_TABLE, {Metric, 1})
+            catch
+                _:_ ->
+                    lager:warning("couldn't initialize tables", [])
+            end
+    end.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -704,7 +741,7 @@ get_label_info() ->
             end,
             #{},
             metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs() ++
-                topic_metric_defs() ++ events_sampling_metric_defs()
+                topic_metric_defs() ++ events_sampling_metric_defs() ++ config_version_metric_defs()
         ),
     maps:to_list(LabelInfo).
 
@@ -744,6 +781,7 @@ init([]) ->
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?EVENTS_SAMPLING_TABLE, [named_table, public, {write_concurrency, true}]),
+    ets:new(?CONFIG_VERION_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
     case catch persistent_term:get(?MODULE) of
@@ -2937,3 +2975,7 @@ events_sampled_metric_name(H, C, SDType) ->
         "The number of events " ++ SDType ++ " due to sampling enabled."
     ),
     {[Name | Labels], Name, Description, Labels}.
+
+config_version_metric_name({MetricName, Labels}) ->
+    Description = list_to_binary("The current version of the config file."),
+    {[MetricName | Labels], MetricName, Description, Labels}.

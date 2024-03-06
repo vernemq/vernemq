@@ -26,7 +26,8 @@
     init/0,
     load_from_file/1,
     load_from_list/1,
-    check/5
+    check/5,
+    set_acl_version_metrics/1
 ]).
 
 -export([
@@ -208,6 +209,17 @@ init() ->
         end,
         ?TABLES
     ).
+
+set_acl_version_metrics(File) ->
+    case vmq_util:extract_version(File) of
+        Version when is_list(Version) ->
+            vmq_metrics:update_config_version_metric(acl_version, Version);
+        nomatch ->
+            vmq_metrics:update_config_version_metric(acl_version, "N/A");
+        {error, Reason} ->
+            error_logger:error_msg("can't load acl file ~p due to ~p", [File, Reason]),
+            ok
+    end.
 
 load_from_file(File) ->
     case file:open(File, [read, binary]) of

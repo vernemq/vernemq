@@ -11,7 +11,8 @@
 -export([
     ts/0,
     timed_measurement/4,
-    set_interval/2
+    set_interval/2,
+    extract_version/1
 ]).
 
 ts() ->
@@ -36,4 +37,19 @@ set_interval(Interval, Pid) ->
             IinMs = abs(I * 1000),
             NTRef = erlang:send_after(IinMs, Pid, reload),
             {IinMs, NTRef}
+    end.
+
+-spec extract_version(BinaryData :: binary()) -> string() | nomatch | {error, any()}.
+extract_version(File) ->
+    case file:read_file(File) of
+        {ok, BinaryData} when byte_size(BinaryData) > 0 ->
+            Line = hd(string:tokens(binary_to_list(BinaryData), "\n")),
+            case re:run(Line, "#\\s*(v\\d+\\.\\d+\\.\\d+)", [{capture, [1], list}]) of
+                {match, [Version]} -> Version;
+                nomatch -> nomatch
+            end;
+        {ok, _} ->
+            nomatch;
+        {error, Reason} ->
+            {error, Reason}
     end.

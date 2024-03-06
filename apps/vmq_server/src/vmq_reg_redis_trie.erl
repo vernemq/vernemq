@@ -136,6 +136,17 @@ fold_local_shared_subscriber_info(
         SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
     ).
 
+set_complex_trie_version_metrics(File) ->
+    case vmq_util:extract_version(File) of
+        Version when is_list(Version) ->
+            vmq_metrics:update_config_version_metric(complex_trie_version, Version);
+        nomatch ->
+            vmq_metrics:update_config_version_metric(complex_trie_version, "N/A");
+        {error, Reason} ->
+            lager:error("can't load complex topics trie acl file ~p due to ~p", [File, Reason]),
+            ok
+    end.
+
 load_from_file(File) ->
     case file:read_file(File) of
         {ok, BinaryData} ->
@@ -288,6 +299,7 @@ handle_info(
     reload, #state{file = File, interval = Interval} = State
 ) ->
     ok = load_from_file(File),
+    set_complex_trie_version_metrics(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -324,6 +336,7 @@ init_state(State) ->
     {ok, Interval} = application:get_env(vmq_server, complex_trie_reload_interval),
     {NewI, NewTRef} = vmq_util:set_interval(Interval, self()),
     ok = load_from_file(File),
+    set_complex_trie_version_metrics(File),
     State#state{status = ready, interval = NewI, timer = NewTRef, file = File}.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
@@ -416,6 +429,8 @@ trie_delete_path(MP, [{Node, Word, _} | RestPath]) ->
     end.
 
 -spec parse_topic_list(Topics :: [string()]) -> [[binary()]].
+parse_topic_list(["# " ++ _ | Topics]) ->
+    parse_topic_list(Topics);
 parse_topic_list(Topics) ->
     lists:foldl(
         fun(T, Acc) ->

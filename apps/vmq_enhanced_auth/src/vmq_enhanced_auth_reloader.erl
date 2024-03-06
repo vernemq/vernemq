@@ -113,6 +113,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(reload, #state{file = File, interval = Interval} = State) ->
     ok = vmq_enhanced_auth:load_from_file(File),
+    vmq_enhanced_auth:set_acl_version_metrics(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -153,5 +154,6 @@ init_state(State) ->
     {ok, Interval} = application:get_env(?APP, interval),
     ok = vmq_enhanced_auth:init(),
     ok = vmq_enhanced_auth:load_from_file(File),
+    vmq_enhanced_auth:set_acl_version_metrics(File),
     {NewI, NewTRef} = vmq_util:set_interval(Interval, self()),
     State#state{file = File, interval = NewI, timer = NewTRef}.
