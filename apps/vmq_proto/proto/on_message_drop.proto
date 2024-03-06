@@ -13,4 +13,5 @@ message OnMessageDrop {
     string topic = 5;
     bytes payload = 6;
     string reason = 7;
+    MatchedACL matched_acl = 8;
 }

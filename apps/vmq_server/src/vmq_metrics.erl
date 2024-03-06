@@ -640,10 +640,9 @@ incr_histogram_buckets(Metric, BucketOps) ->
             end
     end.
 
+-type metric_type() :: subscribe | publish | deliver | delivery_complete | message_drop.
 -spec incr_topic_counter(
-    Metric ::
-        {topic_matches, subscribe | publish | deliver | delivery_complete,
-            Labels :: [{atom(), atom() | list() | binary()}]}
+    Metric :: {topic_matches, metric_type(), Labels :: [{atom(), atom() | list() | binary()}]}
 ) -> ok.
 incr_topic_counter(Metric) ->
     try

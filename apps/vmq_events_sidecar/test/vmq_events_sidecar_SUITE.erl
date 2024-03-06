@@ -159,7 +159,7 @@ on_session_expired_test(_) ->
 on_message_drop_test(_) ->
     enable_hook(on_message_drop),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
+    [ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
     ok = exp_response(on_message_drop_ok),
     disable_hook(on_message_drop).
 

@@ -24,7 +24,9 @@
         % = 6, optional
         payload = <<>> :: iodata() | undefined,
         % = 7, optional
-        reason = <<>> :: unicode:chardata() | undefined
+        reason = <<>> :: unicode:chardata() | undefined,
+        % = 8, optional
+        matched_acl = undefined :: on_message_drop_pb:'eventssidecar.v1.MatchedACL'() | undefined
     }
 ).
 -endif.

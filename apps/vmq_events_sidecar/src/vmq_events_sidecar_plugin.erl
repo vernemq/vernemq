@@ -344,9 +344,9 @@ on_session_expired(SubscriberId) ->
 on_message_drop(SubscriberId, Fun, Reason) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     case Fun() of
-        {Topic, QoS, Payload, _Props} ->
+        {Topic, QoS, Payload, _Props, MatchedAcl} ->
             send_event(
-                on_message_drop, {MP, ClientId, QoS, unword(Topic), Payload, Reason}
+                on_message_drop, {MP, ClientId, QoS, unword(Topic), Payload, Reason, MatchedAcl}
             );
         _ ->
             lager:error("unexpected pattern in on_message_drop hook for ~p due to reason ~p", [

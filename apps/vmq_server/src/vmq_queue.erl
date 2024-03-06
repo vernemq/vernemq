@@ -1413,20 +1413,34 @@ maybe_set_expiry_ts(Msg) ->
 on_message_drop_hook(
     SubscriberId,
     #deliver{
-        msg = #vmq_msg{routing_key = RoutingKey, qos = QoS, payload = Payload, properties = Props}
+        msg = #vmq_msg{
+            routing_key = RoutingKey,
+            qos = QoS,
+            payload = Payload,
+            properties = Props,
+            acl_name = Name
+        }
     },
     Reason
 ) ->
+    vmq_metrics:incr_matched_topic(Name, message_drop, QoS),
     vmq_plugin:all(on_message_drop, [
-        SubscriberId, fun() -> {RoutingKey, QoS, Payload, Props} end, Reason
+        SubscriberId,
+        fun() -> {RoutingKey, QoS, Payload, Props, #matched_acl{name = Name}} end,
+        Reason
     ]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
     Promise = fun() ->
         case vmq_message_store:read(SubscriberId, MsgRef) of
             {ok, #vmq_msg{
-                routing_key = RoutingKey, qos = QoS, payload = Payload, properties = Props
+                routing_key = RoutingKey,
+                qos = QoS,
+                payload = Payload,
+                properties = Props,
+                acl_name = Name
             }} ->
-                {RoutingKey, QoS, Payload, Props};
+                vmq_metrics:incr_matched_topic(Name, message_drop, QoS),
+                {RoutingKey, QoS, Payload, Props, #matched_acl{name = Name}};
             _ ->
                 error
         end

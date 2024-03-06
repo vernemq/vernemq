@@ -159,7 +159,10 @@ encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRet
         })
     );
 encode(
-    {on_message_drop, Timestamp, {MP, ClientId, QoS, Topic, Payload, Reason}}
+    {on_message_drop, Timestamp,
+        {MP, ClientId, QoS, Topic, Payload, Reason, #matched_acl{
+            name = Name, pattern = Pattern
+        }}}
 ) ->
     encode_envelope(
         "OnMessageDrop",
@@ -170,7 +173,10 @@ encode(
             topic = Topic,
             payload = Payload,
             timestamp = convert_timestamp(Timestamp),
-            reason = atom_to_list(Reason)
+            reason = atom_to_list(Reason),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{
+                name = Name, pattern = Pattern
+            }
         })
     );
 encode({on_client_wakeup, Timestamp, {MP, ClientId}}) ->

@@ -194,7 +194,8 @@ on_message_drop(#'eventssidecar.v1.OnMessageDrop'{
              qos = 1,
              topic = ?TOPIC,
              payload = ?PAYLOAD,
-             reason = ?MESSAGE_DROP_REASON
+             reason = ?MESSAGE_DROP_REASON,
+             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}
             }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_message_drop_ok.

@@ -108,7 +108,8 @@ encode_msg(Msg, MsgName, Opts) ->
         qos = F4,
         topic = F5,
         payload = F6,
-        reason = F7
+        reason = F7,
+        matched_acl = F8
     },
     Bin,
     TrUserData
@@ -195,15 +196,32 @@ encode_msg(Msg, MsgName, Opts) ->
                     end
                 end
         end,
+    B7 =
+        if
+            F7 == undefined ->
+                B6;
+            true ->
+                begin
+                    TrF7 = id(F7, TrUserData),
+                    case is_empty_string(TrF7) of
+                        true -> B6;
+                        false -> e_type_string(TrF7, <<B6/binary, 58>>, TrUserData)
+                    end
+                end
+        end,
     if
-        F7 == undefined ->
-            B6;
+        F8 == undefined ->
+            B7;
         true ->
             begin
-                TrF7 = id(F7, TrUserData),
-                case is_empty_string(TrF7) of
-                    true -> B6;
-                    false -> e_type_string(TrF7, <<B6/binary, 58>>, TrUserData)
+                TrF8 = id(F8, TrUserData),
+                if
+                    TrF8 =:= undefined ->
+                        B7;
+                    true ->
+                        'e_mfield_eventssidecar.v1.OnMessageDrop_matched_acl'(
+                            TrF8, <<B7/binary, 66>>, TrUserData
+                        )
                 end
             end
     end.
@@ -274,6 +292,11 @@ encode_msg(Msg, MsgName, Opts) ->
 
 'e_mfield_eventssidecar.v1.OnMessageDrop_timestamp'(Msg, Bin, TrUserData) ->
     SubBin = 'encode_msg_google.protobuf.Timestamp'(Msg, <<>>, TrUserData),
+    Bin2 = e_varint(byte_size(SubBin), Bin),
+    <<Bin2/binary, SubBin/binary>>.
+
+'e_mfield_eventssidecar.v1.OnMessageDrop_matched_acl'(Msg, Bin, TrUserData) ->
+    SubBin = 'encode_msg_eventssidecar.v1.MatchedACL'(Msg, <<>>, TrUserData),
     Bin2 = e_varint(byte_size(SubBin), Bin),
     <<Bin2/binary, SubBin/binary>>.
 
@@ -444,53 +467,60 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         id(<<>>, TrUserData),
         id(<<>>, TrUserData),
         id(<<>>, TrUserData),
+        id(undefined, TrUserData),
         TrUserData
     ).
 
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_timestamp'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_client_id'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_mountpoint'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_qos'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_topic'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_payload'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnMessageDrop_reason'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _
+    <<66, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnMessageDrop_matched_acl'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _
 ) ->
     #'eventssidecar.v1.OnMessageDrop'{
         timestamp = F@_1,
@@ -499,80 +529,145 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         qos = F@_4,
         topic = F@_5,
         payload = F@_6,
-        reason = F@_7
+        reason = F@_7,
+        matched_acl = F@_8
     };
 'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'dg_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'dg_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 32 - 7 ->
     'dg_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'dg_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     Key = X bsl N + Acc,
     case Key of
         10 ->
             'd_field_eventssidecar.v1.OnMessageDrop_timestamp'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         18 ->
             'd_field_eventssidecar.v1.OnMessageDrop_client_id'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         26 ->
             'd_field_eventssidecar.v1.OnMessageDrop_mountpoint'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         32 ->
             'd_field_eventssidecar.v1.OnMessageDrop_qos'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         42 ->
             'd_field_eventssidecar.v1.OnMessageDrop_topic'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         50 ->
             'd_field_eventssidecar.v1.OnMessageDrop_payload'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         58 ->
             'd_field_eventssidecar.v1.OnMessageDrop_reason'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
+            );
+        66 ->
+            'd_field_eventssidecar.v1.OnMessageDrop_matched_acl'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
             );
         _ ->
             case Key band 7 of
                 0 ->
                     'skip_varint_eventssidecar.v1.OnMessageDrop'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                        Rest,
+                        0,
+                        0,
+                        Key bsr 3,
+                        F@_1,
+                        F@_2,
+                        F@_3,
+                        F@_4,
+                        F@_5,
+                        F@_6,
+                        F@_7,
+                        F@_8,
+                        TrUserData
                     );
                 1 ->
                     'skip_64_eventssidecar.v1.OnMessageDrop'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                        Rest,
+                        0,
+                        0,
+                        Key bsr 3,
+                        F@_1,
+                        F@_2,
+                        F@_3,
+                        F@_4,
+                        F@_5,
+                        F@_6,
+                        F@_7,
+                        F@_8,
+                        TrUserData
                     );
                 2 ->
                     'skip_length_delimited_eventssidecar.v1.OnMessageDrop'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                        Rest,
+                        0,
+                        0,
+                        Key bsr 3,
+                        F@_1,
+                        F@_2,
+                        F@_3,
+                        F@_4,
+                        F@_5,
+                        F@_6,
+                        F@_7,
+                        F@_8,
+                        TrUserData
                     );
                 3 ->
                     'skip_group_eventssidecar.v1.OnMessageDrop'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                        Rest,
+                        0,
+                        0,
+                        Key bsr 3,
+                        F@_1,
+                        F@_2,
+                        F@_3,
+                        F@_4,
+                        F@_5,
+                        F@_6,
+                        F@_7,
+                        F@_8,
+                        TrUserData
                     );
                 5 ->
                     'skip_32_eventssidecar.v1.OnMessageDrop'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                        Rest,
+                        0,
+                        0,
+                        Key bsr 3,
+                        F@_1,
+                        F@_2,
+                        F@_3,
+                        F@_4,
+                        F@_5,
+                        F@_6,
+                        F@_7,
+                        F@_8,
+                        TrUserData
                     )
             end
     end;
 'dg_read_field_def_eventssidecar.v1.OnMessageDrop'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _
 ) ->
     #'eventssidecar.v1.OnMessageDrop'{
         timestamp = F@_1,
@@ -581,17 +676,18 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         qos = F@_4,
         topic = F@_5,
         payload = F@_6,
-        reason = F@_7
+        reason = F@_7,
+        matched_acl = F@_8
     }.
 
 'd_field_eventssidecar.v1.OnMessageDrop_timestamp'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_timestamp'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_timestamp'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -613,17 +709,18 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_5,
         F@_6,
         F@_7,
+        F@_8,
         TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_client_id'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_client_id'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_client_id'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -632,17 +729,17 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_mountpoint'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_mountpoint'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_mountpoint'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -651,17 +748,17 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_qos'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_qos'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_qos'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = {
         begin
@@ -671,17 +768,17 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         Rest
     },
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_topic'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_topic'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_topic'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -690,17 +787,17 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_payload'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_payload'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_payload'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -709,17 +806,17 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnMessageDrop_reason'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnMessageDrop_reason'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'd_field_eventssidecar.v1.OnMessageDrop_reason'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, F@_8, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -728,57 +825,90 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, TrUserData
+    ).
+
+'d_field_eventssidecar.v1.OnMessageDrop_matched_acl'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnMessageDrop_matched_acl'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
+    );
+'d_field_eventssidecar.v1.OnMessageDrop_matched_acl'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, Prev, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bs:Len/binary, Rest2/binary>> = Rest,
+        {id('decode_msg_eventssidecar.v1.MatchedACL'(Bs, TrUserData), TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
+        RestF,
+        0,
+        0,
+        F,
+        F@_1,
+        F@_2,
+        F@_3,
+        F@_4,
+        F@_5,
+        F@_6,
+        F@_7,
+        if
+            Prev == undefined -> NewFValue;
+            true -> 'merge_msg_eventssidecar.v1.MatchedACL'(Prev, NewFValue, TrUserData)
+        end,
+        TrUserData
     ).
 
 'skip_varint_eventssidecar.v1.OnMessageDrop'(
-    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'skip_varint_eventssidecar.v1.OnMessageDrop'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'skip_varint_eventssidecar.v1.OnMessageDrop'(
-    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'skip_length_delimited_eventssidecar.v1.OnMessageDrop'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) when N < 57 ->
     'skip_length_delimited_eventssidecar.v1.OnMessageDrop'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     );
 'skip_length_delimited_eventssidecar.v1.OnMessageDrop'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'skip_group_eventssidecar.v1.OnMessageDrop'(
-    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'skip_32_eventssidecar.v1.OnMessageDrop'(
-    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'skip_64_eventssidecar.v1.OnMessageDrop'(
-    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnMessageDrop'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, TrUserData
     ).
 
 'decode_msg_google.protobuf.Timestamp'(Bin, TrUserData) ->
@@ -1136,7 +1266,8 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         qos = PFqos,
         topic = PFtopic,
         payload = PFpayload,
-        reason = PFreason
+        reason = PFreason,
+        matched_acl = PFmatched_acl
     },
     #'eventssidecar.v1.OnMessageDrop'{
         timestamp = NFtimestamp,
@@ -1145,7 +1276,8 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         qos = NFqos,
         topic = NFtopic,
         payload = NFpayload,
-        reason = NFreason
+        reason = NFreason,
+        matched_acl = NFmatched_acl
     },
     TrUserData
 ) ->
@@ -1188,6 +1320,17 @@ merge_msgs(Prev, New, MsgName, Opts) ->
             if
                 NFreason =:= undefined -> PFreason;
                 true -> NFreason
+            end,
+        matched_acl =
+            if
+                PFmatched_acl /= undefined, NFmatched_acl /= undefined ->
+                    'merge_msg_eventssidecar.v1.MatchedACL'(
+                        PFmatched_acl, NFmatched_acl, TrUserData
+                    );
+                PFmatched_acl == undefined ->
+                    NFmatched_acl;
+                NFmatched_acl == undefined ->
+                    PFmatched_acl
             end
     }.
 
@@ -1259,7 +1402,8 @@ verify_msg(Msg, MsgName, Opts) ->
         qos = F4,
         topic = F5,
         payload = F6,
-        reason = F7
+        reason = F7,
+        matched_acl = F8
     },
     Path,
     TrUserData
@@ -1292,6 +1436,10 @@ verify_msg(Msg, MsgName, Opts) ->
         F7 == undefined -> ok;
         true -> v_type_string(F7, [reason | Path], TrUserData)
     end,
+    if
+        F8 == undefined -> ok;
+        true -> 'v_submsg_eventssidecar.v1.MatchedACL'(F8, [matched_acl | Path], TrUserData)
+    end,
     ok;
 'v_msg_eventssidecar.v1.OnMessageDrop'(X, Path, _TrUserData) ->
     mk_type_error({expected_msg, 'eventssidecar.v1.OnMessageDrop'}, X, Path).
@@ -1317,6 +1465,11 @@ verify_msg(Msg, MsgName, Opts) ->
     ok;
 'v_msg_google.protobuf.Timestamp'(X, Path, _TrUserData) ->
     mk_type_error({expected_msg, 'google.protobuf.Timestamp'}, X, Path).
+
+-compile({nowarn_unused_function, 'v_submsg_eventssidecar.v1.MatchedACL'/3}).
+-dialyzer({nowarn_function, 'v_submsg_eventssidecar.v1.MatchedACL'/3}).
+'v_submsg_eventssidecar.v1.MatchedACL'(Msg, Path, TrUserData) ->
+    'v_msg_eventssidecar.v1.MatchedACL'(Msg, Path, TrUserData).
 
 -compile({nowarn_unused_function, 'v_msg_eventssidecar.v1.MatchedACL'/3}).
 -dialyzer({nowarn_function, 'v_msg_eventssidecar.v1.MatchedACL'/3}).
@@ -1444,6 +1597,14 @@ get_msg_defs() ->
             },
             #field{
                 name = reason, fnum = 7, rnum = 8, type = string, occurrence = optional, opts = []
+            },
+            #field{
+                name = matched_acl,
+                fnum = 8,
+                rnum = 9,
+                type = {msg, 'eventssidecar.v1.MatchedACL'},
+                occurrence = optional,
+                opts = []
             }
         ]},
         {{msg, 'google.protobuf.Timestamp'}, [
@@ -1500,7 +1661,15 @@ find_msg_def('eventssidecar.v1.OnMessageDrop') ->
         #field{name = qos, fnum = 4, rnum = 5, type = int32, occurrence = optional, opts = []},
         #field{name = topic, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []},
         #field{name = payload, fnum = 6, rnum = 7, type = bytes, occurrence = optional, opts = []},
-        #field{name = reason, fnum = 7, rnum = 8, type = string, occurrence = optional, opts = []}
+        #field{name = reason, fnum = 7, rnum = 8, type = string, occurrence = optional, opts = []},
+        #field{
+            name = matched_acl,
+            fnum = 8,
+            rnum = 9,
+            type = {msg, 'eventssidecar.v1.MatchedACL'},
+            occurrence = optional,
+            opts = []
+        }
     ];
 find_msg_def('google.protobuf.Timestamp') ->
     [
