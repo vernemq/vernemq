@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 %%
 -module(vmq_systree).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -184,7 +186,7 @@ handle_info(timeout, true) ->
             {noreply, false, 30000}
     end;
 handle_info(Info, State) ->
-    lager:warning("vmq_systree received unexpected message ~p~n", [Info]),
+    ?LOG_WARNING("vmq_systree received unexpected message ~p~n", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

@@ -17,6 +17,11 @@ cd $RUNNER_BASE_DIR
 # Identify the script name
 SCRIPT=`basename $0`
 
+mode="deamonize"
+if [ -n "$NOTIFY_SOCKET" ]; then
+    mode="bg"
+fi
+
 usage() {
 cat <<EOF
 Usage: $SCRIPT «command»
@@ -169,8 +174,22 @@ do_start() {
     HEART_COMMAND="$RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT start"
     export HEART_COMMAND
     mkdir -p $PIPE_DIR
-    $ERTS_PATH/run_erl -daemon $PIPE_DIR/ $RUNNER_LOG_DIR \
-        "exec $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT console" 2>&1
+
+    if [ "$mode" = "bg" ]; then
+        sh -c "nohup $ERTS_PATH/run_erl $PIPE_DIR/ $RUNNER_LOG_DIR \"exec $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT console\" 2>&1 & echo \$!" | {
+            read mainpid
+            if [ -n "$mainpid" ]; then
+                systemd-notify --pid=$mainpid
+            else
+                echo "Unable to retrieve PID of run_erl. Maybe it didn't start correctly?"
+                echo "systemd main pid not set."
+            fi
+        }
+    else
+        $ERTS_PATH/run_erl -daemon $PIPE_DIR/ $RUNNER_LOG_DIR \
+            "exec $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT console" 2>&1
+    fi
+
 
     if [ ! -z "$WAIT_FOR_PROCESS" ]; then
         # Wait for the node to come up. We can't just ping it because
@@ -326,6 +345,7 @@ case "$1" in
         PROGNAME=`echo $0 | sed 's/.*\///'`
         CMD="$NUMACTL $BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$RUNNER_SCRIPT \
              $CONFIG_ARGS \
+             $VERNEMQ_ERL_CONFIG $VERNEMQ_ERL_CONFIG_OVR \
             -pa $RUNNER_PATCH_DIR -- ${1+"$@"}"
         export EMU
         export ROOTDIR

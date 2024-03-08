@@ -3,9 +3,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("kernel/include/inet.hrl").
 
 -define(SWC_GROUP, test).
 -define(STORE_NAME, list_to_atom("vmq_swc_store_" ++ atom_to_list(?SWC_GROUP))).
@@ -14,21 +12,17 @@
 %% common_test callbacks
 %% ===================================================================
 
+suite() ->
+    [
+      %% If a test hangs, no need to wait for 30 minutes.
+      {timetrap, {minutes, 15}}
+    ].
+
 init_per_suite(Config) ->
-    lager:start(),
-    %% this might help, might not...
-    os:cmd("killall epmd"),
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    {ok, Hostname} = inet:gethostname(),
-    case net_kernel:start([list_to_atom("runner@"++Hostname), shortnames]) of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok
-    end,
-    lager:info("node name ~p", [node()]),
-    [{swc_group, ?SWC_GROUP}|Config].
+    Config0 = vmq_swc_test_utils:init_distribution(Config),
+    [{swc_group, ?SWC_GROUP}|Config0].
 
 end_per_suite(_Config) ->
-    application:stop(lager),
     _Config.
 
 init_per_group(rocksdb, Config) ->
@@ -56,16 +50,20 @@ init_per_testcase(Case, Config) ->
     init_per_testcase_(Case, Config, [electra, katana, flail, gargoyle]).
 
 init_per_testcase_(Case, Config, Nodenames) ->
-    Nodes = vmq_swc_test_utils:pmap(fun(N) ->
-                    vmq_swc_test_utils:start_node(N, Config, Case)
+    PeerNodes = vmq_swc_test_utils:pmap(fun(N) ->
+                    {ok, Peer, Node} = vmq_swc_test_utils:start_node(N, Config, Case),
+                    {Peer, Node}
             end, Nodenames),
+    {_Peers, Nodes} = lists:unzip(PeerNodes),
     {ok, _} = ct_cover:add_nodes(Nodes),
-    [{nodes, Nodes}|Config].
+    [{nodes, Nodes}, {peer_nodes, PeerNodes}|Config].
 
 end_per_testcase(basic_store_test, _Config) ->
     application:stop(vmq_swc);
-end_per_testcase(_, _Config) ->
-    vmq_swc_test_utils:pmap(fun(Node) ->ct_slave:stop(Node) end, [electra, katana, flail, gargoyle]),
+end_per_testcase(_, Config) ->
+    PeerNodes = proplists:get_value(peer_nodes, Config),
+    vmq_swc_test_utils:pmap(fun({Peer, Node}) -> vmq_swc_test_utils:stop_peer(Peer, Node) end,
+                            PeerNodes),
     ok.
 
 all() ->
@@ -113,6 +111,9 @@ basic_store_test(_Config) ->
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
+    ?assertEqual({0,0,true}, rpc:call(Node1, vmq_swc_plugin, history, [[test]])),
+    [?assertEqual({0,0,true}, rpc:call(Node, vmq_swc_plugin, history, [[test]]))
+    || Node <- OtherNodes],
     [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
@@ -244,13 +245,12 @@ siblings_test(Config) ->
     %% make sure we have siblings, but don't resolve them yet
     ok = wait_until_sibling(Nodes, {foo, bar}, baz),
     %% resolve the sibling
-    spork = get_metadata(Node1, {foo, bar}, baz, [{resolver, fun(_Object) ->
-                            spork end}, {allow_put, false}]),
+    ResolverFun = fun ?MODULE:resolver/1,
+    spork = get_metadata(Node1, {foo, bar}, baz, [{resolver, ResolverFun}, {allow_put, false}]),
     %% without allow_put set, all the siblings are still there...
     ok = wait_until_sibling(Nodes, {foo, bar}, baz),
     %% resolve the sibling and write it back
-    spork = get_metadata(Node1, {foo, bar}, baz, [{resolver, fun(_Object) ->
-                            spork end}, {allow_put, true}]),
+    spork = get_metadata(Node1, {foo, bar}, baz, [{resolver, ResolverFun}, {allow_put, true}]),
     %% check all the nodes see the resolution
     ok = wait_until_converged(Nodes, {foo, bar}, baz, spork),
     ok.
@@ -314,15 +314,13 @@ events_test(Config) ->
                                      lists:sort(vmq_swc_test_utils:get_cluster_members(Node))})
      || Node <- Nodes],
 
+    T = ets:new(test_swc_events, [named_table, public, {write_concurrency, true}]),
+
     Myself = node(),
-    T = ets:new(?MODULE, [public, {write_concurrency, true}]),
-    Fun = fun({updated, rand, Key, _OldValues, NewValues}) ->
-                  rpc:call(Myself, ets, insert, [T, {{node(), Key}, NewValues}]);
-             ({deleted, rand, Key, _OldValues}) ->
-                  rpc:call(Myself, ets, delete, [T, {node(), Key}])
-          end,
+    Fun = fun ?MODULE:event_subscribe/1,
     [begin
          SwcGroupConfig = config(Node),
+         rpc:call(Node, persistent_term, put, [main_test_node, Myself]),
          rpc:call(Node, vmq_swc_store, subscribe, [SwcGroupConfig, rand, Fun])
      end || Node <- Nodes],
 
@@ -331,14 +329,17 @@ events_test(Config) ->
                           ok = put_metadata(RandNode, rand, I, I, [])
                   end, lists:seq(1, 1000)),
 
-    ok = wait_until(fun() -> ets:info(T, size) == (length(Nodes) * 1000) end),
-    ct:pal("ETS table size after Put: ~p~n", [ets:info(T, size)]),
+    ok =
+        vmq_swc_test_utils:wait_until(fun() ->
+                      ets:info(test_swc_events, size) == length(Nodes) * 1000
+                   end, 60*2, 500),
+    ct:pal("ETS table size after Put: ~p~n", [ets:info(test_swc_events, size)]),
 
     lists:foreach(fun(I) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = delete_metadata(RandNode, rand, I)
                   end, lists:seq(1, 1000)),
-    ok = wait_until(fun() -> ets:info(T, size) == 0 end),
+    ok = vmq_swc_test_utils:wait_until(fun() -> ets:info(T, size) == 0 end, 60*2, 500),
     ct:pal("ETS table size after Delete 2: ~p~n", [ets:info(T, size)]),
     ok.
 
@@ -437,9 +438,6 @@ wait_until_converged(Nodes, Prefix, Key, ExpectedValue) ->
                   end, Nodes))
       end, 60*3, 500).
 
-wait_until(Fun) ->
-    vmq_swc_test_utils:wait_until(Fun, 5*100, 100).
-
 wait_until_causal_context(Nodes, Prefix, Key, PredicateFun) ->
     vmq_swc_test_utils:wait_until(
       fun() ->
@@ -449,7 +447,7 @@ wait_until_causal_context(Nodes, Prefix, Key, PredicateFun) ->
                                   Val = read(Node, Prefix, Key),
                                   PredicateFun(Node, Val)
                           end, Nodes))
-      end, 5*10, 100).
+      end, 60*2, 500).
 
 wait_until_sibling(Nodes, Prefix, Key) ->
     vmq_swc_test_utils:wait_until(fun() ->
@@ -481,3 +479,13 @@ dump(Node) ->
     Dump =  rpc:call(Node, vmq_swc_store, dump, [?STORE_NAME]),
     State = rpc:call(Node, sys, get_state, [vmq_swc_store]),
     io:format(user, "~p NC: ~p~nstate: ~p~n", [Node, Dump, State]).
+
+event_subscribe({updated, rand, Key, _OldValues, NewValues}) ->
+    MainNode = persistent_term:get(main_test_node),
+    rpc:call(MainNode, ets, insert, [test_swc_events, {{node(), Key}, NewValues}]);
+event_subscribe({deleted, rand, Key, _OldValues}) ->
+    MainNode = persistent_term:get(main_test_node),
+    rpc:call(MainNode, ets, delete, [test_swc_events, {node(), Key}]).
+
+resolver(_Object) ->
+    spork.

@@ -1,5 +1,6 @@
 %% Copyright (c) 2011 Basho Technologies, Inc.  All Rights Reserved.
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
@@ -17,6 +18,7 @@
 -module(vmq_sysmon_handler).
 
 -behaviour(gen_event).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([add_handler/0]).
@@ -94,14 +96,14 @@ handle_event({monitor, Pid, Type, Info}, State = #state{timer_ref = TimerRef}) -
     %% Reset the inactivity timeout
     NewTimerRef = reset_timer(TimerRef),
     {Fmt, Args} = format_pretty_proc_info(Pid, almost_current_function),
-    lager:info(
+    ?LOG_INFO(
         "monitor ~w ~w " ++ Fmt ++ " ~w",
         [Type, Pid] ++ Args ++ [Info]
     ),
     {ok, State#state{timer_ref = NewTimerRef}};
 handle_event(Event, State = #state{timer_ref = TimerRef}) ->
     NewTimerRef = reset_timer(TimerRef),
-    lager:info("monitor got ~p", [Event]),
+    ?LOG_INFO("monitor got ~p", [Event]),
     {ok, State#state{timer_ref = NewTimerRef}}.
 
 %%--------------------------------------------------------------------
@@ -142,7 +144,7 @@ handle_info(inactivity_timeout, State) ->
     %% so hibernate to free up resources.
     {ok, State, hibernate};
 handle_info(Info, State) ->
-    lager:info("handle_info got ~p", [Info]),
+    ?LOG_INFO("handle_info got ~p", [Info]),
     {ok, State}.
 
 %%--------------------------------------------------------------------

@@ -1,3 +1,18 @@
+%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
 -module(vmq_server_cmd).
 -export([
     node_start/0,
@@ -5,6 +20,7 @@
     node_status/0,
     node_join/1,
     node_leave/1,
+    node_leave/3,
     node_upgrade/0,
     node_upgrade/1,
     set_config/2,
@@ -46,6 +62,22 @@ node_leave(Node) ->
             "node=" ++
                 atom_to_list(Node),
             "--kill_sessions"
+        ],
+        false
+    ).
+
+% for tests
+node_leave(Node, Interval, Timeout) ->
+    vmq_server_cli:command(
+        [
+            "vmq-admin",
+            "cluster",
+            "leave",
+            "node=" ++
+                atom_to_list(Node),
+            "--kill_sessions",
+            "-i" ++ integer_to_list(Interval),
+            "-t" ++ integer_to_list(Timeout)
         ],
         false
     ).

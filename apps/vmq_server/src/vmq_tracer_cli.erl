@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -62,13 +63,6 @@ trace_client_cmd() ->
                     Text = clique_status:text(trace_client_usage()),
                     [clique_status:alert([Text])];
                 CId ->
-                    %% the group leader comes from the calling node
-                    %% as this is invoked via the rpc
-                    %% mechanism. Monitoring it ensures that this
-                    %% process is notified when the calling node
-                    %% and group_leader are terminated (user
-                    %% pressing ^C)
-                    _MRef = monitor(process, group_leader()),
                     TOpts =
                         #{
                             io_server => erlang:group_leader(),
@@ -95,10 +89,18 @@ trace_client_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 trace_loop() ->
-    receive
-        {'DOWN', _MRef, _, _, _} ->
+    %% the group leader comes from the calling node
+    %% as this is invoked via the rpc
+    %% mechanism. Attempting to read from the group leader
+    %% ensures that this process is notified when the calling node
+    %% and group_leader are terminated (user
+    %% pressing ^C or pipe being closed)
+    case io:get_chars(group_leader(), "", 1) of
+        eof ->
             ok;
-        _ ->
+        {error, _Desc} ->
+            ok;
+        _Data ->
             trace_loop()
     end.
 

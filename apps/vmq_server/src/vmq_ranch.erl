@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_ranch).
 -include("vmq_server.hrl").
 -behaviour(ranch_protocol).
+-include_lib("kernel/include/logger.hrl").
 
 %% API.
 -export([start_link/4, start_link/3]).
@@ -62,32 +64,31 @@ init(Ref, Parent, Transport, Opts) ->
             CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
             case CfgBufSizes of
                 undefined ->
-                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                    setopts(MaskedSocket, [{buffer, BufSize}]);
+                    case getopts(MaskedSocket, [sndbuf, recbuf, buffer]) of
+                        {error, Reason} ->
+                            %% If the socket already closed we don't want to
+                            %% go through teardown, because no session was initialized
+                            ?LOG_DEBUG("getopts error, socket already closed: ~p", [Reason]);
+                        {ok, BufSizes} ->
+                            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+                            setopts(MaskedSocket, [{buffer, BufSize}]),
+                            start_accepting_messages(
+                                MaskedSocket, FsmState, FsmMod, Transport, Parent
+                            )
+                    end;
                 [SndBuf, RecBuf, Buffer] ->
-                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
-            end,
-            %% start accepting messages
-            active_once(MaskedSocket),
-            process_flag(trap_exit, true),
-            _ = vmq_metrics:incr_socket_open(),
-            loop(#st{
-                socket = MaskedSocket,
-                fsm_state = FsmState,
-                fsm_mod = FsmMod,
-                proto_tag = Transport:messages(),
-                parent = Parent
-            });
+                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
+                    start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
+            end;
         {error, enotconn} ->
             %% If the client already disconnected we don't want to
             %% know about it - it's not an error.
             ok;
         {error, {proxy_protocol_error, Error}} ->
-            lager:warning("Proxy Protocol Error: ~p~n", [Error]),
+            ?LOG_WARNING("Proxy Protocol Error: ~p~n", [Error]),
             ok;
         {error, Reason} ->
-            lager:debug("could not get socket peername: ~p", [Reason]),
+            ?LOG_DEBUG("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
             %% listener to crash just because this socket had an
             %% error.
@@ -143,6 +144,18 @@ peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
             {ok, {Peer, Opts}}
     end.
 
+start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
+    active_once(MaskedSocket),
+    process_flag(trap_exit, true),
+    _ = vmq_metrics:incr_socket_open(),
+    loop(#st{
+        socket = MaskedSocket,
+        fsm_state = FsmState,
+        fsm_mod = FsmMod,
+        proto_tag = Transport:messages(),
+        parent = Parent
+    }).
+
 mask_socket(ranch_tcp, Socket) -> Socket;
 mask_socket(vmq_ranch_proxy_protocol, Socket) -> vmq_ranch_proxy_protocol:get_csocket(Socket);
 mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
@@ -166,14 +179,17 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(#st{socket = Socket}, Reason) ->
+teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("session normally stopped", []);
+            ?LOG_DEBUG("session normally stopped", []);
         shutdown ->
-            lager:debug("session stopped due to shutdown", []);
+            ?LOG_DEBUG("session stopped due to shutdown", []);
+        keep_alive_timeout ->
+            ?LOG_DEBUG("session stopped due to keep_alive_timeout", []);
         _ ->
-            lager:warning("session stopped abnormally due to '~p'", [Reason])
+            SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+            ?LOG_WARNING("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
@@ -249,13 +265,13 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = Fsm
                 buffer = Rest
             });
         {error, Reason, Out} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),
             {exit, Reason, State#st{pending = [Pending | Out]}};
         {error, Reason} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),
@@ -323,7 +339,7 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
         0 ->
             State#st{pending = []};
         NrOfBytes ->
-            case port_cmd(Socket, Pending) of
+            case tcp_send(Socket, Pending) of
                 ok ->
                     _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
                     State#st{pending = []};
@@ -350,16 +366,16 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
 %% Also note that the port has bounded buffers and port_command blocks
 %% when these are full. So the fact that we process the result
 %% asynchronously does not impact flow control.
-port_cmd(Socket, Data) ->
+tcp_send(Socket, Data) ->
     try
-        port_cmd_(Socket, Data),
+        tcp_send_(Socket, Data),
         ok
     catch
         error:Error ->
             {error, Error}
     end.
 
-port_cmd_({ssl, Socket}, Data) ->
+tcp_send_({ssl, Socket}, Data) ->
     case ssl:send(Socket, Data) of
         ok ->
             self() ! {inet_reply, Socket, ok},
@@ -367,8 +383,16 @@ port_cmd_({ssl, Socket}, Data) ->
         {error, Reason} ->
             erlang:error(Reason)
     end;
-port_cmd_(Socket, Data) ->
+tcp_send_(Socket, Data) ->
+    do_tcp_send(Socket, Data).
+
+-if(?OTP_RELEASE >= 26).
+do_tcp_send(Socket, Data) ->
+    gen_tcp:send(Socket, Data).
+-else.
+do_tcp_send(Socket, Data) ->
     erlang:port_command(Socket, Data).
+-endif.
 
 system_continue(_, _, State) ->
     loop(State).

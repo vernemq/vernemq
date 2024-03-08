@@ -26,8 +26,19 @@ function auth_on_register(reg)
        return true
     end
     assert(reg.username == "test-user")
-    assert(reg.password == "test-password")
+    pwd = obf.decrypt(reg.password)
+    assert(pwd == "test-password")
+
+    -- test encryption / decryption
+    pwdEncrypted = obf.encrypt(pwd)
+    assert(pwdEncrypted ~= "test-password")
+    pwdDecrypted = obf.decrypt(pwdEncrypted)
+    assert(pwd == "test-password")
+
     assert(reg.clean_session == true)
+    if reg.client_id == "change-modifiers-id" then
+       return {max_connection_lifetime = 4711, max_message_size = 1001}
+    end
     if reg.client_id == "changed-subscriber-id" then
          -- we must change subscriber_id
         print("auth_on_register changed subscriber_id called")
@@ -128,7 +139,16 @@ function on_deliver(pub)
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
     assert(pub.payload == "hello world")
-    assert(pub.retain == false)
+    if (pub.retain == true) then
+      properties = pub.properties
+      assert(properties.p_correlation_data == "correlation_data")
+      assert(properties.p_response_topic == "response/topic")
+      assert(properties.p_payload_format_indicator == "utf8")
+      assert(properties.p_content_type == "content_type")
+      assert(properties.p_user_property[1].k1 == "v1")
+      assert(properties.p_user_property[2].k2 == "v2")
+    end
+ 
     print("on_deliver called")
     return true
 end
@@ -193,7 +213,8 @@ function auth_on_register_m5(reg)
                    p_session_expiry_interval = 10}}
     end
     assert(reg.username == "test-user")
-    assert(reg.password == "test-password")
+    pwd = obf.decrypt(reg.password)
+    assert(pwd == "test-password")
     assert(reg.clean_start == true)
     if reg.client_id == "changed-subscriber-id" then
         -- we must change subscriber_id
@@ -202,7 +223,7 @@ function auth_on_register_m5(reg)
     elseif reg.client_id == "changed-username" then
        -- we must change username
        print("auth_on_register_m5 changed username called")
-       return {username = "override-username"} 
+       return {username = "override-username"}
     else
         print("auth_on_register_m5 called")
         return validate_client_id(reg.client_id)

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_cluster_mon).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API functions
 -export([start_link/0]).
@@ -122,11 +124,11 @@ handle_info(timeout, State) ->
     vmq_peer_service:add_event_handler(vmq_cluster, []),
     {noreply, State};
 handle_info({nodedown, Node}, State) ->
-    lager:warning("cluster node ~p DOWN", [Node]),
+    ?LOG_WARNING("cluster node ~p DOWN", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({nodeup, Node}, State) ->
-    lager:info("cluster node ~p UP", [Node]),
+    ?LOG_INFO("cluster node ~p UP", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({gen_event_EXIT, vmq_cluster, _}, State) ->

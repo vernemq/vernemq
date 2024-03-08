@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -17,7 +18,8 @@
     start/0,
     start_no_auth/0,
     start_no_auth/1,
-    stop/0
+    stop/0,
+    stop/1
 ]).
 
 -spec start_no_auth() -> 'ok'.
@@ -50,6 +52,7 @@ start() ->
 
 -spec stop() -> 'ok'.
 stop() ->
+    vmq_ranch_config:stop_all_mqtt_listeners(true),
     application:stop(vmq_server),
     wait_until_metadata_has_stopped(),
     _ = [
@@ -64,8 +67,27 @@ stop() ->
             ranch,
             crypto,
             ssl,
-            os_mon,
-            lager
+            os_mon
+        ]
+    ],
+    ok.
+
+stop(no_wait) ->
+    vmq_ranch_config:stop_all_mqtt_listeners(true),
+    application:stop(vmq_server),
+    _ = [
+        application:stop(App)
+     || App <- [
+            vmq_plugin,
+            riak_sysmon,
+            clique,
+            asn1,
+            public_key,
+            cowboy,
+            ranch,
+            crypto,
+            ssl,
+            os_mon
         ]
     ],
     ok.

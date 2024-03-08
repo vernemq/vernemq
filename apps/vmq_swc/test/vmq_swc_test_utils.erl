@@ -3,6 +3,7 @@
 -export([
     get_cluster_members/1,
     pmap/2,
+    init_distribution/1,
     wait_until/3,
     wait_until_left/2,
     wait_until_joined/2,
@@ -11,7 +12,9 @@
     wait_until_connected/2,
     start_node/3,
     partition_cluster/2,
-    heal_cluster/2
+    heal_cluster/2,
+    start_peer/2,
+    stop_peer/2
     ]).
 get_cluster_members(Node) ->
     Config = rpc:call(Node, vmq_swc, config, [test]),
@@ -77,25 +80,15 @@ wait_until_connected(Node1, Node2) ->
         end, 60*2, 500).
 
 start_node(Name, Config, Case) ->
+    ct:pal("Start Node ~p for Case ~p~n", [Name, Case]),
+    %% Need to set the code path so the same modules are available in all the nodes
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
-    %% have the slave nodes monitor the runner node, so they can't outlive it
-    NodeConfig = [
-            {monitor_master, true},
-            {erl_flags, "-smp"},
-            {startup_functions, [
-                    {code, set_path, [CodePath]}
-                    ]}],
-    case ct_slave:start(Name, NodeConfig) of
-        {ok, Node} ->
-
+    case start_peer(Name, CodePath) of
+        {ok, Peer, Node} ->
             DbBackend = proplists:get_value(db_backend, Config),
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case, DbBackend]),
             ok = rpc:call(Node, application, load, [vmq_swc]),
-            ok = rpc:call(Node, application, load, [lager]),
-            ok = rpc:call(Node, application, set_env, [lager,
-                                                       log_root,
-                                                       NodeDir]),
             ok = rpc:call(Node, application, set_env, [vmq_swc,
                                                        data_dir,
                                                        NodeDir]),
@@ -112,18 +105,16 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_swc, exchange_batch_size, BatchSize]),
 
             SwcGroup = proplists:get_value(swc_group, Config, local),
-
-            {ok, _} = rpc:call(Node, vmq_swc, start, [SwcGroup]),
+            ok = rpc:call(Node, vmq_swc_plugin, plugin_start, [[SwcGroup]]),
             ok = wait_until(fun() ->
                             case rpc:call(Node, vmq_swc_peer_service_manager, get_local_state, []) of
                                 {ok, _Res} -> true;
                                 _ -> false
                             end
                     end, 60, 500),
-            Node;
-        {error, _Reason, Node} ->
-            wait_until_offline(Node),
-            start_node(Name, Config, Case)
+           {ok, Peer, Node};
+        Other ->
+            Other
     end.
 
 partition_cluster(ANodes, BNodes) ->
@@ -143,3 +134,82 @@ heal_cluster(ANodes, BNodes) ->
         end,
          [{Node1, Node2} || Node1 <- ANodes, Node2 <- BNodes]),
     ok.
+
+-if(?OTP_RELEASE >= 25).
+start_peer(NodeName, CodePath) ->
+    Opts =
+        #{name => NodeName,
+          wait_boot => infinity,
+          %% Prevent overlapping partitions - See:
+          %% https://www.erlang.org/doc/man/global.html#prevent_overlapping_partitions
+          args => ["-kernel", "prevent_overlapping_partitions", "false", "-pz" | CodePath]},
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    {ok, Peer, Node} = peer:start(Opts),
+    {ok, Peer, Node}.
+
+stop_peer(Peer, _Node) ->
+    %% peer:stop/1 is not idempotent
+    try
+        peer:stop(Peer)
+    catch exit:_:_Stacktrace ->
+        ok
+    end.
+
+- else .
+
+start_peer(NodeName, CodePath) ->
+    PathFlag = "-pz " ++ lists:concat(lists:join(" ", CodePath)),
+    %% smp for the eleveldb god
+    Opts =
+        [{monitor_master, true},
+         {boot_timeout, 30},
+         {init_timeout, 30},
+         {startup_timeout, 30},
+         {erl_flags, PathFlag},
+         {startup_functions, [{code, add_pathz, [CodePath]}]}],
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    case ct_slave:start(NodeName, Opts) of
+        {ok, Node} ->
+            {ok, Node, Node};
+        {error, already_started, Node} ->
+            ct:pal("Error starting node ~w, reason already_started, will retry", [Node]),
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        {error, started_not_connected, Node} ->
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        Other ->
+            Other
+    end.
+
+stop_peer(Node, _) ->
+    ct_slave:stop(Node),
+    ok.
+
+-endif.
+
+init_distribution(Config) ->
+    {ok, Hostname} = inet:gethostname(),
+    case erlang:is_alive() of
+        false ->
+            %% verify epmd running (otherwise next call fails)
+            erl_epmd:names() =:= {error, address}
+            andalso begin
+                        [] = os:cmd("epmd -daemon"),
+                        timer:sleep(500)
+                    end,
+            %% verify that epmd indeed started
+            {ok, _} = erl_epmd:names(),
+            %% start a random node name
+            NodeName =
+                list_to_atom("runner-"
+                             ++ integer_to_list(erlang:system_time(nanosecond))
+                             ++ "@"
+                             ++ Hostname),
+            {ok, Pid} = net_kernel:start([NodeName, shortnames]),
+            [{distribution, Pid} | Config];
+        true ->
+            Config
+    end.

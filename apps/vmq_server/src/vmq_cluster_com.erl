@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_cluster_com).
 -include("vmq_server.hrl").
 -behaviour(ranch_protocol).
+-include_lib("kernel/include/logger.hrl").
 
 %% API.
 -export([start_link/4, start_link/3]).
@@ -98,7 +100,7 @@ loop({exit, Reason, _State}) ->
     case Reason of
         shutdown -> ok;
         normal -> ok;
-        _ -> lager:warning("terminate due to ~p", [Reason])
+        _ -> ?LOG_WARNING("terminate due to ~p", [Reason])
     end.
 
 active_once({ssl, Socket}) ->
@@ -164,7 +166,7 @@ process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefine
             monitor(process, ClusterNodePid),
             process_bytes(Rest, <<>>, St);
         {error, not_found} ->
-            lager:debug("connect request from unknown cluster node ~p", [NodeName]),
+            ?LOG_DEBUG("connect request from unknown cluster node ~p", [NodeName]),
             {error, remote_node_not_available}
     end;
 process_bytes(Bytes, Buffer, St) ->
@@ -218,13 +220,13 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
                 end
             end);
         Unknown ->
-            lager:warning("unknown enqueue message: ~p", [Unknown])
+            ?LOG_WARNING("unknown enqueue message: ~p", [Unknown])
     end,
     process(Rest, St);
 process(<<>>, _) ->
     ok;
 process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
-    lager:warning("unknown message: ~p", [Cmd]),
+    ?LOG_WARNING("unknown message: ~p", [Cmd]),
     process(Rest, St).
 
 to_vmq_msgs(Msgs) ->

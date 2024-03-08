@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -31,5 +32,5 @@ gen_salt(_, St) ->
     {[list_to_binary(Salt)], St}.
 
 hashpw([Pass, Salt], St) when is_binary(Pass) and is_binary(Salt) ->
-    {ok, Hash} = bcrypt:hashpw(Pass, Salt),
+    {ok, Hash} = bcrypt:hashpw(Pass, binary:bin_to_list(Salt)),
     {[list_to_binary(Hash)], St}.

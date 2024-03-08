@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -72,46 +73,58 @@ extract_cn2([_ | Rest]) ->
 extract_cn2([]) ->
     undefined.
 
-opts(Opts) ->
+opts(certfiles, Opts) ->
     [
         {cacertfile, proplists:get_value(cafile, Opts)},
         {certfile, proplists:get_value(certfile, Opts)},
         {keyfile, proplists:get_value(keyfile, Opts)},
-        {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []))},
-        {eccs, proplists:get_value(eccs, Opts, ssl:eccs())},
-        {fail_if_no_peer_cert,
-            proplists:get_value(
-                require_certificate,
-                Opts,
-                false
-            )},
-        {verify,
-            case
-                proplists:get_value(require_certificate, Opts, false) or
-                    proplists:get_value(use_identity_as_username, Opts, false)
-            of
-                true -> verify_peer;
-                _ -> verify_none
-            end},
-        {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
-        {depth, proplists:get_value(depth, Opts, 1)},
-        {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
-        | []
-        %% TODO: support for flexible partial chain functions
-        % case support_partial_chain() of
-        %     true ->
-        %         [{partial_chain, fun([DerCert|_]) ->
-        %                                  {trusted_ca, DerCert}
-        %                          end}];
-        %     false ->
-        %         []
-        % end
-    ].
+        {password, proplists:get_value(keypasswd, Opts, "")}
+    ];
+opts(cert, Opts) ->
+    case {vmq_ssl_psk:psk_support_enabled(Opts), proplists:get_value(certfile, Opts)} of
+        {true, undefined} -> [];
+        {true, _} -> opts(certfiles, Opts);
+        {false, _} -> opts(certfiles, Opts)
+    end.
 
--spec ciphersuite_transform([string()]) -> [string()].
-ciphersuite_transform([]) ->
-    ciphers();
-ciphersuite_transform(CiphersString) when is_list(CiphersString) ->
+opts(Opts) ->
+    opts(cert, Opts) ++
+        vmq_ssl_psk:opts(Opts) ++
+        [
+            {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []), Opts)},
+            {eccs, proplists:get_value(eccs, Opts, ssl:eccs())},
+            {fail_if_no_peer_cert,
+                proplists:get_value(
+                    require_certificate,
+                    Opts,
+                    false
+                )},
+            {verify,
+                case
+                    proplists:get_value(require_certificate, Opts, false) or
+                        proplists:get_value(use_identity_as_username, Opts, false)
+                of
+                    true -> verify_peer;
+                    _ -> verify_none
+                end},
+            {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
+            {depth, proplists:get_value(depth, Opts, 1)},
+            {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
+            | []
+            %% TODO: support for flexible partial chain functions
+            % case support_partial_chain() of
+            %     true ->
+            %         [{partial_chain, fun([DerCert|_]) ->
+            %                                  {trusted_ca, DerCert}
+            %                          end}];
+            %     false ->
+            %         []
+            % end
+        ].
+
+ciphersuite_transform([], Opts) ->
+    ciphers() ++ vmq_ssl_psk:ciphers(Opts);
+ciphersuite_transform(CiphersString, _) when is_list(CiphersString) ->
     CiphersString.
 
 -spec verify_ssl_peer(

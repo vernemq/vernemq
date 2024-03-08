@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_bridge).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_mqtt_client).
 
@@ -91,7 +93,7 @@ on_connect({coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 on_connect_error(Reason, State) ->
-    lager:error("connection failed due to ~p", [Reason]),
+    ?LOG_ERROR("connection failed due to ~p", [Reason]),
     {ok, State}.
 
 on_disconnect(State) ->
@@ -104,9 +106,9 @@ on_subscribe(Topics, {coord, CoordPid} = State) ->
     ],
     case FailedTopics of
         [] ->
-            lager:info("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
+            ?LOG_INFO("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
         _ ->
-            lager:warning(
+            ?LOG_WARNING(
                 "Bridge Pid ~p had subscription failure codes in SUBACK for topics ~p~n", [
                     CoordPid, FailedTopics
                 ]
@@ -207,7 +209,7 @@ handle_info(
         subscribe_fun = SubscribeFun
     } = State
 ) ->
-    lager:info("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
+    ?LOG_INFO("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote = Subscriptions}};
@@ -236,7 +238,7 @@ handle_info(
     ),
     {noreply, State};
 handle_info(
-    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup},
+    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup, _Info},
     #state{subs_local = Subscriptions, client_pid = ClientPid} = State
 ) ->
     %% forward matching, locally published messages to the remote broker.
@@ -425,9 +427,14 @@ client_opts(tcp, Host, Port, Opts) ->
             {client, proplists:get_value(client_id, Opts)},
             {clean_session, proplists:get_value(cleansession, Opts, false)},
             {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
+            {persistent, proplists:get_value(persistent_queue, Opts)},
+            {queue_dir, proplists:get_value(queue_dir, Opts)},
+            {segment_size, proplists:get_value(segment_size, Opts)},
+            {out_batch_size, proplists:get_value(outgoing_batch_size, Opts)},
             {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
             {retry_interval, proplists:get_value(retry_interval, Opts)},
             {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
+            {queue_ratio, proplists:get_value(pubrel_queue_ratio, Opts)},
             {transport, {gen_tcp, []}}
             | case
                 {

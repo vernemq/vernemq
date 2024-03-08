@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -65,6 +66,11 @@ lookup(Endpoint, Hook, Args) ->
             Val
     end.
 
+remove_payload_from_modifiers(Modifiers) when is_list(Modifiers) ->
+    lists:keydelete(payload, 1, Modifiers);
+remove_payload_from_modifiers(Modifiers) when is_map(Modifiers) ->
+    maps:remove(payload, Modifiers).
+
 -spec insert(_, hook_name(), [any()], number(), maybe_improper_list()) -> 'ok'.
 insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers) ->
     SubscriberId =
@@ -74,7 +80,7 @@ insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers) ->
     %% cache that.
     Key = {Endpoint, Hook, filter_args([payload, port], Args)},
     %% do not store the payload modifier
-    Row = {Key, SubscriberId, ExpirationTs, lists:keydelete(payload, 1, Modifiers)},
+    Row = {Key, SubscriberId, ExpirationTs, remove_payload_from_modifiers(Modifiers)},
     true = ets:insert(?CACHE, Row),
     incr_entry(Endpoint, Hook),
     ok.

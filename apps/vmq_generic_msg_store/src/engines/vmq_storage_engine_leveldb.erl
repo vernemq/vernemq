@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_storage_engine_leveldb).
+-include_lib("kernel/include/logger.hrl").
 
 -export([open/2, close/1, write/2, read/2, fold/3, fold/4]).
 
@@ -108,7 +109,7 @@ init_state(DataRoot, Config) ->
     BS = proplists:get_value(block_size, OpenOpts, false),
     case BS /= false andalso SSTBS == false of
         true ->
-            lager:warning("eleveldb block_size has been renamed sst_block_size "
+            ?LOG_WARNING("eleveldb block_size has been renamed sst_block_size "
                           "and the current setting of ~p is being ignored.  "
                           "Changing sst_block_size is strongly cautioned "
                           "against unless you know what you are doing.  Remove "
@@ -119,7 +120,7 @@ init_state(DataRoot, Config) ->
     end,
 
     %% Generate a debug message with the options we'll use for each operation
-    lager:debug("datadir ~s options for LevelDB: ~p\n",
+    ?LOG_DEBUG("datadir ~s options for LevelDB: ~p\n",
                 [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
     #state { data_root = DataRoot,
              open_opts = OpenOpts,
@@ -142,7 +143,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
     DataRoot = State0#state.data_root,
     case eleveldb:open(DataRoot, State0#state.open_opts) of
         {ok, Ref} ->
-            lager:info("Opening LevelDB database at ~p~n", [DataRoot]),
+            ?LOG_INFO("Opening LevelDB database at ~p~n", [DataRoot]),
             {ok, State0#state { ref = Ref }};
         %% Check specifically for lock error, this can be caused if
         %% a crashed instance takes some time to flush leveldb information
@@ -151,7 +152,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
         {error, {db_open, OpenErr}=Reason} ->
             case lists:prefix("Corruption: truncated record ", OpenErr) of
                 true ->
-                    lager:info("VerneMQ LevelDB Message Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
+                    ?LOG_INFO("VerneMQ LevelDB Message Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
                             [DataRoot, OpenErr]),
                     case eleveldb:repair(DataRoot, []) of
                         ok -> % LevelDB will put unusable .log and MANIFEST files in 'lost' folder.
@@ -163,7 +164,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
                     case lists:prefix("IO error: lock ", OpenErr) of
                         true ->
                             SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                            lager:info("VerneMQ LevelDB Message Store backend retrying ~p in ~p ms after error ~s\n",
+                            ?LOG_INFO("VerneMQ LevelDB Message Store backend retrying ~p in ~p ms after error ~s\n",
                                         [DataRoot, SleepFor, OpenErr]),
                             timer:sleep(SleepFor),
                             open_db(Opts, State0, RetriesLeft - 1, Reason);

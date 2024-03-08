@@ -1,0 +1,20 @@
+# Please see the documentation for all configuration options:
+# https://docs.github.com/en/free-pro-team@latest/github/administering-a-repository/configuration-options-for-dependency-updates
+# https://docs.github.com/en/free-pro-team@latest/github/administering-a-repository/enabling-and-disabling-version-updates
+# https://docs.github.com/en/free-pro-team@latest/github/administering-a-repository/customizing-dependency-updates
+# https://docs.github.com/en/free-pro-team@latest/github/managing-security-vulnerabilities/configuring-github-dependabot-security-updates
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    # Rebases automatically on merge conflicts
+    rebase-strategy: "auto"

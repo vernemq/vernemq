@@ -1,0 +1,42 @@
+%% Copyright 2023-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
+{application, vmq_http_pub, [
+    {description, "VerneMQ HTTP REST Interface for Publising Messages"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {vmq_http_pub_app, []}},
+    {maintainers, []},
+    {licenses, ["Apache 2.0"]},
+    {links, []},
+    {env, [
+        {vmq_config_enabled, true},
+        {registry_mfa,
+            {vmq_reg, direct_plugin_exports, [
+                vmq_http_pub,
+                #{
+                    wait_till_ready => false,
+                    sg_policy => prefer_online_before_local,
+                    cap_publish => true,
+                    cap_subscribe => true,
+                    cap_unsubscribe => true
+                }
+            ]}},
+        {vmq_metrics_mfa, {vmq_http_pub_sub, metrics, []}}
+    ]}
+]}.

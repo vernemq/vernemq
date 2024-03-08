@@ -1,7 +1,8 @@
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2014 Helium Systems, Inc.  All Rights Reserved.
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
@@ -19,6 +20,7 @@
 %% -------------------------------------------------------------------
 
 -module(vmq_swc_peer_service_gossip).
+-include_lib("kernel/include/logger.hrl").
 
 -behavior(gen_server).
 
@@ -80,11 +82,11 @@ handle_info(gossip, State) ->
     erlang:send_after(?GOSSIP_INTERVAL, self(), gossip),
     {noreply, State};
 handle_info(_Info, State) ->
-    lager:info("Unexpected: ~p,~p.~n", [_Info, State]),
+    ?LOG_INFO("Unexpected: ~p,~p.~n", [_Info, State]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
-    lager:info("terminate ~p, ~p.~n", [_Reason, _State]),
+    ?LOG_INFO("terminate ~p, ~p.~n", [_Reason, _State]),
     {ok, _State}.
 
 code_change(_OldVsn, State, _Extra) ->

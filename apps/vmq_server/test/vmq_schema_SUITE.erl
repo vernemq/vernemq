@@ -250,12 +250,14 @@ allowed_protocol_versions_inheritance_test(_Config) ->
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 allowed_eccs_test(_Config) ->
+    [_ | Allowed_ECCS] = lists:usort(ssl:eccs()),
+    ECC_List = string:join([atom_to_list(A) || A <- Allowed_ECCS], ", "),
     Conf = [
-            {["listener","ssl","default", "eccs"], "sect163r1,sect163r2,secp160k1,secp160r1"},
+            {["listener","ssl","default", "eccs"], ECC_List},
             {["listener","ssl","default"],"127.0.0.1:8884"}
             | global_substitutions()
            ],
-    ExpectedECCs = lists:usort([sect163r1,sect163r2,secp160k1,secp160r1]),
+    ExpectedECCs = Allowed_ECCS,
     ExpectedECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
 
 default_eccs_test(_Config) ->
@@ -268,9 +270,11 @@ default_eccs_test(_Config) ->
     KnownECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
 
 invalid_eccs_test(_Config) ->
+    Allowed_ECCS_and_wrong = lists:usort(ssl:eccs() ++ [wrong]),
+    ECC_List = string:join([atom_to_list(A) || A <- Allowed_ECCS_and_wrong], ", "),
     Conf = [
             %% tcp/ssl/mqtt
-            {["listener","ssl","default","eccs"], "[sect163r1,sect163r2,wrong,secp160r1]"},
+            {["listener","ssl","default","eccs"], ECC_List},
             {["listener","ssl","default"],"127.0.0.1:8884"}
             | global_substitutions()
            ],

@@ -11,3 +11,73 @@
                                              {datatype, atom},
                                              hidden
                                             ]}.
+
+%% @doc Set the number of SWC groups to use per node.
+%% Default: 10
+{mapping, "vmq_swc.swc_groups", "vmq_swc.swc_groups", [
+                                             {default, 10},
+                                             {datatype, integer},
+                                             {validators, ["swc_group_size"]},
+                                             hidden
+                                            ]}.
+
+%% @doc Set the sync_interval to use in SWC exchanges.
+%% Value in milliseconds. Default: 5000
+{mapping, "vmq_swc.sync_interval", "vmq_swc.sync_interval", [
+                                             {default, 5000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+%% @doc Add variation to the sync_interval to use in SWC exchanges.
+%% Value in milliseconds. Default: 2500
+{mapping, "vmq_swc.sync_interval.leeway", "vmq_swc.sync_interval", [
+                                             {default, 2500},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+%% @doc Interval for periodic garbage collection on the DKMs.
+%% Value in milliseconds. Default: 15000
+{mapping, "vmq_swc.gc_interval", "vmq_swc.gc_interval", [
+                                             {default, 15000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+%% @doc Whether to do periodic GC or not. See also gc_interval.
+%% Default: on.
+{mapping, "vmq_swc.periodic_gc", "vmq_swc.periodic_gc", [
+                                             {default, on},
+                                             {datatype, flag},
+                                             hidden
+                                            ]}.
+%% @doc Enable SWC broadcast. Default: on
+{mapping, "vmq_swc.enable_broadcast", "vmq_swc.enable_broadcast", [
+                                             {default, on},
+                                             {datatype, flag},
+                                             hidden
+                                            ]}.
+%% @doc Exchange Batch size. Default: 100
+{mapping, "vmq_swc.exchange_batch_size", "vmq_swc.exchange_batch_size", [
+                                             {default, 100},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+
+%% @doc Prevent a node with pre-existing history from cluster
+%% join attempts. (self-check by joining node)
+{mapping, "vmq_swc.prevent_nonempty_join", "vmq_swc.prevent_nonempty_join", [
+                                             {default, on},
+                                             {datatype, flag},
+                                             hidden
+                                            ]}.
+
+{translation, "vmq_swc.sync_interval",
+ fun(Conf) ->
+  SyncInterval = cuttlefish:conf_get("vmq_swc.sync_interval", Conf),
+  Leeway = cuttlefish:conf_get("vmq_swc.sync_interval.leeway", Conf),
+  {SyncInterval, Leeway}
+  end}.
+
+{validator, "swc_group_size", "Set to a value between 1 and 100",
+ fun(Size) ->
+  (Size =< 100) and (Size > 0)
+ end}.

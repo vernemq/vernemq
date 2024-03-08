@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -12,6 +13,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(vmq_swc_dkm).
+
 -include("vmq_swc.hrl").
 
 %% The vmq_swc_dkm implements a high performant and scalable DotKeyMap (DKM).
@@ -61,17 +63,22 @@
     init/0,
     insert/4,
     mark_for_gc/2,
-    prune/3,
-    % testing
-    prune/4,
+    prune/3, prune/4,
     prune_for_peer/2,
     destroy/1,
-    test/0,
-    dump/1,
-    % used by test
-    dkm/1,
-    info/2
+    test/0
 ]).
+
+% testing
+-export([dkm/1, info/2, dump/1]).
+
+-ifdef(EUNIT).
+-define(PEERS(), []).
+-define(CHECKOLD(_OldId, _Peers), true).
+-else.
+-define(PEERS(), vmq_swc_peer_service_manager:get_actors_and_peers()).
+-define(CHECKOLD(OldId, Peers), lists:member(OldId, Peers)).
+-endif.
 
 -record(dkm, {
     latest = ets:new(?MODULE, [public]),
@@ -80,6 +87,7 @@
 }).
 
 -type dkm() :: #dkm{}.
+
 -export_type([dkm/0]).
 
 -spec init() -> dotkeymap().
@@ -90,33 +98,31 @@ info(DKM, object_count) ->
     ets:info(DKM#dkm.latest, size);
 info(DKM, tombstone_count) ->
     ets:info(DKM#dkm.gc_candidates, size);
-info(#dkm{latest = LT, latest_candidates = LTC, gc_candidates = GCT}, memory) ->
+info(
+    #dkm{
+        latest = LT,
+        latest_candidates = LTC,
+        gc_candidates = GCT
+    },
+    memory
+) ->
     ets:info(LT, memory) + ets:info(LTC, memory) + ets:info(GCT, memory).
 
-dump(#dkm{latest = LT, gc_candidates = GCT, latest_candidates = LTC}) ->
+dump(#dkm{
+    latest = LT,
+    gc_candidates = GCT,
+    latest_candidates = LTC
+}) ->
     #{
         latest => dump(LT),
         latest_candidates => dump(LTC),
         gc_candidates => dump(GCT)
     };
 dump(T) ->
-    ets:foldl(
-        fun(Obj, Acc) ->
-            [Obj | Acc]
-        end,
-        [],
-        T
-    ).
+    ets:foldl(fun(Obj, Acc) -> [Obj | Acc] end, [], T).
 
 dkm(#dkm{latest = LT, latest_candidates = LTC}) ->
-    LatestObjects =
-        ets:foldl(
-            fun({Key, Dot}, Acc) ->
-                maps:put(Dot, Key, Acc)
-            end,
-            #{},
-            LT
-        ),
+    LatestObjects = ets:foldl(fun({Key, Dot}, Acc) -> maps:put(Dot, Key, Acc) end, #{}, LT),
     ets:foldl(
         fun
             ({{_, _} = Dot, Key}, Acc) ->
@@ -129,14 +135,42 @@ dkm(#dkm{latest = LT, latest_candidates = LTC}) ->
     ).
 
 -spec insert(dotkeymap(), peer(), counter(), db_key()) -> [db_op()].
-insert(#dkm{latest = LT, gc_candidates = GCT} = DKM, Id, Cnt, Key) ->
+insert(
+    #dkm{
+        latest = LT,
+        latest_candidates = LTC,
+        gc_candidates = GCT
+    } =
+        DKM,
+    Id,
+    Cnt,
+    Key
+) ->
     Dot = {Id, Cnt},
     case ets:insert_new(LT, {Key, Dot}) of
         true ->
             [{dkm, sext:encode(Dot), Key}];
         false ->
+            Res = ets:lookup(LT, Key),
+            [{_, {OldId, _}}] = Res,
+            Peers = ?PEERS(),
+            CheckOld = ?CHECKOLD(OldId, Peers),
             ReplacedDots =
-                case ets:lookup(LT, Key) of
+                case Res of
+                    [{_, {OldId, _} = CurrentDot}] when CheckOld == false ->
+                        % remove possible GC candidate
+                        ets:delete(GCT, Key),
+                        ets:insert(LT, {Key, Dot}),
+
+                        case ets:lookup(LTC, Key) of
+                            [] ->
+                                % no candidate available, ignore this entry
+                                [CurrentDot];
+                            [{_, Dots}] ->
+                                ets:insert(LTC, [{Key, maps:put(Id, Cnt, Dots)}, {Dot, Key}]),
+                                ets:delete(LTC, CurrentDot),
+                                [CurrentDot]
+                        end;
                     [{_, {Id, CurrentCnt} = CurrentDot}] when Cnt > CurrentCnt ->
                         % remove possible GC candidate
                         ets:delete(GCT, Key),
@@ -173,7 +207,10 @@ insert(#dkm{latest = LT, gc_candidates = GCT} = DKM, Id, Cnt, Key) ->
     end.
 
 replace_candidate_or_gc(
-    #dkm{latest_candidates = LTC}, {Id, NewCnt} = Dot, {Id, OldCnt} = CurrentDot, Key
+    #dkm{latest_candidates = LTC},
+    {Id, NewCnt} = Dot,
+    {Id, OldCnt} = CurrentDot,
+    Key
 ) ->
     case ets:lookup(LTC, Key) of
         [] ->
@@ -198,15 +235,15 @@ replace_candidate_or_gc(
 insert_candidates(#dkm{latest_candidates = LTC}, Dot, CurrentDot, Key) ->
     case ets:lookup(LTC, Key) of
         [] ->
-            ets:insert(LTC, [
-                {Key, maps:from_list([Dot, CurrentDot])}, {Dot, Key}, {CurrentDot, Key}
-            ]),
+            ets:insert(
+                LTC,
+                [{Key, maps:from_list([Dot, CurrentDot])}, {Dot, Key}, {CurrentDot, Key}]
+            ),
             [];
         [{_, Dots}] ->
             {Dots0, NewDots0, UnusedDots0} = insert_candidate_dot(Dot, Dots, [], []),
-            {Dots1, NewDots1, UnusedDots1} = insert_candidate_dot(
-                CurrentDot, Dots0, NewDots0, UnusedDots0
-            ),
+            {Dots1, NewDots1, UnusedDots1} =
+                insert_candidate_dot(CurrentDot, Dots0, NewDots0, UnusedDots0),
             case NewDots1 of
                 [] ->
                     % latest candidates didn't change
@@ -233,8 +270,10 @@ insert_candidate_dot({Id, Cnt} = Dot, Dots, NewDots, UnusedDots) ->
 -spec mark_for_gc(dotkeymap(), db_key()) -> ok.
 mark_for_gc(#dkm{latest = LT, gc_candidates = GCT}, Key) ->
     case ets:lookup(LT, Key) of
-        [] -> ok;
-        _ -> ets:insert(GCT, {Key})
+        [] ->
+            ok;
+        _ ->
+            ets:insert(GCT, {Key})
     end,
     ok.
 
@@ -251,9 +290,7 @@ prune(#dkm{} = DKM, Watermark, DbOps) ->
 
 prune(#dkm{gc_candidates = GCT} = DKM, Id, Min, DbOps) ->
     ets:foldl(
-        fun({Key}, Acc) ->
-            prune_latest_dot(DKM, Key, Id, Min, Acc, true)
-        end,
+        fun({Key}, Acc) -> prune_latest_dot(DKM, Key, Id, Min, Acc, true) end,
         prune_candidates(DKM, Id, Min, DbOps),
         GCT
     ).
@@ -291,7 +328,16 @@ prune_candidates(#dkm{latest_candidates = LTC, latest = LT}, Id, Min, DbOps) ->
     end.
 
 prune_latest_dot(
-    #dkm{latest = LT, gc_candidates = GCT, latest_candidates = LTC}, Key, Id, Min, Acc, IsGC
+    #dkm{
+        latest = LT,
+        gc_candidates = GCT,
+        latest_candidates = LTC
+    },
+    Key,
+    Id,
+    Min,
+    Acc,
+    IsGC
 ) ->
     case ets:lookup(LT, Key) of
         [{_, {Id, CurrentCnt} = CurrentDot}] when CurrentCnt =< Min ->
@@ -301,11 +347,7 @@ prune_latest_dot(
                     ets:delete(LT, Key),
                     ets:delete(GCT, Key),
                     % no candidate available, this object can be deleted
-                    [
-                        {?DB_DKM, sext:encode(CurrentDot), ?DELETED},
-                        {?DB_OBJ, Key, ?DELETED}
-                        | Acc
-                    ];
+                    [{?DB_DKM, sext:encode(CurrentDot), ?DELETED}, {?DB_OBJ, Key, ?DELETED} | Acc];
                 _ ->
                     Acc
             end;
@@ -344,7 +386,4 @@ test() ->
     mark_for_gc(DKM, <<"hello">>),
     [] = prune(DKM, a, 1, []),
     [{?DB_DKM, Dot2, ?DELETED}] = prune(DKM, a, 2, []),
-    [
-        {?DB_DKM, Dot3, ?DELETED},
-        {?DB_OBJ, hello, ?DELETED}
-    ] = prune(DKM, b, 1, []).
+    [{?DB_DKM, Dot3, ?DELETED}, {?DB_OBJ, hello, ?DELETED}] = prune(DKM, b, 1, []).

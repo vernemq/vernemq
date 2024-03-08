@@ -1,7 +1,8 @@
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2014 Helium Systems, Inc.  All Rights Reserved.
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
@@ -19,6 +20,7 @@
 %% -------------------------------------------------------------------
 
 -module(vmq_swc_peer_service_manager).
+-include_lib("kernel/include/logger.hrl").
 
 -define(TBL, swc_cluster_state).
 
@@ -49,7 +51,7 @@ init() ->
                 ok
         catch
             error:badarg ->
-                lager:warning("Table ~p already exists", [?TBL])
+                ?LOG_WARNING("Table ~p already exists", [?TBL])
             %%TODO rejoin logic
         end,
     ok.
@@ -116,7 +118,7 @@ get_old_actor_from_state(Peer, State) ->
 actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
     [{K, Dots} || {K, Dots} <- Entries];
 actors({_Clock, Entries, _Deferred}) ->
-    lists:sort([Actor || {K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
+    lists:sort([Actor || {_K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
 
 %% @doc update cluster_state
 update_state(State) ->
@@ -160,7 +162,7 @@ write_state_to_disk(State) ->
         Dir ->
             File = filename:join(Dir, "cluster_state"),
             ok = filelib:ensure_dir(File),
-            lager:info(
+            ?LOG_INFO(
                 "writing state ~p to disk ~p",
                 [State, riak_dt_orswot:to_binary(State)]
             ),
@@ -177,7 +179,7 @@ write_old_actor_to_disk(Actor) ->
         Dir ->
             File = filename:join(Dir, "old_node_actor"),
             ok = filelib:ensure_dir(File),
-            lager:info(
+            ?LOG_INFO(
                 "writing (updated) old actor ~p to disk~n",
                 [Actor]
             ),
@@ -201,7 +203,7 @@ maybe_load_old_actor_from_disk() ->
                         )
                     ),
                     OldActor = binary_to_term(Bin),
-                    lager:debug("read old actor binary from disk: ~p ~n", [OldActor]),
+                    ?LOG_DEBUG("read old actor binary from disk: ~p ~n", [OldActor]),
                     ets:insert(?TBL, {old_actor, OldActor}),
                     ets:insert(?TBL, {actor, OldActor}),
                     write_old_actor_to_disk(OldActor);
@@ -222,9 +224,9 @@ delete_state_from_disk() ->
             ok = filelib:ensure_dir(File),
             case file:delete(File) of
                 ok ->
-                    lager:info("Leaving cluster, removed cluster_state");
+                    ?LOG_INFO("Leaving cluster, removed cluster_state");
                 {error, Reason} ->
-                    lager:info("Unable to remove cluster_state for reason ~p", [Reason])
+                    ?LOG_INFO("Unable to remove cluster_state for reason ~p", [Reason])
             end
     end.
 

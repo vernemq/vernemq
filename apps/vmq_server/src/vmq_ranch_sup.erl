@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Basel Switzerland (http://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -16,7 +17,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, active_mqtt_connections/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -26,6 +27,25 @@
 %%%===================================================================
 %%% API functions
 %%%===================================================================
+
+active_mqtt_connections() ->
+    lists:foldl(
+        fun
+            % Unix sockets will also be counted under "mqtt"
+            ({mqtt, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT + Active, WS};
+            ({mqtts, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT + Active, WS};
+            ({mqttws, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT, WS + Active};
+            ({mqttwss, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT, WS + Active};
+            (_, Sum) ->
+                Sum
+        end,
+        {0, 0},
+        vmq_ranch_config:listeners()
+    ).
 
 %%--------------------------------------------------------------------
 %% @doc

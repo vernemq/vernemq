@@ -18,6 +18,8 @@
 init_per_suite(_Config) ->
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
+    application:ensure_all_started(credentials_obfuscation),
+    credentials_obfuscation:set_secret(<<"Testing">>),
     vmq_plugin_mgr:enable_plugin(vmq_diversity),
     {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_diversity) ++ "/test/plugin_test.lua"),
     cover:start(),
@@ -36,6 +38,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [auth_on_register_test,
+     auth_on_register_obf_test,
      auth_on_publish_test,
      auth_on_subscribe_test,
      on_register_test,
@@ -75,8 +78,16 @@ auth_on_register_test(_) ->
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_subscriber_id(), username(), password(), true]),
+    {ok, [{max_message_size, 1001}, {max_connection_lifetime, 4711}]} = vmq_plugin:all_till_ok(auth_on_register,
+        [peer(), change_modifiers_id(), username(), password(), true]),
     {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_username(), username(), password(), true]).
+
+auth_on_register_obf_test(_) ->
+    {encrypted, Password} = credentials_obfuscation:encrypt(<<"test-password">>),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                      [peer(), allowed_subscriber_id(), username(), Password, true]).
+
 
 props() ->
     #{p_user_property => [{<<"key1">>, <<"val1">>}]}.
@@ -127,8 +138,22 @@ on_unsubscribe_test(_) ->
 
 on_deliver_test(_) ->
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false]).
+                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false, #{}]),
+    Args = [username(), allowed_subscriber_id(), 1, topic(), payload(), true,
+    #{?P_USER_PROPERTY =>
+            [{<<"k1">>, <<"v1">>},
+            {<<"k2">>, <<"v2">>}],
+        ?P_CORRELATION_DATA => <<"correlation_data">>,
+        ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
+        ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
+        ?P_CONTENT_TYPE => <<"content_type">>}],
+    
+     ok = vmq_plugin:all_till_ok(on_deliver,
+        [username(), allowed_subscriber_id(), 1, topic(), payload(), false, Args]).
 
+    
+    
+                    
 on_offline_message_test(_) ->
     [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id(), 2,
                                                  topic(), payload(), false]).
@@ -301,11 +326,14 @@ not_allowed_subscriber_id() ->
 changed_subscriber_id() ->
     {"", <<"changed-subscriber-id">>}.
 
+change_modifiers_id() ->
+    {"", <<"change-modifiers-id">>}.
+
 changed_username() ->
     {"", <<"changed-username">>}.
 
 username() -> <<"test-user">>.
-password() -> <<"test-password">>.
+password() -> credentials_obfuscation:encrypt(<<"test-password">>).
 topic() -> [<<"test">>, <<"topic">>].
 payload() -> <<"hello world">>.
 subopts() ->

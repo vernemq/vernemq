@@ -35,7 +35,7 @@ groups() ->
     [].
 
 all() ->
-    [%% bench_vmq_trie
+    [%bench_vmq_trie
     ].
 
 

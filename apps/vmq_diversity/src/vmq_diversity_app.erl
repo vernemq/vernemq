@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -18,6 +19,7 @@
 %%%-------------------------------------------------------------------
 
 -module('vmq_diversity_app').
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(application).
 
@@ -66,11 +68,11 @@ start(_StartType, _StartArgs) ->
                             filelib:wildcard(DataDir ++ "/*.lua")
                         );
                     false ->
-                        lager:warning("can't initialize Lua scripts using ~p", [DataDir])
+                        ?LOG_WARNING("can't initialize Lua scripts using ~p", [DataDir])
                 end,
                 lists:foreach(
                     fun({_Name, Script}) ->
-                        lager:info("enable script for ~p", [Script]),
+                        ?LOG_INFO("enable script for ~p", [Script]),
                         load_script(Script)
                     end,
                     application:get_env(vmq_diversity, user_scripts, [])
@@ -80,7 +82,7 @@ start(_StartType, _StartArgs) ->
                         case proplists:get_value(enabled, AuthScriptConfig, false) of
                             true ->
                                 Script = proplists:get_value(file, AuthScriptConfig),
-                                lager:info("enable auth script for ~p ~p", [M, Script]),
+                                ?LOG_INFO("enable auth script for ~p ~p", [M, Script]),
                                 load_script(Script);
                             false ->
                                 ignore
@@ -106,5 +108,5 @@ load_script(Script) ->
         {ok, _Pid} ->
             ok;
         {error, Reason} ->
-            lager:error("could not load script ~p due to ~p", [Script, Reason])
+            ?LOG_ERROR("could not load script ~p due to ~p", [Script, Reason])
     end.

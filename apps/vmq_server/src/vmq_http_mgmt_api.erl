@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_http_mgmt_api).
 -behaviour(vmq_http_config).
+-include_lib("kernel/include/logger.hrl").
 
 %% cowboy rest handler callbacks
 -export([
@@ -27,14 +29,8 @@
 ]).
 
 -export([
-    routes/0,
-    create_api_key/0,
-    add_api_key/1,
-    delete_api_key/1,
-    list_api_keys/0
+    routes/0
 ]).
-
--define(ENV_API_KEYS, http_mgmt_api_keys).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Cowboy REST Handler
@@ -59,16 +55,11 @@ options(Req0, State) ->
     {ok, cowboy_req:set_resp_headers(CorsHeaders, Req0), State}.
 
 is_authorized(Req, State) ->
-    case cowboy_req:parse_header(<<"authorization">>, Req) of
-        {basic, ApiKey, _} ->
-            case lists:member(ApiKey, list_api_keys()) of
-                true ->
-                    {true, Req, State};
-                false ->
-                    {{false, <<"Basic realm=\"VerneMQ\"">>}, Req, State}
-            end;
-        _ ->
-            {{false, <<"Basic realm=\"VerneMQ\"">>}, Req, State}
+    AuthMode = vmq_http_config:auth_mode(Req, vmq_http_mgmt_api),
+    case AuthMode of
+        "apikey" -> vmq_auth_apikey:is_authorized(Req, State, "mgmt");
+        "noauth" -> {true, Req, State};
+        _ -> {error, invalid_authentication_scheme}
     end.
 
 malformed_request(Req, State) ->
@@ -76,7 +67,7 @@ malformed_request(Req, State) ->
     QsVals = cowboy_req:parse_qs(Req),
     try validate_command(PathInfo, QsVals) of
         {error, V} ->
-            lager:error("malformed request ~p", [V]),
+            ?LOG_ERROR("malformed request ~p", [V]),
             {true, Req, State};
         M3 ->
             {false, Req, M3}
@@ -137,28 +128,3 @@ parse_command(Command) -> ["vmq-admin" | [binary_to_list(C) || C <- Command]].
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 routes() ->
     [{"/api/v1/[...]", ?MODULE, []}].
-
-create_api_key() ->
-    Chars = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
-    Size = size(Chars),
-    F = fun() -> element(rand:uniform(Size), Chars) end,
-    ApiKey = list_to_binary([F() || _ <- lists:seq(1, 32)]),
-    add_api_key(ApiKey),
-    ApiKey.
-
-add_api_key(ApiKey) when is_binary(ApiKey) ->
-    Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
-    Keys1 = lists:delete(ApiKey, Keys),
-    vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey | Keys1], true).
-
-delete_api_key(ApiKey) ->
-    case vmq_config:get_env(?ENV_API_KEYS, []) of
-        undefined ->
-            ok;
-        Keys when is_list(Keys) ->
-            vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, Keys -- [ApiKey], true)
-    end,
-    ok.
-
-list_api_keys() ->
-    vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []).

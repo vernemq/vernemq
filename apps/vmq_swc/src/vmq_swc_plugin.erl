@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -30,25 +31,37 @@
     cluster_events_delete_handler/2,
     cluster_events_call_handler/3,
 
-    plugin_start/0,
-    plugin_stop/0
+    plugin_start/0, plugin_start/1,
+    plugin_stop/0,
+    summary/0, summary/1,
+    history/0, history/1
 ]).
 
 -define(METRIC, metadata).
-
--define(NR_OF_GROUPS, 10).
--define(SWC_GROUPS, [meta1, meta2, meta3, meta4, meta5, meta6, meta7, meta8, meta9, meta10]).
+-define(INFO_KEY, {?MODULE, swc}).
+-define(NR_OF_GROUPS, (application:get_env(vmq_swc, swc_groups, 10))).
+-define(SWC_GROUPS, (persistent_term:get(?INFO_KEY))).
 
 plugin_start() ->
-    _ = [vmq_swc:start(G) || G <- ?SWC_GROUPS],
+    SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    ok = persistent_term:put(?INFO_KEY, {?NR_OF_GROUPS, SWCGroups}),
+    _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 plugin_stop() ->
-    _ = [vmq_swc:stop(G) || G <- ?SWC_GROUPS],
+    {_, SWCGroups} = ?SWC_GROUPS,
+    _ = [vmq_swc:stop(G) || G <- SWCGroups],
+    persistent_term:erase(?INFO_KEY),
+    ok.
+% for tests
+plugin_start(SWCGroups) ->
+    ok = persistent_term:put(?INFO_KEY, {length(SWCGroups), SWCGroups}),
+    _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 group_for_key(PKey) ->
-    lists:nth((erlang:phash2(PKey) rem ?NR_OF_GROUPS) + 1, ?SWC_GROUPS).
+    {NrOfGroups, SWCGroups} = ?SWC_GROUPS,
+    lists:nth((erlang:phash2(PKey) rem NrOfGroups) + 1, SWCGroups).
 
 cluster_join(DiscoveryNode) ->
     vmq_swc_peer_service:join(DiscoveryNode).
@@ -82,7 +95,7 @@ multi_cast([], _, _) ->
     ok.
 
 cluster_members() ->
-    [FirstGroup | _] = ?SWC_GROUPS,
+    {_, [FirstGroup | _]} = ?SWC_GROUPS,
     Config = vmq_swc:config(FirstGroup),
     vmq_swc_group_membership:get_members(Config).
 
@@ -147,6 +160,7 @@ metadata_delete(FullPrefix, Key) ->
     ).
 
 metadata_fold(FullPrefix, Fun, Acc) ->
+    {_, SWCGroups} = ?SWC_GROUPS,
     vmq_swc_metrics:timed_measurement(
         {?METRIC, fold}, lists, foldl, [
             fun(Group, AccAcc) ->
@@ -161,11 +175,12 @@ metadata_fold(FullPrefix, Fun, Acc) ->
                 )
             end,
             Acc,
-            ?SWC_GROUPS
+            SWCGroups
         ]
     ).
 
 metadata_subscribe(FullPrefix) ->
+    {_, SWCGroups} = ?SWC_GROUPS,
     ConvertFun = fun
         ({deleted, FP, Key, OldValues}) ->
             {deleted, FP, Key, extract_val(lww_resolver(OldValues))};
@@ -177,7 +192,7 @@ metadata_subscribe(FullPrefix) ->
         fun(Group) ->
             vmq_swc_store:subscribe(vmq_swc:config(Group), FullPrefix, ConvertFun)
         end,
-        ?SWC_GROUPS
+        SWCGroups
     ).
 
 lww_resolver([]) ->
@@ -190,3 +205,38 @@ lww_resolver(TimestampedVals) ->
 
 extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
+
+summary() ->
+    summary(?SWC_GROUPS).
+summary(SWCGroups) ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Node = node(),
+    NodeClocks = [
+        vmq_swc_store:node_clock_by_storename(
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SWCGroup))
+        )
+     || SWCGroup <- SWCGroups
+    ],
+    [{maps:get({Node, Actor}, NC), maps:size(NC)} || NC <- NodeClocks].
+
+% The Node is empty when all local Nodeclocks in SWCGroups are
+% 0 and we only have the local Node in the Nodeclocks.
+% In other words: history/1 returns {0,0,true}, in case
+% the node has no history.
+history() ->
+    SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    history(SWCGroups).
+history(SWCGroups) ->
+    LocalClockList = summary(SWCGroups),
+    NrOfGroups = length(SWCGroups),
+    {{LocalDots, Gap}, TotalClocks} =
+        lists:foldl(
+            fun(X, {{A, B}, C}) ->
+                {{N, M}, Z} = X,
+                {{A + N, B + M}, C + Z}
+            end,
+            {{0, 0}, 0},
+            LocalClockList
+        ),
+    NeverClustered = NrOfGroups == TotalClocks,
+    {LocalDots, Gap, NeverClustered}.

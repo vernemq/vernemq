@@ -1,4 +1,5 @@
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -12,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_listener_cli).
+-include_lib("kernel/include/logger.hrl").
 -export([register_server_cli/0]).
 
 register_server_cli() ->
@@ -31,6 +33,10 @@ register_server_cli() ->
     clique:register_usage(
         ["vmq-admin", "listener", "restart"],
         vmq_listener_restart_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "listener", "show"],
+        vmq_listener_show_usage()
     ),
     vmq_listener_start_cmd(),
     vmq_listener_stop_cmd(),
@@ -80,6 +86,22 @@ vmq_listener_start_cmd() ->
                 (_) -> false
             end}
         ]},
+        {proxy_xff_trusted_intermediate, [{longname, "proxy_xff_trusted_intermediate"}]},
+        {proxy_xff_support, [
+            {longname, "proxy_xff_support"},
+            {typecast, fun
+                ("true") -> true;
+                (_) -> false
+            end}
+        ]},
+        {proxy_xff_use_cn_as_username, [
+            {longname, "proxy_xff_use_cn_as_username"},
+            {typecast, fun
+                ("true") -> true;
+                (_) -> false
+            end}
+        ]},
+        {proxy_xff_cn_header, [{longname, "proxy_xff_cn_header"}]},
         {allowed_protocol_versions, [
             {longname, "allowed_protocol_versions"},
             {typecast, fun(ProtoVers) ->
@@ -120,6 +142,22 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {keypasswd, [
+            {longname, "keypasswd"},
+            {typecast, fun(MP) -> MP end}
+        ]},
+        {pskfile, [
+            {longname, "pskfile"},
+            {typecast, fun(FileName) ->
+                case filelib:is_file(FileName) of
+                    true -> FileName;
+                    false -> {error, {invalid_flag_value, {pskfile, FileName}}}
+                end
+            end}
+        ]},
+        {psk_support, [
+            {longname, "psk_support"}
+        ]},
         {ciphers, [
             {longname, "ciphers"},
             {typecast, fun(C) -> C end}
@@ -144,6 +182,7 @@ vmq_listener_start_cmd() ->
                 ("tlsv1") -> tlsv1;
                 ("tlsv1.1") -> 'tlsv1.1';
                 ("tlsv1.2") -> 'tlsv1.2';
+                ("tlsv1.3") -> 'tlsv1.3';
                 (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
             end}
         ]},
@@ -156,6 +195,10 @@ vmq_listener_start_cmd() ->
         {config_fun, [
             {longname, "config_fun"},
             {typecast, fun(F) -> list_to_existing_atom(F) end}
+        ]},
+        {http_modules, [
+            {longname, "http_modules"},
+            {typecast, fun(C) -> C end}
         ]}
     ],
     Callback =
@@ -207,7 +250,7 @@ start_listener(Type, Addr, Port, Opts) ->
             vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't start listener ~p ~p ~p ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             ),
@@ -315,26 +358,68 @@ restart_listener(Addr, Port) ->
 vmq_listener_show_cmd() ->
     Cmd = ["vmq-admin", "listener", "show"],
     KeySpecs = [],
-    FlagSpecs = [],
+    FlagSpecs = [
+        {tls, [
+            {shortname, "t"},
+            {longname, "tls"}
+        ]},
+        {mqtt, [
+            {shortname, "m"},
+            {longname, "mqtt"}
+        ]}
+    ],
     Callback =
-        fun(_, [], []) ->
+        fun(_, [], Flags) ->
+            IsTLS = lists:keymember(tls, 1, Flags),
+            IsMQTT = lists:keymember(mqtt, 1, Flags),
             Table =
                 lists:foldl(
-                    fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+                    fun(
+                        {Type, Ip, Port, Status, MP, MaxConns, ActiveConns, AllConns, TLS, CertFile,
+                            CAFile, KeyFile, RequireCertificate, UseIDAsUsername, PSKSupport,
+                            PSKFile, AllowedProtocolVersions, AllowAnonymousOverride},
+                        Acc
+                    ) ->
                         [
                             [
                                 {type, Type},
                                 {status, Status},
-                                {ip, Ip},
+                                {address, Ip},
                                 {port, Port},
                                 {mountpoint, MP},
-                                {max_conns, MaxConns}
-                            ]
+                                {max_conns, MaxConns},
+                                {active_conns, ActiveConns},
+                                {all_conns, AllConns}
+                            ] ++
+                                case IsTLS of
+                                    true ->
+                                        [
+                                            {tls_version, TLS},
+                                            {certfile, CertFile},
+                                            {cafile, CAFile},
+                                            {keyfile, KeyFile},
+                                            {require_certificate, RequireCertificate},
+                                            {use_identity_as_username, UseIDAsUsername},
+                                            {psk_support, PSKSupport},
+                                            {pskfile, PSKFile}
+                                        ];
+                                    _ ->
+                                        []
+                                end ++
+                                case IsMQTT of
+                                    true ->
+                                        [
+                                            {allowed_protocol_versions, AllowedProtocolVersions},
+                                            {allow_anonymous_override, AllowAnonymousOverride}
+                                        ];
+                                    _ ->
+                                        []
+                                end
                             | Acc
                         ]
                     end,
                     [],
-                    vmq_ranch_config:listeners()
+                    vmq_ranch_config:listeners(with_tls_and_mqtt)
                 ),
             [clique_status:table(Table)]
         end,
@@ -356,8 +441,8 @@ parse_port(StrP) ->
 
 parse_addr(StrA) ->
     case string:split(StrA, ":") of
-        ["local", FS] ->
-            {local, FS};
+        ["local", DomainSocket] ->
+            {local, DomainSocket};
         _ ->
             case inet:parse_address(StrA) of
                 {ok, Ip} -> Ip;
@@ -434,6 +519,17 @@ vmq_listener_stop_usage() ->
         "Options\n\n",
         "  -k, --kill_sessions\n"
         "      kills all sessions accepted with this listener.\n\n"
+    ].
+
+vmq_listener_show_usage() ->
+    [
+        "vmq-admin listener show\n\n",
+        "  Shows information about listeners..\n\n",
+        "Options\n\n",
+        "  -m, --mqtt\n"
+        "      Shows additional MQTT information\n"
+        "  -t, --tls\n"
+        "      Shows additional TLS/SSL information\n\n"
     ].
 
 vmq_listener_delete_usage() ->

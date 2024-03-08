@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_subscriber).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     new/1,
@@ -27,12 +29,19 @@
     fold/3,
     get_changes/1,
     get_changes/2,
+    get_changes/3,
     get_nodes/1,
     get_sessions/1,
     change_node_all/3,
-    change_node/4,
-    check_format/1
+    change_node/4
 ]).
+
+-ifdef(TEST).
+-export([
+    subtract/2,
+    sub_diff/2
+]).
+-endif.
 
 -type node_subs() :: {node(), boolean(), [subscription()]}.
 -type subs() :: [node_subs()].
@@ -40,6 +49,8 @@
 -type changes() :: [node_changes()].
 
 -export_type([subs/0, changes/0]).
+
+-compile([nowarn_unused_function]).
 
 -spec new(boolean()) -> subs().
 new(CleanSession) ->
@@ -55,8 +66,16 @@ get_changes(New) ->
 
 -spec get_changes(subs(), subs()) -> {changes(), changes()}.
 get_changes(Old, New) ->
+    get_changes(subtract, Old, New).
+
+-spec get_changes(atom(), subs(), subs()) -> {changes(), changes()}.
+get_changes(subtract, Old, New) ->
     Removed = subtract(Old, New),
     Added = subtract(New, Old),
+
+    {Removed, Added};
+get_changes(one_pass_ordered, Old, New) ->
+    {Removed, Added} = sub_diff(Old, New),
     {Removed, Added}.
 
 -spec add(subs(), [subscription()]) -> {subs(), boolean()}.
@@ -156,26 +175,60 @@ change_node_all([Node | Rest], NewNode, Subs, CleanSession, ChNodes) ->
 change_node_all([], _, Subs, _, ChNodes) ->
     {Subs, ChNodes}.
 
--spec check_format(any()) -> subs().
-check_format(Subs0) ->
-    maybe_convert_v0(Subs0).
+%
+% Expected two sorted lists and compares each element. Returns A -- B and B -- A.
+%
+list_diff(ListA, ListB) ->
+    {AMinusB, BMinusA} = list_diff(ListA, ListB, [], []),
+    {lists:reverse(AMinusB), lists:reverse(BMinusA)}.
+list_diff([], [], AMinusB, BMinusA) ->
+    {AMinusB, BMinusA};
+list_diff([], [Y | T2], AMinusB, BMinusA) ->
+    list_diff([], T2, AMinusB, [Y | BMinusA]);
+list_diff([X | T1], [], AMinusB, BMinusA) ->
+    list_diff(T1, [], [X | AMinusB], BMinusA);
+list_diff([X | T1], [Y | T2], AMinusB, BMinusA) when X < Y ->
+    list_diff(T1, [Y | T2], [X | AMinusB], BMinusA);
+list_diff([X | T1], [Y | T2], AMinusB, BMinusA) when X > Y ->
+    list_diff([X | T1], T2, AMinusB, [Y | BMinusA]);
+list_diff([X | T1], [Y | T2], AMinusB, BMinusA) when X == Y ->
+    list_diff(T1, T2, AMinusB, BMinusA).
 
-%% @doc convert deprecated subscription format to current format (v1). The
-%% new format was introduced in VerneMQ 0.15.1.
--spec maybe_convert_v0(any()) -> subs().
-maybe_convert_v0([{Topic, _, _} | _] = Version0Subs) when is_list(Topic) ->
-    %% Per default converted subscriptions use initially clean session=false,
-    %% because we don't know better, and it will be subsequentially adjusted
-    %% anyways.
-    maybe_convert_v0(Version0Subs, new(false));
-maybe_convert_v0(Subs) ->
-    Subs.
-
-maybe_convert_v0([{Topic, QoS, Node} | Version0Subs], NewStyleSubs) ->
-    {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
-    maybe_convert_v0(Version0Subs, NewSubs);
-maybe_convert_v0([], NewStyleSubs) ->
-    NewStyleSubs.
+%
+% Exects a two lists of Subscriptions Subs1 und Subs2 as list of tuples [node, persistent, topic_list].
+% The first list is considered the "old list" the seond one the new list. It returns a tuble where the
+% first item includes all items that are in the first list and not in the second one, while the second tuple
+% includes all items of the second list that are not in the first one.
+%
+% Precondition: all lists to be sorted!
+%
+sub_diff(Subs1, Subs2) ->
+    sub_diff(Subs1, Subs2, [], []).
+sub_diff([S | Subs1], [S | Subs2], Acc1, Acc2) ->
+    %% same node subscriptions
+    sub_diff(Subs1, Subs2, Acc1, Acc2);
+sub_diff([{N, _, NSubs1} | Subs1], [{N, _, NSubs2} | Subs2], Acc1, Acc2) ->
+    case list_diff(NSubs1, NSubs2) of
+        {[], []} ->
+            sub_diff(Subs1, Subs2, Acc1, Acc2);
+        {NewNSubs1, []} ->
+            sub_diff(Subs1, Subs2, [{N, NewNSubs1} | Acc1], Acc2);
+        {[], NewNSubs2} ->
+            sub_diff(Subs1, Subs2, Acc1, [{N, NewNSubs2} | Acc2]);
+        {NewNSubs1, NewNSubs2} ->
+            sub_diff(Subs1, Subs2, [{N, NewNSubs1} | Acc1], [{N, NewNSubs2} | Acc2])
+    end;
+% when N1 > N2 the whole N2 is a difference
+sub_diff([{N1, _, _} | _] = Subs1, [{N2, _, NSubs2} | T2], Acc1, Acc2) when N1 > N2 ->
+    sub_diff(Subs1, T2, Acc1, [{N2, NSubs2} | Acc2]);
+% N1 < N2 whole N1 is a difference
+sub_diff([{N, _, NSubs1} | Subs1], Subs2, Acc1, Acc2) ->
+    sub_diff(Subs1, Subs2, [{N, NSubs1} | Acc1], Acc2);
+%if the old list is empty, the whole remaining Sub2 is added
+sub_diff([], [{N2, _, NSubs2} | T2], Acc1, Acc2) ->
+    sub_diff([], T2, Acc1, [{N2, NSubs2} | Acc2]);
+sub_diff([], [], Acc1, Acc2) ->
+    {lists:reverse(Acc1), lists:reverse(Acc2)}.
 
 %% returns only the Subscriptions of Subs1 that are not also
 %% Subscriptions of Subs2. Assumes the subs are sorted by nodenames.
@@ -187,6 +240,10 @@ subtract([S | Subs1], [S | Subs2], Acc) ->
     subtract(Subs1, Subs2, Acc);
 subtract([{N, _, NSubs1} | Subs1], [{N, _, NSubs2} | Subs2], Acc) ->
     %% same node with different node subscriptions
+    % case {ordsets:is_set(NSubs1), ordsets:is_set(NSubs2)} of
+    %    {true, true} -> ok;
+    %    _ -> ?LOG_INFO("!!!!!!!!!!!!!!!!!!!!! Unfortunately not ordered!")
+    %end,
     case NSubs1 -- NSubs2 of
         [] ->
             subtract(Subs1, Subs2, Acc);
@@ -236,163 +293,3 @@ fold(Fun, Acc, Subs) ->
         Acc,
         Subs
     ).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
--define(t(S), [list_to_binary(S)]).
-
-subtract_test_() ->
-    A = [
-        {node_a, true, [
-            {[<<"a">>], 0},
-            {[<<"b">>], 1},
-            {[<<"c">>], 2}
-        ]},
-        {node_b, true, [
-            {[<<"d">>], 1},
-            {[<<"e">>], 2}
-        ]}
-    ],
-    B1 = [
-        {node_a, true, [
-            {[<<"b">>], 1},
-            {[<<"c">>], 2}
-        ]},
-        {node_b, true, [
-            {[<<"e">>], 2}
-        ]}
-    ],
-    B2 = [
-        {node_a, true, []},
-        {node_b, true, []}
-    ],
-
-    [
-        ?_assertEqual(
-            [
-                {node_a, [{[<<"a">>], 0}]},
-                {node_b, [{[<<"d">>], 1}]}
-            ],
-            subtract(A, B1)
-        ),
-        ?_assertEqual(
-            [
-                {node_a, [
-                    {[<<"a">>], 0},
-                    {[<<"b">>], 1},
-                    {[<<"c">>], 2}
-                ]},
-                {node_b, [
-                    {[<<"d">>], 1},
-                    {[<<"e">>], 2}
-                ]}
-            ],
-            subtract(A, B2)
-        ),
-        ?_assertEqual([], subtract(A, A))
-    ].
-
-get_changes_test_() ->
-    Old = [{node_a, true, [{a, 1}, {b, 1}]}],
-    New = [{node_a, true, [{b, 1}]}],
-    ?_assertEqual(
-        {
-            % Removed
-            [{node_a, [{a, 1}]}],
-            % Added
-            []
-        },
-        get_changes(Old, New)
-    ).
-
-get_changes_2_test_() ->
-    Old = [{node_a, true, [{a, 1}]}, {node_b, true, [{b, 1}]}],
-    New = [{node_a, true, [{a, 1}]}, {node_c, true, [{c, 1}]}],
-    ?_assertEqual(
-        {
-            % Removed
-            [{node_b, [{b, 1}]}],
-            % Added
-            [{node_c, [{c, 1}]}]
-        },
-        get_changes(Old, New)
-    ).
-
-get_changes_3_test_() ->
-    Old = [{node_a, true, [{a, 1}]}, {node_b, true, [{b, 1}]}, {node_c, true, [{c, 1}]}],
-    New = [{node_b, true, [{b, 1}]}],
-    ?_assertEqual(
-        {
-            % Removed
-            [{node_a, [{a, 1}]}, {node_c, [{c, 1}]}],
-            % Added
-            []
-        },
-        get_changes(Old, New)
-    ).
-
-get_changes_4_test_() ->
-    Old = [{node_b, true, [{b, 1}]}, {node_c, true, [{c, 1}]}],
-    New = [{node_a, true, [{a, 1}]}, {node_c, true, [{c, 1}]}],
-    ?_assertEqual(
-        {
-            % Removed
-            [{node_b, [{b, 1}]}],
-            % Added
-            [{node_a, [{a, 1}]}]
-        },
-        get_changes(Old, New)
-    ).
-
-change_node_test_() ->
-    Subs = [
-        {node_a, false, [{a, 1}, {b, 1}]},
-        {node_b, false, [{c, 2}]}
-    ],
-    ?_assertEqual(
-        [{node_b, false, [{a, 1}, {b, 1}, {c, 2}]}],
-        change_node(Subs, node_a, node_b, false)
-    ).
-
-change_node_all_test_() ->
-    Subs = [
-        {node_a, false, [{a, 1}, {b, 1}]},
-        {node_b, false, [{b, 2}, {c, 2}]}
-    ],
-    ?_assertEqual(
-        {[{node_c, false, [{a, 1}, {b, 2}, {c, 2}]}], [node_a, node_b]},
-        change_node_all(Subs, node_c, false)
-    ).
-
-add_subscription_test_() ->
-    [
-        ?_assertEqual({[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true), [{a, 1}, {b, 2}])),
-        ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true, [{a, 1}]), [{b, 2}])
-        ),
-        ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true, [{a, 1}, {b, 1}]), [{b, 2}])
-        ),
-        ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], false}, add(new(true, [{a, 1}, {b, 2}]), [{b, 2}])
-        )
-    ].
-
-remove_subscription_test_() ->
-    [
-        ?_assertEqual({[{node(), true, []}], false}, remove(new(true), [a])),
-        ?_assertEqual({[{node(), true, []}], true}, remove(new(true, [{a, 1}]), [a])),
-        ?_assertEqual({[{node(), true, [{b, 2}]}], true}, remove(new(true, [{a, 1}, {b, 2}]), [a]))
-    ].
-
-maybe_convert_v0_test_() ->
-    Version0Subs = [{?t("a"), 0, node_a}, {?t("b"), 1, node_b}, {?t("c"), 2, node_c}],
-    Subs = [
-        {node_a, true, [{?t("a"), 0}]},
-        {node_b, true, [{?t("b"), 1}]},
-        {node_c, true, [{?t("c"), 2}]},
-        {node(), false, []}
-    ],
-    ?_assertEqual(Subs, maybe_convert_v0(Version0Subs)).
--endif.

@@ -109,6 +109,14 @@ $(function() {
         }
     }
 
+    function flatten_minus_one(val) {
+        if (val == -1) {
+            return 0;
+        } else {
+            return val;
+        }
+    }
+
     function cap_zero(val) {
         if (val < 0) {
             return 0;
@@ -151,7 +159,7 @@ $(function() {
                     var node = {
                         node: node_name,
                         clients_online: this_node.num_online,
-                        clients_offline: this_node.num_offline,
+                        clients_offline: flatten_minus_one(this_node.num_offline),
                         connect_rate: connect_rate,
                         msg_in_rate: msg_in_rate,
                         msg_out_rate: msg_out_rate,

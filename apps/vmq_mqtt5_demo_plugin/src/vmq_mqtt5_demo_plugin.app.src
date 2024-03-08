@@ -5,8 +5,7 @@
     {mod, {vmq_mqtt5_demo_plugin_app, []}},
     {applications, [
         kernel,
-        stdlib,
-        lager
+        stdlib
     ]},
     {env, [
         {vmq_plugin_hooks, [

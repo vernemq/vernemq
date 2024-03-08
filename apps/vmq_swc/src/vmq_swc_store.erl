@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,8 @@
 %% limitations under the License.
 
 -module(vmq_swc_store).
+-include_lib("kernel/include/logger.hrl").
+
 -include("vmq_swc.hrl").
 -behaviour(gen_server).
 
@@ -397,7 +400,7 @@ handle_call(
     {reply, ok, State0#state{subscriptions = Subs1}};
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
     {Peer, _Actor} = Id,
-    %   lager:info("Local ID in lock request: ~p~n", [Id]),
+    %   ?LOG_INFO("Local ID in lock request: ~p~n", [Id]),
     case node(OwnerPid) == Peer of
         true when SyncLock == undefined ->
             MRef = monitor(process, OwnerPid),
@@ -501,7 +504,7 @@ handle_call(dump_dotkeymap, _, #state{dotkeymap = DKM} = State) ->
 handle_call({set_broadcast, IsBroadcastEnabled}, _From, State) ->
     {reply, ok, State#state{broadcast_enabled = IsBroadcastEnabled}};
 handle_call(Request, From, State) ->
-    lager:error("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
+    ?LOG_ERROR("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
     {reply, {error, wrong_request}, State}.
 
 handle_cast({set_group_members, UpdatedPeerList}, State) ->
@@ -526,7 +529,7 @@ handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers = Peers, config = C
             {noreply, State0}
     end;
 handle_cast(Request, State) ->
-    lager:error("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
+    ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
     {noreply, State}.
 
 handle_info(do_gc, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
@@ -549,7 +552,7 @@ handle_info(sync, #state{config = Config, sync_lock = undefined, peers = Peers} 
                 Config, SyncNode, application:get_env(vmq_swc, sync_timeout, 60000)
             );
         {error, no_peer_available} ->
-            lager:debug("Replica ~p: Can't initialize AE exchange due to no peer available", [
+            ?LOG_DEBUG("Replica ~p: Can't initialize AE exchange due to no peer available", [
                 State#state.group
             ]),
             ignore
@@ -562,7 +565,7 @@ handle_info(sync, State) ->
 handle_info({'DOWN', MRef, process, Pid, _Info}, #state{sync_lock = {Pid, MRef}} = State) ->
     {noreply, State#state{sync_lock = undefined}};
 handle_info(Info, State) ->
-    lager:error("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
+    ?LOG_ERROR("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -574,14 +577,14 @@ code_change(_, _, State) ->
 %% INTERNAL
 set_peers(
     NewPeers,
-    #state{id = Id, config = Config, dotkeymap = DKM, nodeclock = LocalClock0, watermark = WM0} =
+    #state{id = Id, config = Config, dotkeymap = _DKM, nodeclock = LocalClock0, watermark = WM0} =
         State
 ) ->
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
-    lager:debug("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
-    lager:debug("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
+    ?LOG_DEBUG("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
+    ?LOG_DEBUG("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
 
     {NodeClock, Watermark} =
         case {AddedPeers, LeftPeers} of
@@ -644,7 +647,7 @@ random_peer(Peers, FilterFun) ->
             {ok, lists:nth(rand:uniform(length(FilteredPeers)), FilteredPeers)}
     end.
 
-fix_watermark({W, R} = Watermark, Peers) ->
+fix_watermark({_W, R} = Watermark, Peers) ->
     Watermark0 =
         lists:foldl(
             fun(Peer, WMAcc0) ->
@@ -704,13 +707,15 @@ update_watermark_after_sync(Watermark0, RemoteWatermark, Id, RemoteId, NodeClock
 sync_clocks(RemoteID, RemoteNodeClock0, NodeClock) ->
     % replace the current entry in the node clock for the responding clock with
     % the current knowledge it's receiving
-    %{RemoteNode, _Actor} = RemoteID,
     RemoteNodeClock1 = maps:filter(fun(Id, _) -> Id == RemoteID end, RemoteNodeClock0),
-    %RemoteNodeClock1 = maps:filter(fun({RemoteNode, _Actor}, _) -> RemoteNode == node() end, RemoteNodeClock0),
-    % the merge will delete all entries, where the latest dot is {0,0}!
-    % check if this is what we want.
-    swc_node:merge(NodeClock, RemoteNodeClock1).
-% swc_node:merge(NodeClock, RemoteNodeClock0).
+    OldNodes = maybe_find_old_nodes(NodeClock, RemoteNodeClock0),
+    RemoteNodeClock2 =
+        case OldNodes of
+            [] -> RemoteNodeClock1;
+            _ -> maps:merge(RemoteNodeClock1, maps:with(OldNodes, RemoteNodeClock0))
+        end,
+    % the merge will delete all entries, where the dot is {0,0}!
+    swc_node:merge(NodeClock, RemoteNodeClock2).
 
 fill_strip_save_batch(
     MissingObjects, RemoteNodeClock, #state{config = Config, nodeclock = NodeClock0} = State0
@@ -998,3 +1003,8 @@ maybe_schedule_sync() ->
         0 -> ok;
         {FixedInt, RandInt} -> erlang:send_after(FixedInt + rand:uniform(RandInt), self(), sync)
     end.
+
+maybe_find_old_nodes(NodeClock, RemoteNodeClock) ->
+    LocalIds = maps:keys(NodeClock),
+    RemoteIds = maps:keys(RemoteNodeClock),
+    lists:subtract(RemoteIds, LocalIds).

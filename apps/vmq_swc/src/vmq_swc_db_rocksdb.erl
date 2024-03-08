@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_swc_db_rocksdb).
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_swc.hrl").
 -behaviour(vmq_swc_db).
 -behaviour(gen_server).
@@ -178,7 +180,7 @@ open_db(DbPath, DbOpts, ColumnFamilies, Opts, RetriesLeft, _) ->
             case lists:prefix("IO error: lock ", OpenErr) of
                 true ->
                     SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                    lager:debug(
+                    ?LOG_DEBUG(
                         "VerneMQ SWC RocksDB backend retrying ~p in ~p ms after error ~s\n",
                         [DbPath, SleepFor, OpenErr]
                     ),
