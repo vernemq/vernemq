@@ -333,11 +333,23 @@ connected(
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{
-            routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS, acl_name = Name
+            routing_key = Topic,
+            payload = Payload,
+            retain = IsRetain,
+            qos = QoS,
+            acl_name = Name,
+            persisted = Persisted
         } ->
             vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
-                Username, SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = Name}
+                Username,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                #matched_acl{name = Name},
+                Persisted
             ]),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
@@ -356,11 +368,23 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{
-            routing_key = Topic, payload = Payload, retain = IsRetain, qos = QoS, acl_name = Name
+            routing_key = Topic,
+            payload = Payload,
+            retain = IsRetain,
+            qos = QoS,
+            acl_name = Name,
+            persisted = Persisted
         } ->
             vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
-                Username, SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = Name}
+                Username,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                #matched_acl{name = Name},
+                Persisted
             ]),
             PubRelFrame = #mqtt_pubrel{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
@@ -1223,14 +1247,22 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         dup = IsDup,
         qos = MsgQoS,
         non_retry = NonRetry,
-        acl_name = Name
+        acl_name = Name,
+        persisted = Persisted
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {NewTopic, NewPayload} =
         case
-            on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained, #matched_acl{
-                name = Name
-            })
+            on_deliver_hook(
+                User,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetained,
+                #matched_acl{name = Name},
+                Persisted
+            )
         of
             {error, _} ->
                 %% no on_deliver hook specified... that's ok
@@ -1280,15 +1312,15 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
     end.
 
 -spec on_deliver_hook(
-    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl()
+    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()
 ) -> any().
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl) ->
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload],
     case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
         {error, _} ->
             #matched_acl{name = Name} = MatchedAcl,
             vmq_metrics:incr_matched_topic(Name, deliver, QoS),
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl],
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted],
             vmq_plugin:all_till_ok(on_deliver, HookArgs1);
         Other ->
             Other

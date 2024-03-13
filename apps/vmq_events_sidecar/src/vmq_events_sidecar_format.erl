@@ -103,9 +103,8 @@ encode({on_unsubscribe, Timestamp, {MP, ClientId, UserName, Topics}}) ->
     );
 encode(
     {on_deliver, Timestamp,
-        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain, #matched_acl{
-            name = Name, pattern = Pattern
-        }}}
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{name = Name, pattern = Pattern}, Persisted}}
 ) ->
     encode_envelope(
         "OnDeliver",
@@ -120,14 +119,14 @@ encode(
             timestamp = convert_timestamp(Timestamp),
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
-            }
+            },
+            persisted = Persisted
         })
     );
 encode(
     {on_delivery_complete, Timestamp,
-        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain, #matched_acl{
-            name = Name, pattern = Pattern
-        }}}
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{name = Name, pattern = Pattern}, Persisted}}
 ) ->
     encode_envelope(
         "OnDeliveryComplete",
@@ -142,7 +141,8 @@ encode(
             timestamp = convert_timestamp(Timestamp),
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
-            }
+            },
+            persisted = Persisted
         })
     );
 encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRetain}}) ->

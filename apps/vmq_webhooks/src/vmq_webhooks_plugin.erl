@@ -49,13 +49,13 @@
     on_publish/7,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/7,
+    on_deliver/8,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/2,
     on_client_gone/2,
     on_session_expired/1,
-    on_delivery_complete/7,
+    on_delivery_complete/8,
 
     auth_on_register_m5/6,
     auth_on_publish_m5/7,
@@ -487,9 +487,9 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), _) ->
+-spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nullify(UserName)},
@@ -501,9 +501,9 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
         {retain, IsRetain}
     ]).
 
--spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag(), _) ->
+-spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _) ->
     'next'.
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_delivery_complete, [
         {username, nullify(UserName)},

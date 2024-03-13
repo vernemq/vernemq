@@ -27,7 +27,7 @@
             {vmq_webhooks_plugin, on_publish, 7, []},
             {vmq_webhooks_plugin, on_subscribe, 3, []},
             {vmq_webhooks_plugin, on_unsubscribe, 3, []},
-            {vmq_webhooks_plugin, on_deliver, 7, []},
+            {vmq_webhooks_plugin, on_deliver, 8, []},
 
             {vmq_webhooks_plugin, auth_on_register_m5, 6, []},
             {vmq_webhooks_plugin, auth_on_publish_m5, 7, []},
@@ -43,7 +43,7 @@
             {vmq_webhooks_plugin, on_client_wakeup, 1, []},
             {vmq_webhooks_plugin, on_client_offline, 2, []},
             {vmq_webhooks_plugin, on_session_expired, 1, []},
-            {vmq_webhooks_plugin, on_delivery_complete, 7, []},
+            {vmq_webhooks_plugin, on_delivery_complete, 8, []},
             {vmq_webhooks_plugin, on_client_gone, 2, []}
         ]}
     ]},

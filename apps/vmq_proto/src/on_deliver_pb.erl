@@ -108,7 +108,8 @@ encode_msg(Msg, MsgName, Opts) ->
         qos = F6,
         is_retain = F7,
         payload = F8,
-        matched_acl = F9
+        matched_acl = F9,
+        persisted = F10
     },
     Bin,
     TrUserData
@@ -221,19 +222,32 @@ encode_msg(Msg, MsgName, Opts) ->
                     end
                 end
         end,
+    B9 =
+        if
+            F9 == undefined ->
+                B8;
+            true ->
+                begin
+                    TrF9 = id(F9, TrUserData),
+                    if
+                        TrF9 =:= undefined ->
+                            B8;
+                        true ->
+                            'e_mfield_eventssidecar.v1.OnDeliver_matched_acl'(
+                                TrF9, <<B8/binary, 74>>, TrUserData
+                            )
+                    end
+                end
+        end,
     if
-        F9 == undefined ->
-            B8;
+        F10 == undefined ->
+            B9;
         true ->
             begin
-                TrF9 = id(F9, TrUserData),
+                TrF10 = id(F10, TrUserData),
                 if
-                    TrF9 =:= undefined ->
-                        B8;
-                    true ->
-                        'e_mfield_eventssidecar.v1.OnDeliver_matched_acl'(
-                            TrF9, <<B8/binary, 74>>, TrUserData
-                        )
+                    TrF10 =:= false -> B9;
+                    true -> e_type_bool(TrF10, <<B9/binary, 80>>, TrUserData)
                 end
             end
     end.
@@ -481,65 +495,212 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         id(false, TrUserData),
         id(<<>>, TrUserData),
         id(undefined, TrUserData),
+        id(false, TrUserData),
         TrUserData
     ).
 
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<10, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_timestamp'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<18, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_username'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<26, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_client_id'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<34, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_mountpoint'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<42, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_topic'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<48, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<48, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_qos'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<56, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<56, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_is_retain'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<66, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<66, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_payload'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<74, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    <<74, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnDeliver_matched_acl'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _
+    <<80, Rest/binary>>,
+    Z1,
+    Z2,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnDeliver_persisted'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, _
 ) ->
     #'eventssidecar.v1.OnDeliver'{
         timestamp = F@_1,
@@ -550,13 +711,14 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         qos = F@_6,
         is_retain = F@_7,
         payload = F@_8,
-        matched_acl = F@_9
+        matched_acl = F@_9,
+        persisted = F@_10
     };
 'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
 ) ->
     'dg_read_field_def_eventssidecar.v1.OnDeliver'(
-        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'dg_read_field_def_eventssidecar.v1.OnDeliver'(
@@ -573,6 +735,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 32 - 7 ->
     'dg_read_field_def_eventssidecar.v1.OnDeliver'(
@@ -589,6 +752,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'dg_read_field_def_eventssidecar.v1.OnDeliver'(
@@ -605,45 +769,190 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     Key = X bsl N + Acc,
     case Key of
         10 ->
             'd_field_eventssidecar.v1.OnDeliver_timestamp'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         18 ->
             'd_field_eventssidecar.v1.OnDeliver_username'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         26 ->
             'd_field_eventssidecar.v1.OnDeliver_client_id'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         34 ->
             'd_field_eventssidecar.v1.OnDeliver_mountpoint'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         42 ->
             'd_field_eventssidecar.v1.OnDeliver_topic'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         48 ->
             'd_field_eventssidecar.v1.OnDeliver_qos'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         56 ->
             'd_field_eventssidecar.v1.OnDeliver_is_retain'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         66 ->
             'd_field_eventssidecar.v1.OnDeliver_payload'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         74 ->
             'd_field_eventssidecar.v1.OnDeliver_matched_acl'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
+            );
+        80 ->
+            'd_field_eventssidecar.v1.OnDeliver_persisted'(
+                Rest,
+                0,
+                0,
+                0,
+                F@_1,
+                F@_2,
+                F@_3,
+                F@_4,
+                F@_5,
+                F@_6,
+                F@_7,
+                F@_8,
+                F@_9,
+                F@_10,
+                TrUserData
             );
         _ ->
             case Key band 7 of
@@ -662,6 +971,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
                         F@_7,
                         F@_8,
                         F@_9,
+                        F@_10,
                         TrUserData
                     );
                 1 ->
@@ -679,6 +989,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
                         F@_7,
                         F@_8,
                         F@_9,
+                        F@_10,
                         TrUserData
                     );
                 2 ->
@@ -696,6 +1007,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
                         F@_7,
                         F@_8,
                         F@_9,
+                        F@_10,
                         TrUserData
                     );
                 3 ->
@@ -713,6 +1025,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
                         F@_7,
                         F@_8,
                         F@_9,
+                        F@_10,
                         TrUserData
                     );
                 5 ->
@@ -730,12 +1043,13 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
                         F@_7,
                         F@_8,
                         F@_9,
+                        F@_10,
                         TrUserData
                     )
             end
     end;
 'dg_read_field_def_eventssidecar.v1.OnDeliver'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, _
 ) ->
     #'eventssidecar.v1.OnDeliver'{
         timestamp = F@_1,
@@ -746,7 +1060,8 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         qos = F@_6,
         is_retain = F@_7,
         payload = F@_8,
-        matched_acl = F@_9
+        matched_acl = F@_9,
+        persisted = F@_10
     }.
 
 'd_field_eventssidecar.v1.OnDeliver_timestamp'(
@@ -763,6 +1078,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_timestamp'(
@@ -779,6 +1095,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_timestamp'(
@@ -795,6 +1112,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -819,6 +1137,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     ).
 
@@ -836,6 +1155,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_username'(
@@ -852,6 +1172,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_username'(
@@ -868,6 +1189,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -877,7 +1199,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_client_id'(
@@ -894,6 +1216,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_client_id'(
@@ -910,6 +1233,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_client_id'(
@@ -926,6 +1250,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -935,7 +1260,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_mountpoint'(
@@ -952,6 +1277,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_mountpoint'(
@@ -968,6 +1294,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_mountpoint'(
@@ -984,6 +1311,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -993,7 +1321,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_topic'(
@@ -1010,6 +1338,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_topic'(
@@ -1026,6 +1355,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_topic'(
@@ -1042,6 +1372,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -1051,7 +1382,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_qos'(
@@ -1068,6 +1399,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_qos'(
@@ -1084,6 +1416,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_qos'(
@@ -1100,6 +1433,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = {
@@ -1110,7 +1444,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         Rest
     },
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_is_retain'(
@@ -1127,6 +1461,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_is_retain'(
@@ -1143,6 +1478,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_is_retain'(
@@ -1159,11 +1495,12 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     _,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = {id(X bsl N + Acc =/= 0, TrUserData), Rest},
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_payload'(
@@ -1180,6 +1517,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_payload'(
@@ -1196,6 +1534,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_payload'(
@@ -1212,6 +1551,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     _,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -1221,7 +1561,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, F@_10, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnDeliver_matched_acl'(
@@ -1238,6 +1578,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnDeliver_matched_acl'(
@@ -1254,6 +1595,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'd_field_eventssidecar.v1.OnDeliver_matched_acl'(
@@ -1270,6 +1612,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     Prev,
+    F@_10,
     TrUserData
 ) ->
     {NewFValue, RestF} = begin
@@ -1294,7 +1637,64 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
             Prev == undefined -> NewFValue;
             true -> 'merge_msg_eventssidecar.v1.MatchedACL'(Prev, NewFValue, TrUserData)
         end,
+        F@_10,
         TrUserData
+    ).
+
+'d_field_eventssidecar.v1.OnDeliver_persisted'(
+    <<1:1, X:7, Rest/binary>>,
+    N,
+    Acc,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    F@_10,
+    TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnDeliver_persisted'(
+        Rest,
+        N + 7,
+        X bsl N + Acc,
+        F,
+        F@_1,
+        F@_2,
+        F@_3,
+        F@_4,
+        F@_5,
+        F@_6,
+        F@_7,
+        F@_8,
+        F@_9,
+        F@_10,
+        TrUserData
+    );
+'d_field_eventssidecar.v1.OnDeliver_persisted'(
+    <<0:1, X:7, Rest/binary>>,
+    N,
+    Acc,
+    F,
+    F@_1,
+    F@_2,
+    F@_3,
+    F@_4,
+    F@_5,
+    F@_6,
+    F@_7,
+    F@_8,
+    F@_9,
+    _,
+    TrUserData
+) ->
+    {NewFValue, RestF} = {id(X bsl N + Acc =/= 0, TrUserData), Rest},
+    'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, NewFValue, TrUserData
     ).
 
 'skip_varint_eventssidecar.v1.OnDeliver'(
@@ -1311,10 +1711,11 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     'skip_varint_eventssidecar.v1.OnDeliver'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     );
 'skip_varint_eventssidecar.v1.OnDeliver'(
     <<0:1, _:7, Rest/binary>>,
@@ -1330,10 +1731,11 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'skip_length_delimited_eventssidecar.v1.OnDeliver'(
@@ -1350,6 +1752,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) when N < 57 ->
     'skip_length_delimited_eventssidecar.v1.OnDeliver'(
@@ -1366,6 +1769,7 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
         F@_7,
         F@_8,
         F@_9,
+        F@_10,
         TrUserData
     );
 'skip_length_delimited_eventssidecar.v1.OnDeliver'(
@@ -1382,20 +1786,21 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'skip_group_eventssidecar.v1.OnDeliver'(
-    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
 ) ->
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'skip_32_eventssidecar.v1.OnDeliver'(
@@ -1412,10 +1817,11 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'skip_64_eventssidecar.v1.OnDeliver'(
@@ -1432,10 +1838,11 @@ decode_msg_2_doit('eventssidecar.v1.MatchedACL', Bin, TrUserData) ->
     F@_7,
     F@_8,
     F@_9,
+    F@_10,
     TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnDeliver'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, TrUserData
     ).
 
 'decode_msg_google.protobuf.Timestamp'(Bin, TrUserData) ->
@@ -1795,7 +2202,8 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         qos = PFqos,
         is_retain = PFis_retain,
         payload = PFpayload,
-        matched_acl = PFmatched_acl
+        matched_acl = PFmatched_acl,
+        persisted = PFpersisted
     },
     #'eventssidecar.v1.OnDeliver'{
         timestamp = NFtimestamp,
@@ -1806,7 +2214,8 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         qos = NFqos,
         is_retain = NFis_retain,
         payload = NFpayload,
-        matched_acl = NFmatched_acl
+        matched_acl = NFmatched_acl,
+        persisted = NFpersisted
     },
     TrUserData
 ) ->
@@ -1865,6 +2274,11 @@ merge_msgs(Prev, New, MsgName, Opts) ->
                     NFmatched_acl;
                 NFmatched_acl == undefined ->
                     PFmatched_acl
+            end,
+        persisted =
+            if
+                NFpersisted =:= undefined -> PFpersisted;
+                true -> NFpersisted
             end
     }.
 
@@ -1938,7 +2352,8 @@ verify_msg(Msg, MsgName, Opts) ->
         qos = F6,
         is_retain = F7,
         payload = F8,
-        matched_acl = F9
+        matched_acl = F9,
+        persisted = F10
     },
     Path,
     TrUserData
@@ -1978,6 +2393,10 @@ verify_msg(Msg, MsgName, Opts) ->
     if
         F9 == undefined -> ok;
         true -> 'v_submsg_eventssidecar.v1.MatchedACL'(F9, [matched_acl | Path], TrUserData)
+    end,
+    if
+        F10 == undefined -> ok;
+        true -> v_type_bool(F10, [persisted | Path], TrUserData)
     end,
     ok;
 'v_msg_eventssidecar.v1.OnDeliver'(X, Path, _TrUserData) ->
@@ -2155,6 +2574,14 @@ get_msg_defs() ->
                 type = {msg, 'eventssidecar.v1.MatchedACL'},
                 occurrence = optional,
                 opts = []
+            },
+            #field{
+                name = persisted,
+                fnum = 10,
+                rnum = 11,
+                type = bool,
+                occurrence = optional,
+                opts = []
             }
         ]},
         {{msg, 'google.protobuf.Timestamp'}, [
@@ -2222,6 +2649,9 @@ find_msg_def('eventssidecar.v1.OnDeliver') ->
             type = {msg, 'eventssidecar.v1.MatchedACL'},
             occurrence = optional,
             opts = []
+        },
+        #field{
+            name = persisted, fnum = 10, rnum = 11, type = bool, occurrence = optional, opts = []
         }
     ];
 find_msg_def('google.protobuf.Timestamp') ->

@@ -28,7 +28,9 @@
         % = 8, optional
         payload = <<>> :: iodata() | undefined,
         % = 9, optional
-        matched_acl = undefined :: on_deliver_pb:'eventssidecar.v1.MatchedACL'() | undefined
+        matched_acl = undefined :: on_deliver_pb:'eventssidecar.v1.MatchedACL'() | undefined,
+        % = 10, optional
+        persisted = false :: boolean() | 0 | 1 | undefined
     }
 ).
 -endif.

@@ -244,14 +244,14 @@ on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, false]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
 
 on_delivery_complete_test(_) ->
   register_hook(on_delivery_complete, ?ENDPOINT),
   Self = pid_to_bin(self()),
-  [next] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+  [next] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, false]),
   ok = exp_response(on_delivery_complete_ok),
   deregister_hook(on_delivery_complete, ?ENDPOINT).
 

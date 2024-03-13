@@ -17,4 +17,5 @@ message OnDeliver {
   bool is_retain = 7;
   bytes payload = 8;
   MatchedACL matched_acl = 9;
+  bool persisted = 10;
 }
