@@ -92,7 +92,7 @@ change_config(Configs) ->
     end.
 
 reconfigure_bridges(Type, Bridges, [{HostString, Opts} | Rest]) ->
-    {Name, Host, PortString} = list_to_tuple(string:tokens(HostString, ":")),
+    {Name, Host, PortString} = expand_hoststring(HostString),
     {Port, _} = string:to_integer(PortString),
     Ref = ref(Name, Host, Port),
     case lists:keyfind(Ref, 1, Bridges) of
@@ -133,7 +133,7 @@ stop_and_delete_unused(Bridges, Config) ->
     BridgesToDelete =
         lists:foldl(
             fun({HostString, _}, Acc) ->
-                {Name, Host, PortString} = list_to_tuple(string:tokens(HostString, ":")),
+                {Name, Host, PortString} = expand_hoststring(HostString),
                 {Port, _} = string:to_integer(PortString),
                 Ref = ref(Name, Host, Port),
                 lists:keydelete(Ref, 1, Acc)
@@ -255,3 +255,8 @@ metrics() ->
 label(Name, Metric) ->
     % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that.
     list_to_atom(lists:concat([Name, "_", Metric])).
+
+expand_hoststring(HostString) ->
+    [HostAndName, PortString] = string:split(HostString, ":", trailing),
+    [Name, Host] = string:split(HostAndName, ":", leading),
+    {Name, Host, PortString}.
