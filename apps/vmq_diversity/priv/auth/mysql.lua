@@ -18,7 +18,7 @@ require "auth/auth_commons"
 
 -- In order to use this Lua plugin you must deploy the following database
 -- schema and grant the user configured above with the required privileges:
---[[ 
+--[[
    CREATE TABLE vmq_auth_acl
    (
      mountpoint VARCHAR(10) NOT NULL,
@@ -32,27 +32,27 @@ require "auth/auth_commons"
   ]] --
 -- To insert a client ACL use a similar SQL statement:
 -- NOTE THAT `PASSWORD()` NEEDS TO BE SUBSTITUTED ACCORDING TO THE HASHING METHOD
--- CONFIGURED IN `vmq_diversity.mysql.password_hash_method`. CHECK THE MYSQL DOCS TO 
+-- CONFIGURED IN `vmq_diversity.mysql.password_hash_method`. CHECK THE MYSQL DOCS TO
 -- FIND THE MATCHING ONE AT https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html.
 --
--- 
+--
 --[[
 --
-   INSERT INTO vmq_auth_acl 
-   (mountpoint, client_id, username, 
+   INSERT INTO vmq_auth_acl
+   (mountpoint, client_id, username,
     password, publish_acl, subscribe_acl)
- VALUES 
-   ('', 'test-client', 'test-user', 
-    PASSWORD('123'), '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]', 
+ VALUES
+   ('', 'test-client', 'test-user',
+    PASSWORD('123'), '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]',
                      '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]');
 
 ]]--
 -- 	The JSON array passed as publish/subscribe ACL contains the topic patterns
--- 	allowed for this particular user. MQTT wildcards as well as the variable 
+-- 	allowed for this particular user. MQTT wildcards as well as the variable
 -- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
--- 	inside a pattern. 
+-- 	inside a pattern.
 --
--- 
+--
 -- IF YOU USE THE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
 function validate_result_server_side(results, reg)
@@ -81,13 +81,15 @@ end
 
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        local results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl, client_id
+        pwd = obf.decrypt(reg.password)
+        results = mysql.execute(pool,
+            [[SELECT publish_acl, subscribe_acl
               FROM vmq_auth_acl
               WHERE
                 mountpoint=? AND
                 (client_id=? OR client_id='*') AND
                 username=? AND
-                password=]] .. mysql.hash_method(), reg.mountpoint, reg.client_id, reg.username, reg.password)
+                password=]] .. mysql.hash_method(), reg.mountpoint, reg.client_id, reg.username, pwd)
         return validate_result_server_side(results, reg)
     end
     return false

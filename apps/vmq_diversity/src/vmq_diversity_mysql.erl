@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_mysql).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("emysql/include/emysql.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
@@ -41,7 +43,7 @@ execute(As, St) ->
                     APoolId -> APoolId
                 catch
                     _:_ ->
-                        lager:error("unknown pool ~p", [BPoolId]),
+                        ?LOG_ERROR("unknown pool ~p", [BPoolId]),
                         badarg_error(unknown_pool, As, St)
                 end,
             try emysql:execute(PoolId, BQuery, Args) of
@@ -56,7 +58,7 @@ execute(As, St) ->
                     {[false], St}
             catch
                 E:R ->
-                    lager:error("can't execute query ~p due to ~p:~p", [BQuery, E, R]),
+                    ?LOG_ERROR("can't execute query ~p due to ~p:~p", [BQuery, E, R]),
                     badarg_error(execute_equery, As, St)
             end;
         _ ->

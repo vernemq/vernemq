@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_script).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -72,7 +74,7 @@ call_function(Pid, Function, Args) ->
     %% calls into the Lua environment.
     case catch gen_server:call(Pid, {call_function, Function, Args}, infinity) of
         {'EXIT', Reason} ->
-            lager:error("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
+            ?LOG_ERROR("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
             {error, Reason};
         Ret ->
             Ret

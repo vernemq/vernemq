@@ -34,24 +34,6 @@
                                                                                                 {datatype, flag}
                                                                                                ]}.
 
-%% @doc Allows a client to logon multiple times using the same client
-%% id (non-standard behaviour!). This feature is DEPRECATED and will
-%% be removed in VerneMQ 2.0.
-{mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [
-                                                               {default, off},
-                                                               {datatype, flag}
-                                                              ]}.
-
-{translation, "vmq_server.allow_multiple_sessions",
- fun(Conf) ->
-         case cuttlefish:conf_get("allow_multiple_sessions", Conf) of
-             true ->
-                 cuttlefish:warn("allow_multiple_sessions is deprecated and will be removed in VerneMQ 2.0"),
-                 true;
-             false -> false
-         end
- end}.
-
 %% @doc Client registrations can be either happen in a coordinated or
 %% uncoordinated fashion. Uncoordinated registrations are faster and
 %% will cause other clients with the same client-id to be eventually
@@ -60,26 +42,6 @@
 {mapping, "coordinate_registrations", "vmq_server.coordinate_registrations",
  [{default, on},
   {datatype, flag}]}.
-
-%% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
-%% how the messages are delivered to multiple sessions. Default is 'fanout' which
-%% specifies to deliver every message to all connected sessions. 'balance' specifies
-%% that the messages will be randomly balanced to the connected sessions.
-%% (non-standard behaviour!).
-{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [
-                                                               {default, fanout},
-                                                               {datatype, atom},
-                                                               hidden
-                                                              ]}.
-
-{translation, "vmq_server.queue_deliver_mode",
- fun(Conf) ->
-         case cuttlefish:conf_get("queue_deliver_mode", Conf) of
-             fanout -> fanout;
-             balance -> balance;
-             _ -> cuttlefish:invalid("queue_deliver_mode must be either 'fanout' or 'balance'!")
-         end
- end}.
 
 %% @doc queue_type enables to change the default queue delivery behaviour from
 %% 'fifo' to 'lifo'. In order to make this work the underlying message store
@@ -131,6 +93,25 @@
                                                                             hidden
                                                                            ]}.
 
+%% @doc Secret to be used for crendentials obfuscation. Default is "random" which 
+%% generates a random string. 
+{mapping, "logging.obfuscation_secret", "vmq_server.logging", [
+                                                            {datatype, [string]},
+                                                            {default, "random"}
+                                                           ]}.
+%% @doc Client disconnect due to keepalive is by default a warning. In unstable networks
+%% it might be "expected" behaviour to have a lot of those warnings. This allows to 
+%% downgrade the warning to an info message.
+{mapping, "logging.keepalive_as_warning", "vmq_server.logging", [
+                                                            {datatype, flag},
+                                                            {default, on}
+                                                           ]}.
+
+{translation, "vmq_server.logging",
+ fun(Conf) ->
+    [{keep_alive_as_warning, cuttlefish:conf_get("logging.keepalive_as_warning", Conf, true)},
+     {obfuscation_secret, cuttlefish:conf_get("logging.obfuscation_secret", Conf, random)}]
+ end}.
 
 %% @doc Allows to select a new default reg_view.
 %% A view is a pre-defined way to route messages. Multiple views can be
@@ -270,8 +251,8 @@
                                                                   hidden]}.
 
 %% @doc Allows a session that changes from offline to online to override the maximum
-%% online message count (max_online_messages). All offlines messages will be added 
-%% to the online queue. 
+%% online message count (max_online_messages). All offlines messages will be added
+%% to the online queue.
 {mapping, "override_max_online_messages", "vmq_server.override_max_online_messages", [{default, off},
                                                   {datatype, flag}
                                                   ]}.
@@ -300,24 +281,6 @@
                                                               {default, 0},
                                                               {datatype, integer}
                                                              ]}.
-
-%% @doc deprecated - use `max_message_size` instead.
-{mapping, "message_size_limit", "vmq_server.message_size_limit", [
-                                                                  {default, 0},
-                                                                  {datatype, integer},
-                                                                  hidden
-                                                                 ]}.
-{translation, "vmq_server.message_size_limit",
- fun(Conf) ->
-         Size = cuttlefish:conf_get("message_size_limit", Conf),
-         case Size of
-            0 ->
-                Size;
-            _ ->
-                cuttlefish:warn("message_size_limit is deprecated and has no effect, use max_message_size instead"),
-                Size
-         end
- end}.
 
 %% @doc If a message is published with a QoS lower than the QoS of the subscription it is
 %% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
@@ -352,7 +315,7 @@
 %% @doc specifies the modules to be enabled by the http(s) listeners. Overriding this setting is possible for specific listeners.
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http,
-                                                                vmq_http_v2_api, vmq_http_pub]"},
+                                                                vmq_http_v2_api]"},
                                                       {datatype, string},
                                                       hidden
                                                      ]}.
@@ -380,11 +343,17 @@
 %% - listener.http.$name.http_module.$module.auth.mode
 %% - listener.https.$name.http_module.$module.auth.mode
 %%
-%% The default for vmq_http_mgmt_api is "apikey", for all others it is noauth.
+%% The default for vmq_http_mgmt_api, vmq_http_v2 and vmq_http_pub is "apikey", for all others it is noauth.
 {mapping, "http_module.$name.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "noauth"},
                                                                                hidden
                                                                                 ]}.
 {mapping, "http_module.vmq_http_mgmt_api.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "http_module.vmq_http_pub.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "http_module.vmq_http_v2_api.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
                                                                                hidden
                                                                                 ]}.
 {mapping, "listener.http.$name.http_module.$module.auth.mode", "vmq_server.http_listener_modules_auth", [{datatype, string},
@@ -398,7 +367,7 @@
   fun(Conf) ->
      HTTPModules = cuttlefish_variable:filter_by_prefix("http_module",Conf),
      HTTPModulesAsAtom = lists:map(fun(Element) -> list_to_atom(lists:nth(2,element(1, Element))) end, HTTPModules),
-     KnownHttpModules = [vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http, vmq_http_v2_api, vmq_http_pub],
+     KnownHttpModules = [vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http, vmq_http_v2_api, vmq_http_pub, vmq_web_ui],
      UniqueModules = lists:usort(HTTPModulesAsAtom ++ KnownHttpModules),
      Map = lists:map(fun(Atom) -> String = "http_module."++atom_to_list(Atom)++".auth.mode", #{Atom => cuttlefish:conf_get(String, Conf, "noauth")} end, UniqueModules),
      Ret = maps:from_list(lists:foldl(fun(Elem, Acc) -> maps:to_list(Elem) ++ Acc end, [], Map)),
@@ -1928,6 +1897,22 @@
                                                        hidden
                                                       ]}.
 
+%% @doc Prometheus namespace prefix 
+{mapping, "prometheus_namespace", "vmq_server.prometheus_namespace", [
+                                                        {default, "vernemq_"},
+                                                        {datatype, string}
+                                                       ]}.
+
+{translation, "vmq_server.prometheus_namespace",
+ fun(Conf) ->
+     S = cuttlefish:conf_get("prometheus_namespace", Conf),
+     case S of
+         "\"\"" -> <<>>;
+            S   -> S
+     end
+ end}.
+
+
 %% @doc Enable the Graphite Reporter. Ensure to also configure a
 %% proper graphite.host
 {mapping, "graphite_enabled", "vmq_server.graphite_enabled", [
@@ -2229,3 +2214,10 @@
          true;
     (Name) -> vmq_schema_util:file_is_pem_content(Name)
  end}.
+
+%% @doc Disconnect v3.1 clients in case they are not authorized to publish. This breaks the MQTT 3.1 specification
+%% and is intended for old unpatchable MQTT 3.1 client devices.
+{mapping, "disconnect_on_unauthorized_publish_v3", "vmq_server.disconnect_on_unauthorized_publish_v3", [{default, off},
+                                                                                                        {datatype, flag},
+                                                                                                        hidden
+                                                                                                       ]}.

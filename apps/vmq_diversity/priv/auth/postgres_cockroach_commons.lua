@@ -91,11 +91,12 @@
 -- FOLLOWING SCRIPT.
 
 function validate_result_client_side(results, reg)
+   pwd = obf.decrypt(reg.password)
    if #results > 0 then
       local targetRow
       --   search for a specific rule for the client client_id
       for _, row in ipairs(results) do
-         if row.client_id ~= '*' and row.passhash == do_hash(method, reg.password, row.passhash) then
+         if row.client_id ~= '*' and row.passhash == do_hash(method, pwd, row.passhash) then
             targetRow = row
          end
       end
@@ -103,7 +104,7 @@ function validate_result_client_side(results, reg)
       -- no specific rule, get default rule for all clients
       if targetRow == nil then
          for _, row in ipairs(results) do
-            if row.passhash == do_hash(method, reg.password, row.passhash) then
+            if row.passhash == do_hash(method, pwd, row.passhash) then
                targetRow = row
                break
             end
@@ -163,13 +164,14 @@ function auth_on_register_common(db_library, reg)
          else
             return false
          end
+         pwd = obf.decrypt(reg.password)
          local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
                 (client_id=$2 OR client_id='*') AND
                 username=$3 AND
-                password=]] .. server_hash, reg.mountpoint, reg.client_id, reg.username, reg.password)
+                password=]] .. server_hash, reg.mountpoint, reg.client_id, reg.username, pwd)
          return validate_result_server_side(results, reg)
       end
    else

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_ranch_config).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -27,7 +29,8 @@
     delete_listener/2,
     restart_listener/2,
     get_listener_config/2,
-    listeners/0
+    listeners/0,
+    listeners/1
 ]).
 
 %% gen_server callbacks
@@ -162,8 +165,17 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
                 Error -> Error
             end
     end.
-
 listeners() ->
+    listeners(select, false, false).
+
+listeners(with_tls) ->
+    listeners(select, true, false);
+listeners(with_mqtt) ->
+    listeners(select, false, true);
+listeners(with_tls_and_mqtt) ->
+    listeners(select, true, true).
+
+listeners(select, AddTLSInfo, AddMQTTInfo) ->
     maps:fold(
         fun({Ip, Port}, ConfigMap, Acc) ->
             {ok, {Type, Opts}} = get_listener_config(Ip, Port),
@@ -183,9 +195,55 @@ listeners() ->
                     _ -> inet:ntoa(Ip)
                 end,
             StrPort = integer_to_list(Port),
+            AllowedProtocolVersionsList = proplists:get_value(allowed_protocol_versions, Opts, ""),
+            AllowedProtocolVersions = vmq_util:mqtt_version_to_string(AllowedProtocolVersionsList),
+            AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, ""),
+            % TLS
+            CertFile = proplists:get_value(certfile, Opts, ""),
+            TLS = proplists:get_value(tls_version, Opts, ""),
+            CAFile = proplists:get_value(ca_file, Opts, ""),
+            KeyFile = proplists:get_value(keyfile, Opts, ""),
+            RequireCertificate = proplists:get_value(require_certificate, Opts, ""),
+            UseIDAsUsername = proplists:get_value(use_identity_as_username, Opts, ""),
+            PSKSupport = proplists:get_value(psk_support, Opts, ""),
+            PSKFile = proplists:get_value(pskfile, Opts, ""),
+
+            Base = [
+                Type,
+                StrIp,
+                StrPort,
+                Status,
+                MountPoint,
+                MaxConnections,
+                ActiveConnections,
+                AllConnections
+            ],
+            Base2 =
+                case AddTLSInfo of
+                    true ->
+                        Base ++
+                            [
+                                TLS,
+                                CertFile,
+                                CAFile,
+                                KeyFile,
+                                RequireCertificate,
+                                UseIDAsUsername,
+                                PSKSupport,
+                                PSKFile
+                            ];
+                    _ ->
+                        Base
+                end,
+            Base3 =
+                case AddMQTTInfo of
+                    true ->
+                        Base2 ++ [AllowedProtocolVersions, AllowAnonymousOverride];
+                    _ ->
+                        Base2
+                end,
             [
-                {Type, StrIp, StrPort, Status, MountPoint, MaxConnections, ActiveConnections,
-                    AllConnections}
+                list_to_tuple(Base3)
                 | Acc
             ]
         end,
@@ -241,7 +299,7 @@ reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Lis
         ok ->
             ok;
         {error, Reason} ->
-            lager:error(
+            ?LOG_ERROR(
                 "can't reconfigure ~p listener(~p, ~p) with Options ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             )
@@ -314,7 +372,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
             apply(Mod, Fun, Param)
         catch
             E:R ->
-                lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
+                ?LOG_ERROR("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
         end
     end,
@@ -354,7 +412,7 @@ default_session_opts(Opts) ->
                 [
                     {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
                     {proxy_xff_trusted_intermediate, V2},
-                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, "")},
+                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, undefined)},
                     {xff_use_cn_as_username,
                         proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
                     | MaybeProxyDefaults

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_queue_sup).
+-include_lib("kernel/include/logger.hrl").
 
 %% API functions
 -export([
@@ -179,7 +181,7 @@ loop(State = #state{parent = Parent, queue_tab = QueueTab}, NrOfChildren) ->
             To ! {Tag, {error, ?MODULE}},
             loop(State, NrOfChildren);
         Msg ->
-            lager:error("vmq_queue_sup received unexpected message ~p", [Msg])
+            ?LOG_ERROR("vmq_queue_sup received unexpected message ~p", [Msg])
     end.
 
 %%%===================================================================
@@ -251,7 +253,7 @@ start_queue(Caller, SubscriberId, Clean, NrOfChildren, QueueTab) ->
             reply(Caller, {ok, false, Pid}),
             NrOfChildren + 1;
         Ret ->
-            lager:error(
+            ?LOG_ERROR(
                 "vmq_queue_sup can't start vmq_queue for ~p due to ~p",
                 [SubscriberId, Ret]
             ),
@@ -259,7 +261,7 @@ start_queue(Caller, SubscriberId, Clean, NrOfChildren, QueueTab) ->
             NrOfChildren
     catch
         Class:Reason ->
-            lager:error(
+            ?LOG_ERROR(
                 "vmq_queue_sup can't start vmq_queue for ~p due crash ~p:~p",
                 [SubscriberId, Class, Reason]
             ),
@@ -278,7 +280,7 @@ reply(undefined, Reply) ->
     Reply.
 
 report_error(SubscriberID, Pid, Reason) ->
-    lager:error(
+    ?LOG_ERROR(
         "vmq_queue process ~p exit for subscriber ~p due to ~p",
         [Pid, SubscriberID, Reason]
     ).

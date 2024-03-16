@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 -module(vmq_plugin_util).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([check_modifiers/2]).
 
@@ -37,7 +39,7 @@ check_modifiers(Hook, [{_, _} | _] = Modifiers) ->
             ({ModKey, ModVal}, Acc) ->
                 case lists:keyfind(ModKey, 1, AllowedModifiers) of
                     false ->
-                        lager:error("can't validate modifier ~p ~p (not an allowed modifier)", [
+                        ?LOG_ERROR("can't validate modifier ~p ~p (not an allowed modifier)", [
                             Hook, ModKey
                         ]),
                         error;
@@ -46,7 +48,7 @@ check_modifiers(Hook, [{_, _} | _] = Modifiers) ->
                             true ->
                                 [{ModKey, ModVal} | Acc];
                             false ->
-                                lager:error("can't validate modifier ~p ~p ~p", [
+                                ?LOG_ERROR("can't validate modifier ~p ~p ~p", [
                                     Hook, ModKey, ModVal
                                 ]),
                                 error;
@@ -66,7 +68,7 @@ check_modifiers(Hook, Modifiers) when is_map(Modifiers) ->
             Other
     end;
 check_modifiers(Hook, Modifiers) ->
-    lager:error("can't check modifiers ~p for hook ~p", [Hook, Modifiers]),
+    ?LOG_ERROR("can't check modifiers ~p for hook ~p", [Hook, Modifiers]),
     error.
 
 to_internal_qos_m5(V) when is_integer(V) ->
@@ -141,10 +143,8 @@ modifiers(auth_on_register) ->
         {shared_subscription_policy, fun val_atom/1},
         {retry_interval, fun val_int/1},
         {upgrade_qos, fun val_bool/1},
-        {allow_multiple_sessions, fun val_bool/1},
         {max_online_messages, fun val_int/1},
         {max_offline_messages, fun val_int/1},
-        {queue_deliver_mode, fun val_atom/1},
         {queue_type, fun val_atom/1},
         {max_drain_time, fun val_int/1},
         {max_msgs_per_drain_step, fun val_int/1}
@@ -231,14 +231,14 @@ val_properties(Props, AllowedProperties) ->
             ({PropKey, PropVal}, {ok, Acc}) ->
                 case lists:keyfind(PropKey, 1, AllowedProperties) of
                     false ->
-                        lager:error("property not allowed ~p ~p", [PropKey, PropVal]),
+                        ?LOG_ERROR("property not allowed ~p ~p", [PropKey, PropVal]),
                         false;
                     {_, ValidatorFun} ->
                         case ValidatorFun(PropVal) of
                             true ->
                                 {ok, [{PropKey, PropVal} | Acc]};
                             false ->
-                                lager:error("invalid property ~p ~p", [PropKey, PropVal]),
+                                ?LOG_ERROR("invalid property ~p ~p", [PropKey, PropVal]),
                                 false;
                             {ok, NewPropVal} ->
                                 {ok, [{PropKey, NewPropVal} | Acc]}
@@ -280,11 +280,11 @@ val_unsub_topics(Topics) when is_list(Topics) ->
                         {ok, Topic} ->
                             {ok, [Topic | Acc]};
                         {error, Reason} ->
-                            lager:error("can't parse topic ~p", [T, Reason]),
+                            ?LOG_ERROR("can't parse topic ~p", [T, Reason]),
                             false
                     end;
                 (T, _) ->
-                    lager:error("can't rewrite topic due to wrong format ~p", [T]),
+                    ?LOG_ERROR("can't rewrite topic due to wrong format ~p", [T]),
                     false
             end,
             {ok, []},
@@ -309,7 +309,7 @@ val_sub_topics(Topics) when is_list(Topics) ->
                         {ok, Topic} ->
                             {ok, [{Topic, {to_internal_qos_m5(Q), SubOpts}} | Acc]};
                         {error, Reason} ->
-                            lager:error("can't parse topic ~p", [{T, Q}, Reason]),
+                            ?LOG_ERROR("can't parse topic ~p", [{T, Q}, Reason]),
                             false
                     end;
                 ({T, Q}, {ok, Acc}) when is_binary(T) and is_number(Q) ->
@@ -318,11 +318,11 @@ val_sub_topics(Topics) when is_list(Topics) ->
                         {ok, Topic} ->
                             {ok, [{Topic, to_internal_qos(Q)} | Acc]};
                         {error, Reason} ->
-                            lager:error("can't parse topic ~p", [{T, Q}, Reason]),
+                            ?LOG_ERROR("can't parse topic ~p", [{T, Q}, Reason]),
                             false
                     end;
                 (T, _) ->
-                    lager:error("can't rewrite topic due to wrong format ~p", [T]),
+                    ?LOG_ERROR("can't rewrite topic due to wrong format ~p", [T]),
                     false
             end,
             {ok, []},

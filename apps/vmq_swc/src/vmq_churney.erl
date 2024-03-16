@@ -1,6 +1,21 @@
+%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 -module(vmq_churney).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -79,7 +94,7 @@ handle_info(histogram, #state{histogram = Hist0} = State) ->
             Mid = L div 2,
             Rem = L rem 2,
             Median = lists:nth(Mid + Rem, Data1) + lists:nth(Mid + 1, Data1) / 2,
-            lager:info("Churney[~p] n: ~p min: ~p max: ~p avg: ~p median: ~p", [
+            ?LOG_INFO("Churney[~p] n: ~p min: ~p max: ~p avg: ~p median: ~p", [
                 ResType, L, Min, Max, Avg, Median
             ])
         end,
@@ -214,8 +229,7 @@ ensure_subscription_replicated(Node, ClientId, Topic, N) ->
             timer:sleep(10),
             ensure_subscription_replicated(Node, ClientId, Topic, N - 1);
         Subs0 ->
-            Subs1 = vmq_subscriber:check_format(Subs0),
-            case topic_exists(Topic, Subs1) of
+            case topic_exists(Topic, Subs0) of
                 false ->
                     timer:sleep(10),
                     ensure_subscription_replicated(Node, ClientId, Topic, N - 1);

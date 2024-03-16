@@ -9,7 +9,8 @@
     concat_dot/2,
     to_int/2,
     to_bool/2,
-    elem/2
+    elem/2,
+    mqtt_version_to_string/1
 ]).
 
 % Returns the first non-undefined value
@@ -106,3 +107,21 @@ to_bool(List, Default) when is_list(List) ->
     end;
 to_bool(_, Default) ->
     Default.
+
+mqtt_version_to_string([]) ->
+    "";
+mqtt_version_to_string(VersionList) ->
+    VersionString = lists:map(
+        fun(Version) ->
+            case Version of
+                3 -> "mqtt 3.1";
+                4 -> "mqtt 3.1.1";
+                5 -> "mqtt 5";
+                131 -> "mqtt 3.1 (bridge)";
+                132 -> "mqtt 3.1.1 (bridge)";
+                _ -> "unknown"
+            end
+        end,
+        VersionList
+    ),
+    string:join(VersionString, ", ").

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_reg_ordered_trie).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -dialyzer(no_undefined_callbacks).
 
@@ -251,7 +253,7 @@ handle_info(
     ),
     NrOfSubscribers = ets:info(vmq_ordered_tree_subs, size),
     persistent_term:put(subscribe_trie_ready, 1),
-    lager:info("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
+    ?LOG_INFO("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
     {noreply, State#state{status = ready, event_queue = undefined}};
 handle_info(Event, #state{status = init, event_queue = Q} = State) ->
     {noreply, State#state{event_queue = queue:in(Event, Q)}};

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -47,7 +48,7 @@
     on_publish/6,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/6,
+    on_deliver/7,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/1,
@@ -224,13 +225,18 @@ code_change(_OldVsn, State, _Extra) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
     Res = all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(UserName)},
-        {password, nilify(Password)},
+        {password, nilify(Pwd)},
         {clean_session, CleanSession}
     ]),
     conv_res(auth_on_reg, Res).
@@ -238,13 +244,18 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
     Res = all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(UserName)},
-        {password, nilify(Password)},
+        {password, nilify(Pwd)},
         {clean_start, CleanStart},
         {properties, conv_args_props(Props)}
     ]),
@@ -579,7 +590,7 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
             ])
     end.
 
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nilify(UserName)},
@@ -588,7 +599,8 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {properties, conv_args_props(Props)}
     ]).
 
 on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->

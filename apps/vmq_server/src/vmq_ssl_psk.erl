@@ -1,3 +1,5 @@
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -11,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_ssl_psk).
+-include_lib("kernel/include/logger.hrl").
+
 -export([
     init/1,
     opts/1,
@@ -93,7 +97,7 @@ load_from_file(File, Separator) ->
             parse_psk_line(F(F, read), Separator),
             del_aged_entries();
         {error, _Reason} ->
-            lager:error("Failed to open PSK file: ~p, reason: ~p", [File, _Reason]),
+            ?LOG_ERROR("Failed to open PSK file: ~p, reason: ~p", [File, _Reason]),
             {error, _Reason}
     end.
 

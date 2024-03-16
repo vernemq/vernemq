@@ -111,6 +111,9 @@ basic_store_test(_Config) ->
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
+    ?assertEqual({0,0,true}, rpc:call(Node1, vmq_swc_plugin, history, [[test]])),
+    [?assertEqual({0,0,true}, rpc:call(Node, vmq_swc_plugin, history, [[test]]))
+    || Node <- OtherNodes],
     [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),

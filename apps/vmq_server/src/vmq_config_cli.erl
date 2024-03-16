@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -34,8 +35,6 @@ register_config_() ->
             "allow_publish_during_netsplit",
             "allow_subscribe_during_netsplit",
             "allow_unsubscribe_during_netsplit",
-            "allow_multiple_sessions",
-            "queue_deliver_mode",
             "queue_type",
             "retry_interval",
             "max_client_id_size",
@@ -43,7 +42,6 @@ register_config_() ->
             "max_inflight_messages",
             "max_online_messages",
             "max_offline_messages",
-            "queue_deliver_mode",
             "override_max_online_messages",
             "queue_type",
             "max_message_rate",
@@ -65,7 +63,8 @@ register_config_() ->
             "receive_max_broker",
             "suppress_lwt_on_session_takeover",
             "coordinate_registrations",
-            "mqtt_connect_timeout"
+            "mqtt_connect_timeout",
+            "disconnect_on_unauthorized_publish_v3"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)

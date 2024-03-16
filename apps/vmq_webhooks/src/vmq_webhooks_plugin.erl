@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 -module(vmq_webhooks_plugin).
 
+-include_lib("kernel/include/logger.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include_lib("hackney/include/hackney_lib.hrl").
 
@@ -49,7 +51,7 @@
     on_publish/6,
     on_subscribe/3,
     on_unsubscribe/3,
-    on_deliver/6,
+    on_deliver/7,
     on_offline_message/5,
     on_client_wakeup/1,
     on_client_offline/1,
@@ -274,13 +276,18 @@ nullify(Val) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
     all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nullify(UserName)},
-        {password, nullify(Password)},
+        {password, nullify(PasswordPlain)},
         {clean_session, CleanSession}
     ]).
 
@@ -292,13 +299,18 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
     all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nullify(UserName)},
-        {password, nullify(Password)},
+        {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
         {properties, Props}
     ]).
@@ -476,9 +488,9 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+-spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nullify(UserName)},
@@ -487,7 +499,8 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {properties, Props}
     ]).
 
 -spec on_deliver_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->
@@ -891,11 +904,11 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     case Res of
         {decoded_error, Reason} ->
             vmq_webhooks_metrics:incr(Hook, errors),
-            lager:debug("calling endpoint received error due to ~p", [Reason]),
+            ?LOG_DEBUG("calling endpoint received error due to ~p", [Reason]),
             {error, Reason};
         {error, Reason} ->
             vmq_webhooks_metrics:incr(Hook, errors),
-            lager:error("calling endpoint failed due to ~p", [Reason]),
+            ?LOG_ERROR("calling endpoint failed due to ~p", [Reason]),
             {error, Reason};
         Res ->
             Res

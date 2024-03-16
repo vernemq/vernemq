@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -113,9 +114,15 @@ check(undefined, _) ->
 check(_, undefined) ->
     next;
 check(User, Password) ->
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
+
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
-            case hash(Password, base64:decode(SaltB64)) == EncPassword of
+            case hash(PasswordPlain, base64:decode(SaltB64)) == EncPassword of
                 true -> ok;
                 false -> {error, invalid_credentials}
             end;

@@ -32,37 +32,38 @@
 
 init_per_suite(Config) ->
     {ok, StartedApps} = application:ensure_all_started(vmq_server),
-    {ok, _} = application:ensure_all_started(cowboy),
+    application:set_env(vmq_server, ignore_db_config, true),
+    {ok, StartedApps2} = application:ensure_all_started(cowboy),
 
     application:load(vmq_plugin),
-    {ok, _} = application:ensure_all_started(vmq_plugin),
+    application:load(vmq_http_pub),
+    {ok, StartedApps3} = application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_plugin(vmq_diversity),
     ok = vmq_plugin_mgr:enable_plugin(vmq_http_pub),
 
     application:set_env(vmq_server, http_modules_auth, #{vmq_http_pub => "noauth"}),
     application:set_env(vmq_http_pub, config, [{mqttauth, "testMode"}]),
-    vmq_server_cmd:set_config(allow_anonymous, true),
-    vmq_config:configure_node(),
 
     vmq_server_cmd:listener_start(38908, [{http, true},
         {config_mod, vmq_http_pub},
         {config_fun, routes}]),
-    application:ensure_all_started(inets),
+    {ok, StartedApps4}  = application:ensure_all_started(inets),
     {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_http_pub) ++ "/test/test_auth.lua"),
     cover:start(),
-    [{started_apps, StartedApps}] ++ Config.
+    [{started_apps, StartedApps ++ StartedApps2 ++ StartedApps3 ++ StartedApps4}] ++ Config.
 
 end_per_suite(Config) ->
     vmq_server_cmd:listener_stop(38908, "127.0.0.1", false),
-    vmq_plugin_mgr:disable_plugin(vmq_diversity),
-    vmq_plugin_mgr:disable_plugin(vmq_http_pub),
-    application:stop(cowboy),
-    application:stop(vmq_server),
+    ok = vmq_plugin_mgr:disable_plugin(vmq_diversity),
+    ok = vmq_plugin_mgr:disable_plugin(vmq_http_pub),
+    vmq_server:stop(no_wait),
+    application:unload(vmq_server),
+
     [ application:stop(App) || App <- proplists:get_value(started_apps, Config, []) ],
-    Config.
+     Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:set_env(allow_anonymous, true, false),
     vmq_config:configure_node(),
     Config.
 
@@ -110,7 +111,7 @@ mock_request_http() ->
         streamid => 1,version => 'HTTP/1.1'}.
 
 allow_anon(Anon) ->
-    vmq_server_cmd:set_config(allow_anonymous, Anon),
+    vmq_config:set_env(allow_anonymous, Anon, false),
     vmq_config:configure_node().
 
 

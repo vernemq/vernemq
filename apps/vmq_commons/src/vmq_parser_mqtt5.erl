@@ -1,3 +1,17 @@
+%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 -module(vmq_parser_mqtt5).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
@@ -398,7 +412,7 @@ parse_username(_, _, _) ->
 parse_password(<<>>, <<_:1, 0:1, _:4>>, M) ->
     M#{password => undefined};
 parse_password(<<Len:16/big, Password:Len/binary>>, <<_:1, 1:1, _:4>>, M) ->
-    M#{password => Password};
+    M#{password => credentials_obfuscation:encrypt(Password)};
 parse_password(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_password}.
@@ -674,6 +688,7 @@ flag(1) -> 1;
 flag(false) -> 0;
 flag(true) -> 1;
 flag(V) when is_binary(V) orelse is_list(V) -> 1;
+flag({encrypted, V}) when is_binary(V) -> 1;
 %% for test purposes
 flag(empty) -> 1;
 flag(_) -> 0.
@@ -693,6 +708,9 @@ utf8(empty) ->
     <<0:16/big>>;
 utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
+utf8({encrypted, Bin}) ->
+    Plain = credentials_obfuscation:decrypt({encrypted, Bin}),
+    <<(byte_size(Plain)):16/big, Plain/binary>>;
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
@@ -796,7 +814,8 @@ gen_connect(ClientId, Opts) ->
         clean_start = proplists:get_value(clean_start, Opts, true),
         keep_alive = proplists:get_value(keepalive, Opts, 60),
         username = ensure_binary(proplists:get_value(username, Opts)),
-        password = ensure_binary(proplists:get_value(password, Opts)),
+        password =
+            ensure_binary(proplists:get_value(password, Opts)),
         proto_ver = ?PROTOCOL_5,
         lwt = proplists:get_value(lwt, Opts, undefined),
         properties = proplists:get_value(properties, Opts, #{})

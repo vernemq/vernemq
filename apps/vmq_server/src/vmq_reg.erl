@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_reg).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 
 %% API
@@ -531,7 +533,7 @@ publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg = Msg, remote_matche
         ok ->
             Acc#publish_fold_acc{remote_matches = N + 1};
         {error, Reason} ->
-            lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
+            ?LOG_WARNING("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Acc
     end.
 
@@ -792,7 +794,7 @@ fix_dead_queues(DeadNodes, AccTargets) ->
     %% DeadNodes must be a list of offline VerneMQ nodes. Targets must
     %% be a list of online VerneMQ nodes
     {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}),
-    lager:info("dead queues summary: ~p queues fixed", [N]).
+    ?LOG_INFO("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
     %%% Why not use maybe_remap_subscriber/2:
@@ -823,7 +825,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                         ok ->
                             {DeadNodes, Targets ++ [Target], N + 1};
                         Error ->
-                            lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                            ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                                 SubscriberId, Target, Error
                             ]),
                             {DeadNodes, Targets ++ [Target], N}
@@ -831,7 +833,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                 end,
             case vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000) of
                 {error, Error} ->
-                    lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                    ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                         SubscriberId, Target, Error
                     ]),
                     {DeadNodes, Targets ++ [Target], N};

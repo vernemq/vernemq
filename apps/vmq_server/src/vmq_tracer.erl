@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -597,10 +598,12 @@ format_all_till_ok(Hook, Pid, Timestamp, Args, Opts) ->
 
 format_all_till_ok_(
     auth_on_register = Hook,
-    [Peer, SubscriberId, User, Password, CleanSession],
+    [Peer, SubscriberId, User, _Password, CleanSession],
     _Opts
 ) ->
-    {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanSession]};
+    {"Calling ~p(~p,~p,~s,~s,~p) ~n", [
+        Hook, Peer, SubscriberId, User, <<"pw_no_print">>, CleanSession
+    ]};
 format_all_till_ok_(
     auth_on_publish = Hook,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain],
@@ -615,11 +618,13 @@ format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics], _Opt
     [{"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]}, ftopics(Topics)];
 format_all_till_ok_(
     auth_on_register_m5 = Hook,
-    [Peer, SubscriberId, User, Password, CleanStart, Props],
+    [Peer, SubscriberId, User, _Password, CleanStart, Props],
     Opts
 ) ->
     [
-        {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanStart]},
+        {"Calling ~p(~p,~p,~s,~s,~p) ~n", [
+            Hook, Peer, SubscriberId, User, <<"pw_no_print">>, CleanStart
+        ]},
         format_props(Props, Opts)
     ];
 format_all_till_ok_(
@@ -719,7 +724,6 @@ format_frame_(
     #mqtt_connect{
         proto_ver = Ver,
         username = Username,
-        password = Password,
         clean_session = CleanSession,
         keep_alive = KeepAlive,
         client_id = ClientId,
@@ -732,7 +736,7 @@ format_frame_(
 ) ->
     [
         {"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n", [
-            ClientId, Ver, Username, Password, CleanSession, KeepAlive
+            ClientId, Ver, Username, <<"pw_no_print">>, CleanSession, KeepAlive
         ]},
         format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, undefined, Opts)
     ];
@@ -780,7 +784,6 @@ format_frame_(
     #mqtt5_connect{
         proto_ver = Ver,
         username = Username,
-        password = Password,
         clean_start = CleanStart,
         keep_alive = KeepAlive,
         client_id = ClientId,
@@ -791,7 +794,7 @@ format_frame_(
 ) ->
     [
         {"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n", [
-            ClientId, Ver, Username, Password, CleanStart, KeepAlive
+            ClientId, Ver, Username, <<"pw_no_print">>, CleanStart, KeepAlive
         ]},
         format_props(Props, Opts),
         format_lwt(LWT, Opts)

@@ -1,5 +1,5 @@
-%% Copyright 2023- Octavo Labs AG, Switzerland
-%%
+%% Copyright 2023-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +15,7 @@
 -module(vmq_http_v2_api).
 -behaviour(vmq_http_config).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% cowboy rest handler callbacks
 -export([
@@ -116,7 +117,7 @@ force_disconnect(SubscriberId, DoCleanup) ->
                     vmq_queue:force_disconnect(QPid, ?ADMINISTRATIVE_ACTION, DoCleanup)
             catch
                 E:R ->
-                    lager:debug("API v2 disconnect RPC failed with ~p:~p", [E, R]),
+                    ?LOG_DEBUG("API v2 disconnect RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
     end.
@@ -144,7 +145,7 @@ get_status_and_topics(SubscriberId) ->
                     end
             catch
                 E:R ->
-                    lager:debug("API v2 client status RPC failed with ~p:~p", [E, R]),
+                    ?LOG_DEBUG("API v2 client status RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
     end.

@@ -8,6 +8,8 @@
 %% ===================================================================
 init_per_suite(Config) ->
     cover:start(),
+    application:ensure_started(credentials_obfuscation),
+    credentials_obfuscation:set_secret(<<"Testing">>),
     vmq_test_utils:setup(),
     [{ct_hooks, vmq_cth}|Config].
 
@@ -80,7 +82,7 @@ groups() ->
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttwsp, [], [ws_proxy_protocol_v1_test, ws_proxy_protocol_v2_test,
                     ws_proxy_protocol_localcommand_v1_test, ws_proxy_protocol_localcommand_v2_test]},
-     {mqttwsx, [], [ws_xff_peer_test]},
+     {mqttwsx, [], [ws_xff_peer_test, ws_xff_peer_reject_no_user_test]},
                     %ws_xff_trusted_intermediate_ok_test, ws_xff_trusted_intermediate_fail_test,
                     %ws_xff_cn_as_username_test]},
      {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]}
@@ -305,18 +307,33 @@ ws_xff_peer_test(Config) ->
        % ct:pal("Config ~p~n", [Config]),
         Connect = packet:gen_connect("ws_xff_peer_test", [{keepalive,10}]),
         Connack = packet:gen_connack(5),
-        WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+        WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}, {xff_username, "xff_user"}]},
         ConnOpts = [WSOpt | conn_opts(Config)],
         {ok, Socket} = packet:do_client_connect(Connect, Connack, ConnOpts),
         ok = close(Socket, Config).
+
+ws_xff_peer_reject_no_user_test(Config) ->
+        Connect = packet:gen_connect("ws_xff_peer_test", [{keepalive,10}]),
+        Connack = packet:gen_connack(5),
+        WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+        ConnOpts = [WSOpt | conn_opts(Config)],
+        {error, closed} = packet:do_client_connect(Connect, Connack, ConnOpts).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_empty_client_id_proto_4(_, _RandomId, _, _, _) -> ok.
 hook_uname_no_password_denied(_, {"", <<"connect-uname-test-">>}, <<"user">>, undefined, _) -> {error, invalid_credentials}.
-hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> {error, invalid_credentials}.
-hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> ok.
+hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, Password, _) -> 
+    case credentials_obfuscation:decrypt(Password) of
+        <<"password9">> -> {error, invalid_credentials};
+                     _   -> next
+    end.
+hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, Password, _) ->
+case credentials_obfuscation:decrypt(Password) of
+    <<"password9">> -> ok;
+                 _   -> next
+end.
 hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
 hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
@@ -421,9 +438,9 @@ start_listener(Config) ->
             ws ->
                 [{websocket,true}];
             wsx -> [{websocket, true}, 
-                    {proxy_xff_support, true},
+                    {proxy_xff_support, "true"},
                     {proxy_xff_trusted_intermediate, "127.0.0.1"},
-                    {proxy_xff_use_cn_as_username, true},
+                    {proxy_xff_use_cn_as_username, "true"},
                     {proxy_xff_cn_header, "x-ssl-client-cn"}];
             wss -> [{ssl, true},
                  {nr_of_acceptors, 5},

@@ -1,5 +1,6 @@
 %% Copyright 2019 Octavo Labs AG Zurich Switzerland (http://octavolabs.com)
-%%
+%% Copyright 2019-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,8 @@
 
 -module(vmq_message_store).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -export([
     start/0,
     stop/0,
@@ -26,7 +29,7 @@
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
-    lager:info("Try to start ~p: ~p", [Impl, Ret]),
+    ?LOG_INFO("Trying to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->
@@ -42,7 +45,7 @@ stop() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     _ = spawn(fun() ->
         Ret = vmq_plugin_mgr:disable_plugin(Impl),
-        lager:info("Try to stop ~p: ~p", [Impl, Ret])
+        ?LOG_INFO("Trying to stop ~p: ~p", [Impl, Ret])
     end),
     ok.
 

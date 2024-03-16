@@ -1,5 +1,5 @@
-%% Copyright 2019 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2019-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -23,6 +23,8 @@
 %% API
 %%====================================================================
 start(_StartType, _StartArgs) ->
+    Buckets = application:get_env(vmq_generic_msg_store, nr_of_buckets, 12),
+    persistent_term:put({vmq_msg_store, bucks}, Buckets),
     vmq_generic_msg_store_sup:start_link().
 
 %%--------------------------------------------------------------------

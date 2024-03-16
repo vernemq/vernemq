@@ -28,8 +28,7 @@ all() ->
         change_node_test,
         change_node_all_test,
         add_subscription_test,
-        remove_subscription_test,
-        maybe_convert_v0_test
+        remove_subscription_test
     ].
 -define(t(S), [list_to_binary(S)]).
 
@@ -210,13 +209,3 @@ remove_subscription_test(_) ->
     {[{X, true, []}], false} = vmq_subscriber:remove(vmq_subscriber:new(true), [a]),
     {[{X, true, []}], true} =  vmq_subscriber:remove(vmq_subscriber:new(true, [{a, 1}]), [a]),
     {[{X, true, [{b, 2}]}], true} = vmq_subscriber:remove(vmq_subscriber:new(true, [{a, 1}, {b, 2}]), [a]).
-
-maybe_convert_v0_test(_) ->
-    Version0Subs = [{?t("a"), 0, node_a}, {?t("b"), 1, node_b}, {?t("c"), 2, node_c}],
-    Subs = [
-        {node_a, true, [{?t("a"), 0}]},
-        {node_b, true, [{?t("b"), 1}]},
-        {node_c, true, [{?t("c"), 2}]},
-        {node(), false, []}
-    ],
-    Subs = vmq_subscriber:check_format(Version0Subs).
