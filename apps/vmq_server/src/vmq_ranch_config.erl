@@ -364,6 +364,8 @@ protocol_opts(cowboy_clear, Type, Opts) when
         end,
     maps:merge(maps:from_list(MOpts), #{
         env => #{dispatch => dispatch(Type, Opts)},
+        max_request_line_length => 16384,
+        max_header_value_length => 16384,
         stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
     });
 protocol_opts(cowboy_clear, _, Opts) ->

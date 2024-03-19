@@ -1,3 +1,4 @@
+- Increase default value of `max_header_value_length` and `max_request_line_length` for Websocket listeners to 16384 bytes
 - Add option for a default rule ("*") in database Lua scripts, so that Clients can fallback to default ACLs.
 
 ## VerneMQ 2.0 Release Candidate
