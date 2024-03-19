@@ -1,3 +1,5 @@
+- Add option for a default rule ("*") in database Lua scripts, so that Clients can fallback to default ACLs.
+
 ## VerneMQ 2.0 Release Candidate
 
 - Introduce credentials obfusication that avoid printing secrets to logs and stack traces (breaking change)
