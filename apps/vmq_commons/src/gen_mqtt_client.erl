@@ -159,7 +159,8 @@
     mod_state = [],
     transport,
     parser = <<>>,
-    info_fun
+    info_fun,
+    inet :: inet:family_address()
 }).
 
 start_link(Module, Args, Opts) ->
@@ -256,9 +257,10 @@ try_transport_connect(Pid, State) ->
     #state{
         host = Host,
         port = Port,
-        transport = {Transport, Opts}
+        transport = {Transport, Opts},
+        inet = Inet
     } = State,
-    case Transport:connect(Host, Port, [binary, {packet, raw} | Opts]) of
+    case Transport:connect(Host, Port, [Inet, binary, {packet, raw} | Opts]) of
         {ok, Sock} ->
             %give ownership of socket to main process
             Transport:controlling_process(Sock, Pid),
@@ -399,6 +401,7 @@ init([Mod, Args, Opts]) ->
     KeepAliveInterval = proplists:get_value(keepalive_interval, Opts, 60),
     Persistent = proplists:get_value(persistent, Opts, false),
     QDir = proplists:get_value(queue_dir, Opts, undefined),
+    Inet = proplists:get_value(inet_version, Opts, inet),
     ReplayqDir =
         case {QDir, Persistent} of
             {undefined, true} ->
@@ -506,7 +509,8 @@ init([Mod, Args, Opts]) ->
             batch_size = BatchSize,
             size = replayq:count(PubrelQ)
         },
-        info_fun = InfoFun
+        info_fun = InfoFun,
+        inet = Inet
     },
     Res = wrap_res(connecting, init, [Args], State),
     gen_fsm:send_event_after(0, connect),

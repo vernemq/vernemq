@@ -18,6 +18,10 @@ init_per_group(mqttv4, Config) ->
     [{mqtt_version, 4} | Config];
 init_per_group(mqttv3, Config) ->
     [{mqtt_version, 3} | Config];
+init_per_group(inet, Config) ->
+    [{inet_version, inet} | Config];
+init_per_group(inet6, Config) ->
+    [{inet_version, inet6} | Config];
 init_per_group(try_private_3, Config) ->
     [{mqtt_version, 128+3} | Config];
 init_per_group(try_private_4, Config) ->
@@ -33,8 +37,7 @@ end_per_testcase(_TestCase, _Config) ->
 groups() ->
     Tests = [
             buffer_outgoing_test,
-            prefixes_test
-            ],
+            prefixes_test],
     ReconnectTests = [
                       bridge_reconnect_qos1_test,
                       bridge_reconnect_qos2_test,
@@ -45,6 +48,8 @@ groups() ->
      % we only run the ReconnectTests for mqttv4 as they consume quite some time
      {mqttv4, [shuffle], Tests ++ ReconnectTests},
      {mqttv3, [shuffle], Tests},
+     {inet, [shuffle], Tests},
+     {inet6, [shuffle], Tests},
      {try_private_3, [shuffle], Tests},
      {try_private_4, [shuffle], Tests}
     ].
@@ -53,6 +58,7 @@ all() ->
     [
      {group, mqttv4},
      {group, mqttv3},
+     {group, inet6},
      {group, try_private_3},
      {group, try_private_4}
     ].
@@ -62,18 +68,20 @@ prefixes_test(Cfg) ->
     %% local-subs: none
     %% remote-subs: remote-prefix/topic
     %% rem-pub remote-prefix/topic -> local-pub local-prefix/topic
+    Inet = inet_version(Cfg),
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
+      inet_version => Inet,
       qos => 0,
       topics => [{"bridge-in", in, 0, "local-in-prefix", "remote-in-prefix"},
                  {"bridge-out", out, 0, "local-out-prefix", "remote-out-prefix"}]
      }),
-    BridgePid = get_bridge_pid(),
+    BridgePid = get_bridge_pid(Cfg),
     %% Start the 'broker' and let the bridge connect
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
     {proto_ver, mqtt_version(Cfg)}]),
     Connack = packet:gen_connack(0),
-    {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
+    {ok, SSocket} = gen_tcp:listen(1890, [Inet, binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
     {ok, BrokerSocket} = gen_tcp:accept(SSocket),
     ok = packet:expect_packet(BrokerSocket, "connect", Connect),
     ok = gen_tcp:send(BrokerSocket, Connack),
@@ -297,12 +305,14 @@ buffer_outgoing_test(Cfg) ->
 
 buffer_outgoing_test_(Cfg) ->
     %% start bridge
+    Inet = inet_version(Cfg),
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
+      inet_version => Inet,
       qos => 0,
       max_outgoing_buffered_messages => 10
      }),
-    BridgePid = get_bridge_pid(),
+    BridgePid = get_bridge_pid(Cfg),
 
     %% Publish some messages before connecting, should be queued.
     pub_to_bridge(BridgePid, <<"m1">>, 0),
@@ -315,7 +325,7 @@ buffer_outgoing_test_(Cfg) ->
            out_queue_size := 5}} = vmq_bridge:info(BridgePid),
 
     %% Start the 'broker' and let the bridge connect
-    {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
+    {ok, SSocket} = gen_tcp:listen(1890, [Inet, binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
     {ok, BrokerSocket} = gen_tcp:accept(SSocket, 5000),
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
                                             {proto_ver, mqtt_version(Cfg)}]),
@@ -378,7 +388,9 @@ buffer_outgoing_test_(Cfg) ->
 %%% Test Helpers
 %%%
 mqtt_version(Config) ->
-    proplists:get_value(mqtt_version, Config).
+    proplists:get_value(mqtt_version, Config, 4).
+inet_version(Config) ->
+    proplists:get_value(inet_version, Config, inet).
 
 disconnect_helper(BridgeProc) when is_pid(BridgeProc) ->
     BridgeProc ! {deliver, [<<"bridge">>, <<"disconnect">>, <<"test">>], <<"disconnect-message">>, 0, false, false, {[],#{},[]}}.
@@ -389,19 +401,25 @@ start_bridge_plugin(Opts) ->
     QoS = maps:get(qos, Opts),
     Max = maps:get(max_outgoing_buffered_messages, Opts, 100),
     Topics = maps:get(topics, Opts, [{"bridge/#", both, QoS, "", ""}]),
+    Inet = maps:get(inet_version, Opts, inet),
+    Localhost = case Inet of
+                  inet6 -> inet:ntoa({0,0,0,0,0,0,0,1});
+                  _ -> "localhost"
+    end,
     application:load(vmq_bridge),
     application:set_env(vmq_bridge, registry_mfa,
                         {?MODULE, bridge_reg, [self(), []]}),
     application:set_env(vmq_bridge, config,
                         {[
                           %% TCP Bridges
-                          {"br0:localhost:1890", [{topics, Topics},
+                          {"br0:" ++ Localhost ++ ":1890", [{topics, Topics},
                                               {restart_timeout, 5},
                                               {retry_interval, 1},
                                               {client_id, "bridge-test"},
                                               {max_outgoing_buffered_messages, Max},
                                               {try_private, false}, % enables that we can configure mqtt_version below
-                                              {mqtt_version, MqttVersion}]}
+                                              {mqtt_version, MqttVersion},
+                                              {inet_version, Inet}]}
                          ],
                          [
                           %% SSL Bridges
@@ -424,8 +442,13 @@ bridge_rec(Msg, Timeout) ->
             throw({error, {message_not_received, Msg}})
     end.
 
-get_bridge_pid() ->
-    [{{vmq_bridge, _Name, "localhost",1890},Pid,worker,[vmq_bridge]}] =
+get_bridge_pid(Cfg) ->
+    Inet = inet_version(Cfg),
+    Localhost = case Inet of
+        inet6 -> inet:ntoa({0,0,0,0,0,0,0,1});
+        _ -> "localhost"
+    end,
+    [{{vmq_bridge, _Name, Localhost, 1890},Pid,worker,[vmq_bridge]}] =
         supervisor:which_children(vmq_bridge_sup),
     Pid.
 

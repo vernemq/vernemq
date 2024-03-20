@@ -435,7 +435,8 @@ client_opts(tcp, Host, Port, Opts) ->
             {retry_interval, proplists:get_value(retry_interval, Opts)},
             {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
             {queue_ratio, proplists:get_value(pubrel_queue_ratio, Opts)},
-            {transport, {gen_tcp, []}}
+            {transport, {gen_tcp, []}},
+            {inet_version, proplists:get_value(inet_version, Opts, inet)}
             | case
                 {
                     proplists:get_value(try_private, Opts, true),
