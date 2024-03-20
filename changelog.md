@@ -1,3 +1,4 @@
+- Allow configuration of `max_header_value_length` for HTTP(S) listeners
 - Add option for a default rule ("*") in database Lua scripts, so that Clients can fallback to default ACLs.
 
 ## VerneMQ 2.0 Release Candidate

@@ -1118,6 +1118,12 @@
                                                                      {datatype, integer},
                                                                      hidden
                                                                     ]}.
+%% @doc The maximum length of the HTTP header value in bytes (Cowboy's max_header_value_length)
+{mapping, "listener.http.$name.max_header_value_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
 %% @doc specifies the modules to be enabled by the http(s) listener
 {mapping, "listener.http.$name.http_modules", "vmq_server.listeners", [
                                                       {default, "[]"},
@@ -1142,6 +1148,11 @@
                                                                      hidden
                                                                     ]}.
 {mapping, "listener.https.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.https.$name.max_header_value_length", "vmq_server.listeners", [
                                                                      {default, 8000},
                                                                      {datatype, integer},
                                                                      hidden
