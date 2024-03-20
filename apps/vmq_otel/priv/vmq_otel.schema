@@ -1,0 +1,52 @@
+%% @doc Set the OTEL span processor.
+
+{mapping, "vmq_otel.telemetry.span_processor", "opentelemetry.span_processor",
+ [
+  {datatype, atom},
+  hidden
+ ]}.
+
+%% @doc Set the OTEL traces exporter.
+
+{mapping, "vmq_otel.telemetry.traces_exporter", "opentelemetry.traces_exporter",
+ [
+  {datatype, atom},
+  {default, none},
+  hidden
+ ]}.
+
+
+{mapping, "vmq_otel.telemetry.traces_exporter.options", "opentelemetry.traces_exporter",
+ [
+    {datatype, string},
+    {default, "[]"},
+    hidden
+ ]}.
+
+{translation, "opentelemetry.traces_exporter",
+ fun(Conf) ->
+         Exporter = cuttlefish:conf_get("vmq_otel.telemetry.traces_exporter", Conf),
+         ExporterOptions = cuttlefish:conf_get("vmq_otel.telemetry.traces_exporter.options", Conf),
+         case ExporterOptions of 
+            "[]" -> {Exporter, []};
+            _    -> {ok, T, _} = erl_scan:string(ExporterOptions ++ "."),
+                    {ok, Term} = erl_parse:parse_term(T),
+                    {Exporter, Term}
+        end
+ end}.
+
+%% @doc Set the processor protocol.
+
+{mapping, "vmq_otel.exporter.protocol", "opentelemetry_exporter.otlp_protocol",
+ [
+  {datatype, atom},
+  hidden
+ ]}.
+
+%% @doc Set the processor endpoint.
+
+{mapping, "vmq_otel.exporter.endpoint", "opentelemetry_exporter.otlp_endpoint",
+ [
+  {datatype, string},
+  hidden
+ ]}.
