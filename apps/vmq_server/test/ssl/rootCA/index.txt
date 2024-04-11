@@ -1,2 +1,2 @@
-V	240406081811Z		01	unknown	/C=CH/ST=Basel-Town/O=Erlio MQTT Project/OU=Testing/CN=Signing CA
-V	240406081817Z		02	unknown	/C=CH/ST=Basel-Town/O=Erlio MQTT Project/OU=Testing/CN=Alternative Signing CA
+V	290410065347Z		01	unknown	/C=CH/ST=Basel-Town/O=Erlio MQTT Project/OU=Testing/CN=Signing CA
+V	290410065402Z		02	unknown	/C=CH/ST=Basel-Town/O=Erlio MQTT Project/OU=Testing/CN=Alternative Signing CA

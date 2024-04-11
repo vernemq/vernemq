@@ -1,4 +1,5 @@
-V	240406081820Z		01	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=localhost
-V	240406081822Z		02	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client
-V	120821000000Z		03	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client expired
-R	240406081824Z	190408081826Z	04	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client revoked
+V	290410065409Z		01	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=localhost
+V	290410065416Z		02	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=notlocalhost
+V	290410065422Z		03	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client
+V	120821000000Z		04	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client expired
+R	290410065428Z	240411065433Z	05	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client revoked
