@@ -267,6 +267,13 @@
                                                                     {include_default, "br0"},
                                                                     {commented, 10}
                                                                    ]}.
+%% @doc For outgoing bridges, let us know whether the other endpoint is
+%% 'inet' or 'inet6' (an IPv4 or an IPv6 address)
+{mapping, "vmq_bridge.tcp.$name.inet_version", "vmq_bridge.config", [
+                                                         {datatype, {enum, ['inet', 'inet6']}},
+                                                            {default, 'inet'},
+                                                            hidden
+                                                        ]}.
 {mapping, "vmq_bridge.ssl.$name.pubrel_queue_ratio", "vmq_bridge.config", [
                                                                        {datatype, {percent, integer}},
                                                                        {default, 0},
@@ -362,7 +369,14 @@
                                                          {datatype, {enum, ['https']}},
                                                             {default, 'https'},
                                                             {commented, on}
-                                                        ]}.                                          
+                                                        ]}.
+%% @doc For outgoing bridges, let us know whether the other endpoint is
+%% 'inet' or 'inet6' (an IPv4 or an IPv6 address)
+{mapping, "vmq_bridge.ssl.$name.inet_version", "vmq_bridge.config", [
+                                                         {datatype, {enum, ['inet', 'inet6']}},
+                                                            {default, 'inet'},
+                                                            hidden
+                                                        ]}.
 
 %{mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
 % [
@@ -448,10 +462,10 @@
          Mappings = ["cleansession", "client_id", "keepalive_interval", "segment_size", "outgoing_batch_size",
                     "persistent_queue", "queue_dir",
                     "username", "password", "restart_timeout", "try_private", "topic",
-                     "max_outgoing_buffered_messages", "pubrel_queue_ratio", "mqtt_version"],
+                     "max_outgoing_buffered_messages", "pubrel_queue_ratio", "mqtt_version", "inet_version"],
                     %% SSL specific
          SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth", 
-         "customize_hostname_check", "sni"],
+         "customize_hostname_check", "sni", "inet_version"],
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
@@ -511,6 +525,7 @@
          {TCPIPs, TCPMaxBuffer} = lists:unzip(F("vmq_bridge.tcp", "max_outgoing_buffered_messages", IntVal)),
          {TCPIPs, TCPQueueRatio} = lists:unzip(F("vmq_bridge.tcp", "pubrel_queue_ratio", IntVal)),
          {TCPIPs, TCPTopics} = lists:unzip(F("vmq_bridge.tcp", "topic", TopicVal)),
+         {TCPIPS, TCPInets} = lists: unzip(F("vmq_bridge.tcp", "inet_version", AtomVal)),
 
          {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
          {SSLIPs, SSLClientIds} = lists:unzip(F("vmq_bridge.ssl", "client_id", ClientIdVal)),
@@ -539,6 +554,8 @@
          {SSLIPS, SSLDepths} = lists:unzip(F("vmq_bridge.ssl", "depth", IntVal)),
          {SSLIPS, SSLALLOWWCards} = lists:unzip(F("vmq_bridge.ssl", "customize_hostname_check", AtomVal)),
          {SSLIPS, SSLSNIs} = lists:unzip(F("vmq_bridge.ssl", "sni", StringVal)),
+         {SSLIPS, SSLInets} = lists: unzip(F("vmq_bridge.ssl", "inet_version", AtomVal)),
+
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
@@ -554,7 +571,8 @@
                                        TCPMQTTProtos,
                                        TCPMaxBuffer,
                                        TCPQueueRatio,
-                                       TCPTopics])),
+                                       TCPTopics,
+                                       TCPInets])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
                                        SSLClientIds, 
@@ -580,7 +598,8 @@
                                        SSLPSKs,
                                        SSLDepths,
                                        SSLALLOWWCards,
-                                       SSLSNIs])),
+                                       SSLSNIs,
+                                       SSLInets])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
