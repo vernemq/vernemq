@@ -93,25 +93,25 @@ subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Existing = subscriptions_exist(OldSubs, Topics),
     add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
-    QoSTable =
+    {QoSTable, _Ign} =
         lists:foldl(
             fun
                 %% MQTTv4 clauses
-                ({_, {_, not_allowed}}, AccQoSTable) ->
-                    [not_allowed | AccQoSTable];
-                ({Exists, {T, QoS}}, AccQoSTable) when is_integer(QoS) ->
-                    deliver_retained(SubscriberId, T, QoS, #{}, Exists),
-                    [QoS | AccQoSTable];
+                ({_, {_, not_allowed}}, {AccQoSTable, WaitSync}) ->
+                    {[not_allowed | AccQoSTable], WaitSync};
+                ({Exists, {T, QoS}}, {AccQoSTable, WaitSync}) when is_integer(QoS) ->
+                    WaitSync0 = deliver_retained(SubscriberId, T, QoS, #{}, Exists, WaitSync),
+                    {[QoS | AccQoSTable], WaitSync0};
                 %% MQTTv5 clauses
-                ({_, {_, {not_allowed, _}}}, AccQoSTable) ->
-                    [not_allowed | AccQoSTable];
-                ({Exists, {T, {QoS, SubOpts}}}, AccQoSTable) when
+                ({_, {_, {not_allowed, _}}}, {AccQoSTable, WaitSync}) ->
+                    {[not_allowed | AccQoSTable], WaitSync};
+                ({Exists, {T, {QoS, SubOpts}}}, {AccQoSTable, WaitSync}) when
                     is_integer(QoS), is_map(SubOpts)
                 ->
-                    deliver_retained(SubscriberId, T, QoS, SubOpts, Exists),
-                    [QoS | AccQoSTable]
+                    WaitSync0 = deliver_retained(SubscriberId, T, QoS, SubOpts, Exists, WaitSync),
+                    {[QoS | AccQoSTable], WaitSync0}
             end,
-            [],
+            {[], (vmq_config:get_env(subscriber_retain_mode, immediate) == syncwait)},
             lists:zip(Existing, Topics)
         ),
     {ok, lists:reverse(QoSTable)}.
@@ -574,17 +574,28 @@ add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups, 
         SubscriberGroups
     ).
 
--spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
-deliver_retained(_, _, _, #{retain_handling := dont_send}, _) ->
+-spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean(), boolean()) -> 'ok'.
+deliver_retained(_, _, _, #{retain_handling := dont_send}, _, WaitSync) ->
     %% don't send, skip
-    ok;
-deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true) ->
+    WaitSync;
+deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true, WaitSync) ->
     %% subscription already existed, skip.
-    ok;
-deliver_retained(_SubscriberId, [<<"$share">> | _], _QoS, _SubOpts, _) ->
+    WaitSync;
+deliver_retained(_SubscriberId, [<<"$share">> | _], _QoS, _SubOpts, _, WaitSync) ->
     %% Never deliver retained messages to subscriber groups.
-    ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
+    WaitSync;
+deliver_retained(SubscriberId, Topic, QoS, SubOpts, _, WaitSync) ->
+    deliver_retained(SubscriberId, Topic, QoS, SubOpts, WaitSync).
+
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, WaitSync) ->
+    Ret0 =
+        case WaitSync of
+            true ->
+                timer:sleep(vmq_config:get_env(retain_persist_interval, 1000) * 2),
+                false;
+            _ ->
+                false
+        end,
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
         fun
@@ -609,7 +620,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
                 },
                 Msg1 = maybe_add_sub_id({QoS, SubOpts}, Msg),
                 maybe_delete_expired(ExpiryTs, MP, Topic),
-                vmq_queue:enqueue(QPid, {deliver, QoS, Msg1});
+                vmq_queue:front(QPid, {deliver, QoS, Msg1});
             ({{_M, T}, Payload}, _) when is_binary(Payload) ->
                 %% compatibility with old style retained messages.
                 Msg = #vmq_msg{
@@ -622,12 +633,13 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
                     msg_ref = vmq_mqtt_fsm_util:msg_ref(),
                     properties = #{}
                 },
-                vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
+                vmq_queue:front(QPid, {deliver, QoS, Msg})
         end,
         ok,
         MP,
         Topic
-    ).
+    ),
+    Ret0.
 
 maybe_delete_expired(undefined, _, _) ->
     ok;

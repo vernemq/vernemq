@@ -43,6 +43,23 @@
  [{default, on},
   {datatype, flag}]}.
 
+%% Retrain subscriber mode defines if subscribers on topics with retrained flag set should wait for 
+%% a retrain server sync or process immmediatly.
+{mapping, "subscriber_retain_mode", "vmq_server.subscriber_retain_mode", [
+                                                               {default, immediate},
+                                                               {datatype, atom},
+                                                               hidden
+                                                              ]}.
+
+{translation, "vmq_server.subscriber_retain_mode",
+ fun(Conf) ->
+         case cuttlefish:conf_get("subscriber_retain_mode", Conf) of
+             immediate -> immediate;
+             syncwait -> syncwait;
+             _ -> cuttlefish:invalid("subscriber_retain_mode must be either 'immediate' or 'syncwait'!")
+         end
+ end}.
+
 %% @doc queue_type enables to change the default queue delivery behaviour from
 %% 'fifo' to 'lifo'. In order to make this work the underlying message store
 %% must deliver the messages in proper order.
