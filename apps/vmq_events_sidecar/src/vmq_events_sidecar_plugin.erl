@@ -312,7 +312,8 @@ on_deliver(
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
             Persisted},
         ACL
-    ).
+    ),
+    next.
 
 -spec on_delivery_complete(
     username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()

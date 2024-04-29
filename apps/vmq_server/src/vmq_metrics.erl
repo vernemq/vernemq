@@ -99,8 +99,6 @@
     incr_cache_miss/1,
 
     incr_msg_enqueue_subscriber_not_found/0,
-    incr_topic_counter/1,
-    incr_matched_topic/3,
     incr_shared_subscription_group_publish_attempt_failed/0,
 
     incr_events_sampled/2,
@@ -134,7 +132,6 @@
 ]).
 
 -define(TIMER_TABLE, vmq_metrics_timers).
--define(TOPIC_LABEL_TABLE, topic_labels).
 -define(EVENTS_SAMPLING_TABLE, vmq_metrics_events_sampling).
 -define(CONFIG_VERION_TABLE, config_version_table).
 
@@ -442,15 +439,14 @@ metrics(Opts) ->
 
     {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
     {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
-    {TopicMetricsDefs, TopicMetricsValues} = topic_metrics(),
     {EventsSamplingMetricsDefs, EventsSamplingMetricsValues} = events_sampling_metrics(),
     {ConfigVersionMetricsDefs, ConfigVersionMetricsValues} = config_version_metrics(),
 
     MetricDefs =
-        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++ TopicMetricsDefs ++
+        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++
             EventsSamplingMetricsDefs ++ ConfigVersionMetricsDefs,
     MetricValues =
-        metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++ TopicMetricsValues ++
+        metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++
             EventsSamplingMetricsValues ++ ConfigVersionMetricsValues,
 
     %% Create id->metric def map
@@ -569,22 +565,6 @@ histogram_metrics() ->
         Histogram
     ).
 
-topic_metric_defs() ->
-    {Defs, _} = topic_metrics(),
-    Defs.
-
-topic_metrics() ->
-    ets:foldl(
-        fun({Metric, TotalCount}, {DefsAcc, ValsAcc}) ->
-            {UniqueId, MetricName, Description, Labels} = topic_metric_name(Metric),
-            {[m(counter, Labels, UniqueId, MetricName, Description) | DefsAcc], [
-                {UniqueId, TotalCount} | ValsAcc
-            ]}
-        end,
-        {[], []},
-        ?TOPIC_LABEL_TABLE
-    ).
-
 events_sampling_metric_defs() ->
     {Defs, _} = events_sampling_metrics(),
     Defs.
@@ -639,42 +619,6 @@ incr_histogram_buckets(Metric, BucketOps) ->
                     lager:warning("couldn't initialize tables", [])
             end
     end.
-
--type metric_type() :: subscribe | publish | deliver | delivery_complete | message_drop.
--spec incr_topic_counter(
-    Metric :: {topic_matches, metric_type(), Labels :: [{atom(), atom() | list() | binary()}]}
-) -> ok.
-incr_topic_counter(Metric) ->
-    try
-        ets:update_counter(?TOPIC_LABEL_TABLE, Metric, 1)
-    catch
-        _:_ ->
-            try
-                ets:insert_new(?TOPIC_LABEL_TABLE, {Metric, 0}),
-                incr_topic_counter(Metric)
-            catch
-                _:_ ->
-                    lager:warning("couldn't initialize tables", [])
-            end
-    end.
-
--spec incr_matched_topic(binary() | undefined, atom(), integer()) -> ok.
-incr_matched_topic(<<>>, _Type, _Qos) ->
-    ok;
-incr_matched_topic(undefined, _Type, _Qos) ->
-    ok;
-incr_matched_topic(Name, Type, Qos) ->
-    OperationName =
-        case Type of
-            read -> subscribe;
-            write -> publish;
-            _ -> Type
-        end,
-    incr_topic_counter(
-        {topic_matches, OperationName, [
-            {acl_matched, Name}, {qos, integer_to_list(Qos)}
-        ]}
-    ).
 
 config_version_metric_defs() ->
     {Defs, _} = config_version_metrics(),
@@ -748,7 +692,7 @@ get_label_info() ->
             end,
             #{},
             metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs() ++
-                topic_metric_defs() ++ events_sampling_metric_defs() ++ config_version_metric_defs()
+                events_sampling_metric_defs() ++ config_version_metric_defs()
         ),
     maps:to_list(LabelInfo).
 
@@ -786,7 +730,6 @@ init([]) ->
     NumEntries = length(lists:usort(Idxs)),
 
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
-    ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?EVENTS_SAMPLING_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?CONFIG_VERION_TABLE, [named_table, public, {write_concurrency, true}]),
 
@@ -2984,15 +2927,6 @@ metric_name({Metric, SubMetric}) ->
         "A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."
     ),
     {Name, Name, Description, []}.
-
-topic_metric_name({Metric, SubMetric, Labels}) ->
-    LMetric = atom_to_list(Metric),
-    LSubMetric = atom_to_list(SubMetric),
-    MetricName = list_to_atom(LSubMetric ++ "_" ++ LMetric),
-    Description = list_to_binary(
-        "The number of " ++ LSubMetric ++ " packets on ACL matched topics."
-    ),
-    {[MetricName | Labels], MetricName, Description, Labels}.
 
 events_sampled_metric_name(H, C, SDType) ->
     Name = list_to_atom("vmq_events_" ++ SDType),

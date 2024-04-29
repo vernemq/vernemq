@@ -20,6 +20,7 @@ init_per_suite(Config) ->
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_plugin(vmq_events_sidecar),
+    ok = vmq_plugin_mgr:enable_plugin(vmq_metrics_plus),
     {ok, _} = vmq_metrics:start_link(),
 
     {ok, _} = application:ensure_all_started(shackle),
@@ -30,6 +31,7 @@ end_per_suite(Config) ->
     stop_tcp_server(proplists:get_value(socket, Config, [])),
 
     ok = vmq_plugin_mgr:disable_plugin(vmq_events_sidecar),
+    ok = vmq_plugin_mgr:disable_plugin(vmq_metrics_plus),
     application:stop(vmq_plugin),
 
     application:stop(shackle),
@@ -84,7 +86,7 @@ on_register_empty_properties_test(_) ->
 on_publish_test(_) ->
     enable_hook(on_publish),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_publish,
+    [ok,ok] = vmq_plugin:all(on_publish,
                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
     ok = exp_response(on_publish_ok),
     disable_hook(on_publish).
@@ -92,7 +94,7 @@ on_publish_test(_) ->
 on_subscribe_test(_) ->
     enable_hook(on_subscribe),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_subscribe,
+    [ok,ok] = vmq_plugin:all(on_subscribe,
                             [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}}, 
                                                                        {?TOPIC, not_allowed, #matched_acl{}}]]),
     ok = exp_response(on_subscribe_ok),
@@ -117,7 +119,7 @@ on_deliver_test(_) ->
 on_delivery_complete_test(_) ->
   enable_hook(on_delivery_complete),
   Self = pid_to_bin(self()),
-  [ok] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true]),
+  [ok,ok] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true]),
   ok = exp_response(on_delivery_complete_ok),
   disable_hook(on_delivery_complete).
 
@@ -159,7 +161,7 @@ on_session_expired_test(_) ->
 on_message_drop_test(_) ->
     enable_hook(on_message_drop),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
+    [ok,ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
     ok = exp_response(on_message_drop_ok),
     disable_hook(on_message_drop).
 

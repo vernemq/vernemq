@@ -1679,6 +1679,11 @@
                                                             {default, off}
                                                            ]}.
 
+%% @doc File based metrics plugin.
+{mapping, "plugins.vmq_metrics_plus", "vmq_server.user_plugins", [
+                                                         {datatype, flag},
+                                                         {default, on}
+                                                         ]}.
 {translation,
  "vmq_server.user_plugins",
  fun(Conf) ->

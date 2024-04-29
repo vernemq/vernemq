@@ -1,4 +1,4 @@
--module(vmq_events_sidecar_schema).
+-module(vmq_schema_translate).
 
 -export([
     translate_sampling/2

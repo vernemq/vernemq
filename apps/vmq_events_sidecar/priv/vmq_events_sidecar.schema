@@ -60,7 +60,7 @@
 
 {translation, "vmq_events_sidecar.sampler.on_publish",
   fun(Conf) ->
-    vmq_events_sidecar_schema:translate_sampling("on_publish", Conf)
+    vmq_schema_translate:translate_sampling("on_publish", Conf)
   end
 }.
 
@@ -70,6 +70,6 @@
 
 {translation, "vmq_events_sidecar.sampler.on_deliver",
   fun(Conf) ->
-    vmq_events_sidecar_schema:translate_sampling("on_deliver", Conf)
+    vmq_schema_translate:translate_sampling("on_deliver", Conf)
   end
 }.

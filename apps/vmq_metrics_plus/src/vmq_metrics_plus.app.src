@@ -1,0 +1,25 @@
+{application, vmq_metrics_plus, [
+    {description, "VerneMQ metrics plugin"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_metrics_plus_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        lager
+    ]},
+    {env, [
+        {vmq_metrics_mfa, {vmq_metrics_plus, metrics, []}},
+        {vmq_plugin_hooks, [
+            {vmq_metrics_plus_plugin, on_subscribe, 3, []},
+            {vmq_metrics_plus_plugin, on_publish, 7, []},
+            {vmq_metrics_plus_plugin, on_deliver, 8, []},
+            {vmq_metrics_plus_plugin, on_delivery_complete, 8, []},
+            {vmq_metrics_plus_plugin, on_message_drop, 3, []}
+        ]}
+    ]},
+    {modules, []},
+
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.

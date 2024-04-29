@@ -340,7 +340,6 @@ connected(
             acl_name = Name,
             persisted = Persisted
         } ->
-            vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
                 Username,
                 SubscriberId,
@@ -375,7 +374,6 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
             acl_name = Name,
             persisted = Persisted
         } ->
-            vmq_metrics:incr_matched_topic(Name, delivery_complete, QoS),
             _ = vmq_plugin:all(on_delivery_complete, [
                 Username,
                 SubscriberId,
@@ -1318,8 +1316,6 @@ on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, P
     HookArgs0 = [User, SubscriberId, Topic, Payload],
     case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
         {error, _} ->
-            #matched_acl{name = Name} = MatchedAcl,
-            vmq_metrics:incr_matched_topic(Name, deliver, QoS),
             HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted],
             vmq_plugin:all_till_ok(on_deliver, HookArgs1);
         Other ->

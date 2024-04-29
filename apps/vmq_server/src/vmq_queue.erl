@@ -1423,7 +1423,6 @@ on_message_drop_hook(
     },
     Reason
 ) ->
-    vmq_metrics:incr_matched_topic(Name, message_drop, QoS),
     vmq_plugin:all(on_message_drop, [
         SubscriberId,
         fun() -> {RoutingKey, QoS, Payload, Props, #matched_acl{name = Name}} end,
@@ -1439,7 +1438,6 @@ on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
                 properties = Props,
                 acl_name = Name
             }} ->
-                vmq_metrics:incr_matched_topic(Name, message_drop, QoS),
                 {RoutingKey, QoS, Payload, Props, #matched_acl{name = Name}};
             _ ->
                 error
