@@ -130,7 +130,7 @@ jobs:
                 ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -))
       - run: ./rebar3 cover --verbose
       - name: Archive coverage report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: _build/ci_tests+test/cover/
@@ -141,7 +141,7 @@ jobs:
         run: |
           tar -czf ct_test_report.tar.gz _build/ci_tests+test/logs/
       - name: Archive CT test report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ ! cancelled() }}
         with:
           name: ct-test-report
@@ -218,7 +218,7 @@ jobs:
                 echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -) &&
                 ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -))
       - name: Upload JUnit Test Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always() # always run even if the previous step fails
         with:
           name: junit-test-results-${{ runner.os }}-${{ matrix.otp }}
@@ -259,7 +259,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Event File
           path: ${{ github.event_path }}
