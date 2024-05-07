@@ -166,7 +166,7 @@ handle_info(
     reap_subscribers,
     #state{
         dead_node = DeadNode,
-        max_msgs = MaxClients,
+        max_clients = MaxClients,
         interval = Interval
     } = State
 ) ->
