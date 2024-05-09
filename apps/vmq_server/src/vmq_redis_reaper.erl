@@ -186,10 +186,13 @@ handle_info(
         )
     of
         {ok, ClientList} when is_list(ClientList) ->
+            Duration = vmq_config:get_env(persistent_client_expiration, 0),
             lists:foreach(
                 fun([MP, ClientId]) ->
                     SubscriberId = {binary_to_list(MP), ClientId},
-                    {ok, _QueuePresent, _QPid} = vmq_queue_sup_sup:start_queue(SubscriberId, false)
+                    {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId, false),
+                    ExpireAfter = Duration + rand:uniform(Duration + 1),
+                    vmq_queue:update_session_expiry(QPid, ExpireAfter)
                 end,
                 ClientList
             ),

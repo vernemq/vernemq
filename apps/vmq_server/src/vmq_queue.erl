@@ -57,7 +57,8 @@
     force_disconnect/3,
     set_delayed_will/3,
     init_offline_queue/1,
-    set_last_disconnect_reason/2
+    set_last_disconnect_reason/2,
+    update_session_expiry/2
 ]).
 
 -export([
@@ -222,6 +223,10 @@ save_sync_send_all_state_event(Queue, Event) ->
 
 init_offline_queue(Queue) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, init_offline_queue).
+
+-spec update_session_expiry(QPid :: pid(), ExpireAfterInSeconds :: number()) -> ok.
+update_session_expiry(Queue, ExpireAfter) when is_pid(Queue) ->
+    gen_fsm:sync_send_event(Queue, {update_session_expiry, ExpireAfter}, 1000).
 
 default_opts() ->
     #{
@@ -555,6 +560,9 @@ offline({cleanup, _Reason}, _From, #state{id = SId, offline = #queue{queue = Q}}
     vmq_message_store:delete(SId),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     {stop, normal, ok, State};
+offline({update_session_expiry, ExpireAfter}, _From, State) ->
+    S1 = unset_expiry_timer(State),
+    {reply, ok, offline, maybe_set_expiry_timer(ExpireAfter, S1)};
 offline({terminate, _Reason}, _From, State) ->
     {stop, normal, ok, State};
 offline(Event, _From, State) ->
