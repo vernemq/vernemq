@@ -73,3 +73,13 @@
     vmq_schema_translate:translate_sampling("on_deliver", Conf)
   end
 }.
+
+%% @doc Configure the sampling for on_delivery_complete events based on ACL names
+{mapping, "sample.on_delivery_complete.$acl.percentage", "vmq_events_sidecar.sampler.on_delivery_complete", 
+ [{datatype, integer}]}.
+
+{translation, "vmq_events_sidecar.sampler.on_delivery_complete",
+  fun(Conf) ->
+    vmq_schema_translate:translate_sampling("on_delivery_complete", Conf)
+  end
+}.

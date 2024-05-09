@@ -35,7 +35,8 @@ start_link() ->
                 ),
                 SamplingHooks = [
                     on_publish,
-                    on_deliver
+                    on_deliver,
+                    on_delivery_complete
                 ],
                 lists:foreach(
                     fun

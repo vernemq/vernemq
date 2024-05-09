@@ -85,14 +85,20 @@ enable_event(HookName) when is_atom(HookName) ->
 disable_event(HookName) when is_atom(HookName) ->
     gen_server:call(?MODULE, {disable_event, HookName}).
 
--spec enable_sampling(Hook :: on_publish | on_deliver, Criterion :: binary(), Percent :: integer()) ->
+-spec enable_sampling(
+    Hook :: on_publish | on_deliver | on_delivery_complete,
+    Criterion :: binary(),
+    Percent :: integer()
+) ->
     ok.
 enable_sampling(Hook, Criterion, Percent) when
     is_atom(Hook) and is_binary(Criterion) and is_integer(Percent)
 ->
     gen_server:call(?MODULE, {enable_sampling, Hook, Criterion, Percent}).
 
--spec disable_sampling(Hook :: on_publish | on_deliver, Criterion :: binary()) ->
+-spec disable_sampling(
+    Hook :: on_publish | on_deliver | on_delivery_complete, Criterion :: binary()
+) ->
     ok | {error, not_found}.
 disable_sampling(Hook, Criterion) when is_atom(Hook) and is_binary(Criterion) ->
     gen_server:call(?MODULE, {disable_sampling, Hook, Criterion}).
@@ -107,7 +113,7 @@ all_hooks() ->
         ?TBL
     ).
 
--spec list_sampling_conf(Hook :: on_publish | on_deliver) -> [term()].
+-spec list_sampling_conf(Hook :: on_publish | on_deliver | on_delivery_complete) -> [term()].
 list_sampling_conf(Hook) ->
     ets:match(?SAMPLER_TBL, {{Hook, '$1'}, '$2'}).
 
@@ -319,12 +325,22 @@ on_deliver(
     username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()
 ) ->
     'next'.
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted) ->
+on_delivery_complete(
+    UserName,
+    SubscriberId,
+    QoS,
+    Topic,
+    Payload,
+    IsRetain,
+    #matched_acl{name = ACL} = MatchedAcl,
+    Persisted
+) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_delivery_complete,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            Persisted}
+            Persisted},
+        ACL
     ).
 
 -spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
@@ -473,6 +489,8 @@ sample(Hook, Criterion) ->
         on_publish ->
             check(Hook, Criterion);
         on_deliver ->
+            check(Hook, Criterion);
+        on_delivery_complete ->
             check(Hook, Criterion);
         _ ->
             true

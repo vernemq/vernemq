@@ -206,7 +206,8 @@ hook_sampling_keyspec() ->
                         Hook,
                         [
                             "on_publish",
-                            "on_deliver"
+                            "on_deliver",
+                            "on_delivery_complete"
                         ]
                     )
                 of
@@ -308,7 +309,7 @@ events_sampling_usage() ->
 enable_sampling_usage() ->
     [
         "vmq-admin events sampling enable hook=<Hook> percentage=<Percentage> acl_name=<ACL>\n\n",
-        "  Enables sampling based on acl_name/label for on_publish & on_deliver.",
+        "  Enables sampling based on acl_name/label for on_publish, on_deliver & on_delivery_complete.",
         "\n\n"
     ].
 
