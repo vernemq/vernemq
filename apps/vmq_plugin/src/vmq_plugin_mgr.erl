@@ -561,6 +561,7 @@ start_plugin(App) ->
                 _ ->
                     ok
             end,
+            load_app_modules(App),
             {ok, Mods} = application:get_key(App, modules),
             case lists:member(App, Mods) of
                 true ->
@@ -575,7 +576,6 @@ start_plugin(App) ->
                 false ->
                     {ok, _} = application:ensure_all_started(App)
             end,
-            load_app_modules(App),
             ok;
         _ ->
             ok
