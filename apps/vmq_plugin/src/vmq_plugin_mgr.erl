@@ -485,7 +485,8 @@ wait_until_ready(#state{ready = true} = State) ->
     {ok, handle_deferred_calls(State)}.
 
 check_updated_plugins(Plugins, State) ->
-    case check_plugins(Plugins, []) of
+    OrderedPlugins = set_plugin_priority_order(Plugins),
+    case check_plugins(OrderedPlugins, []) of
         {ok, CheckedPlugins} ->
             ok = init_plugins_cli(CheckedPlugins),
             ok = start_plugins(CheckedPlugins),
@@ -513,6 +514,28 @@ check_plugins([{application, App, Options} | Rest], Acc) ->
     end;
 check_plugins([], CheckedHooks) ->
     {ok, lists:reverse(CheckedHooks)}.
+
+set_plugin_priority_order(Plugins) ->
+    PriorityMap = application:get_env(vmq_plugin, priority, #{}),
+    lists:sort(
+        fun({_, PluginA, _}, {_, PluginB, _}) ->
+            PriorityA = maps:get(PluginA, PriorityMap, undefined),
+            PriorityB = maps:get(PluginB, PriorityMap, undefined),
+            case {PriorityA, PriorityB} of
+                % No priority defined for either, keep original order for internal plugins
+                {undefined, undefined} -> true;
+                % No priority defined for either, keep original order from vernemq.conf
+                {infinity, infinity} -> true;
+                % Keep PluginB before PluginA if PluginB has no priority
+                {_, undefined} -> false;
+                % Keep PluginA before PluginB if PluginA has no priority
+                {undefined, _} -> true;
+                % Compare priorities
+                {PriorityA, PriorityB} -> PriorityA < PriorityB
+            end
+        end,
+        Plugins
+    ).
 
 check_module_plugin(Module, Options) ->
     Hooks = proplists:get_value(hooks, Options, undefined),
@@ -1454,4 +1477,100 @@ call_hooks() ->
     %% ALL_TILL_OK Hook Tests
     ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_ok_hook, [10])),
     ?assertEqual({error, error}, vmq_plugin:all_till_ok(sample_all_till_ok_error_hook, [10])).
+
+plugin_priority_order_test() ->
+    application:set_env(vmq_plugin, priority, #{
+        vmq_plugin_one => 1,
+        vmq_plugin_two => 2,
+        vmq_plugin_three => 3,
+        vmq_plugin_four => infinity,
+        vmq_plugin_five => infinity
+    }),
+    % set plugin in pritority order
+    ?assertEqual(
+        [
+            {application, vmq_plugin_one, []},
+            {application, vmq_plugin_two, []},
+            {application, vmq_plugin_three, []}
+        ],
+        set_plugin_priority_order([
+            {application, vmq_plugin_three, []},
+            {application, vmq_plugin_one, []},
+            {application, vmq_plugin_two, []}
+        ])
+    ),
+    % set plugin order with enabled plugin less than priority map
+    ?assertEqual(
+        [
+            {application, vmq_plugin_one, []},
+            {application, vmq_plugin_three, []}
+        ],
+        set_plugin_priority_order([
+            {application, vmq_plugin_three, []},
+            {application, vmq_plugin_one, []}
+        ])
+    ),
+    % order unchanged without plugins with priority
+    ?assertEqual(
+        [
+            {module, vmq_app_one, []},
+            {module, vmq_app_two, []},
+            {module, vmq_app_three, []},
+            {module, vmq_hook_one, []},
+            {module, vmq_hook_two, []}
+        ],
+        set_plugin_priority_order([
+            {module, vmq_app_one, []},
+            {module, vmq_app_two, []},
+            {module, vmq_app_three, []},
+            {module, vmq_hook_one, []},
+            {module, vmq_hook_two, []}
+        ])
+    ),
+    % set order with plugins with and without priority
+    ?assertEqual(
+        [
+            {module, vmq_app_one, []},
+            {module, vmq_app_two, []},
+            {application, vmq_app_three, []},
+            {application, vmq_hook_one, []},
+            {module, vmq_hook_two, []},
+            {application, vmq_plugin_one, []},
+            {application, vmq_plugin_two, []},
+            {application, vmq_plugin_three, []},
+            {application, vmq_plugin_four, []}
+        ],
+        set_plugin_priority_order([
+            {module, vmq_app_one, []},
+            {application, vmq_plugin_three, []},
+            {module, vmq_app_two, []},
+            {application, vmq_plugin_one, []},
+            {application, vmq_app_three, []},
+            {application, vmq_plugin_four, []},
+            {application, vmq_hook_one, []},
+            {application, vmq_plugin_two, []},
+            {module, vmq_hook_two, []}
+        ])
+    ),
+    % no priority set in vernemq.conf maintain the original order for external plugins.
+    ?assertEqual(
+        [
+            {module, vmq_app_one, []},
+            {module, vmq_app_two, []},
+            {application, vmq_hook_one, []},
+            {application, vmq_plugin_two, []},
+            {application, vmq_plugin_four, []},
+            {application, vmq_plugin_five, []}
+        ],
+        set_plugin_priority_order([
+            {module, vmq_app_one, []},
+            {module, vmq_app_two, []},
+            {application, vmq_plugin_four, []},
+            {application, vmq_hook_one, []},
+            {application, vmq_plugin_two, []},
+            {application, vmq_plugin_five, []}
+        ])
+    ),
+    % empty list
+    ?assertEqual([], set_plugin_priority_order([])).
 -endif.

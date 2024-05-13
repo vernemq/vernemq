@@ -18,3 +18,14 @@
          end
  end}.
 
+{translation, "vmq_plugin.priority",
+ fun(Conf) ->
+         PluginNames = proplists:get_all_values("$name",cuttlefish_variable:fuzzy_matches(["plugins", "$name"], Conf)),
+         EnabledPlugins = lists:filter(fun(Name) -> cuttlefish:conf_get("plugins." ++ Name, Conf, false) end, PluginNames),
+         lists:foldl(fun(PluginName, Acc) ->
+                Priority = cuttlefish:conf_get("plugins." ++ PluginName ++ ".priority", Conf, infinity),
+                maps:put(list_to_atom(PluginName), Priority, Acc) end,
+            #{},
+            EnabledPlugins
+        )
+ end}.
