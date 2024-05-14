@@ -1202,12 +1202,7 @@ prepare_msgs(SId, OQ, Q, QC, N) ->
     end.
 
 maybe_deref(SId, MsgRef) when is_binary(MsgRef) ->
-    case vmq_message_store:read(SId, MsgRef) of
-        {ok, #vmq_msg{qos = QoS} = Msg} ->
-            {ok, #deliver{qos = QoS, msg = Msg}};
-        {error, _} = E ->
-            E
-    end;
+    vmq_message_store:read(SId, MsgRef);
 maybe_deref(_, Msg) ->
     {ok, Msg}.
 
@@ -1385,12 +1380,6 @@ decompress_queue(_, [], Acc) ->
     queue:from_list(lists:reverse(Acc));
 decompress_queue(SId, [MsgRef | Rest], Acc) when is_binary(MsgRef) ->
     case vmq_message_store:read(SId, MsgRef) of
-        {ok, #vmq_msg{qos = QoS} = Msg} ->
-            decompress_queue(
-                SId,
-                Rest,
-                [#deliver{qos = QoS, msg = Msg#vmq_msg{persisted = false}} | Acc]
-            );
         {error, Reason} ->
             lager:warning(
                 "can't decompress queue item with msg_ref ~p for subscriber ~p due to ~p",
@@ -1438,18 +1427,8 @@ on_message_drop_hook(
     ]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
     Promise = fun() ->
-        case vmq_message_store:read(SubscriberId, MsgRef) of
-            {ok, #vmq_msg{
-                routing_key = RoutingKey,
-                qos = QoS,
-                payload = Payload,
-                properties = Props,
-                acl_name = Name
-            }} ->
-                {RoutingKey, QoS, Payload, Props, #matched_acl{name = Name}};
-            _ ->
-                error
-        end
+        {error, _} = vmq_message_store:read(SubscriberId, MsgRef),
+        error
     end,
     vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason]).
 

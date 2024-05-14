@@ -69,9 +69,6 @@ disable_all_plugins() ->
     lists:foreach(fun ({application, vmq_plumtree, _}) ->
                           % don't disable metadata plugin
                           ignore;
-                      ({application, vmq_generic_offline_msg_store, _}) ->
-                          % don't disable message store plugin
-                          ignore;
                       ({application, App, _Hooks}) ->
                           vmq_plugin_mgr:disable_plugin(App);
                       (_ModPlugins) ->

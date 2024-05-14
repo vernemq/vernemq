@@ -59,15 +59,6 @@
     "redis_queue_sleep_interval",
     "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
 
-%% @doc This option specifies the interval in which the message store must retry the failed operations.
-{mapping, "message_store_retry_interval", "vmq_server.message_store_retry_interval", [{default, 2000},
-                                                                                      {datatype, integer}
-                                                                                     ]}.
-%% @doc This option specifies the maximum number of retries in case of failed operations.
-{mapping, "message_store_nr_of_retries", "vmq_server.message_store_nr_of_retries", [{default, 2},
-                                                                                    {datatype, integer}
-                                                                                   ]}.
-
 %% @doc This option caches the shared subscription locally, default is 'off'. !!NOTE!!
 %% Local shared subscriptions currently do not honor shared subscription groups properly.
 %% It is recommended to use shared subscription topics only for shared subscription use-cases.
@@ -1741,11 +1732,6 @@
                                                                   hidden
                                                                  ]}.
 
-{mapping, "message_store_plugin", "vmq_server.message_store_impl", [{default, vmq_generic_msg_store},
-                                                                    {datatype, atom},
-                                                                    hidden
-                                                                   ]}.
-
 %% @doc This parameter allows to set the max no. of crashes that will be allowed
 %% in  queue_sup_sup_max_t seconds before restarting the queue_sup processes.
 {mapping, "queue_sup_sup_max_r", "vmq_server.max_r", [
@@ -1789,3 +1775,15 @@
                                                               {default, 10},
                                                               {datatype, integer}
                                                              ]}.
+
+%% @doc This option specifies the connect options for redis as message store
+{mapping, "message_store.redis.connect_options", "vmq_server.message_store.redis.connect_options",
+    [{datatype, string}]}.
+
+%% @doc This option specifies the username for redis as message store
+{mapping, "message_store.redis.username", "vmq_server.message_store.redis.username",
+    [{datatype, atom}]}.
+
+%% @doc This option specifies the password for redis as message store
+{mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
+    [{datatype, atom}]}.
