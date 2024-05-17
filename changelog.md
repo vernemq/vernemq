@@ -1,3 +1,4 @@
+- Bugfix: Ensure that client_id, username and topics are well-formed UTF8 strings (#2283)
 - Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
 - Update clique and plumtree dependencies
 - Update luerl dependency to 1.2.0
