@@ -357,6 +357,8 @@ protocol_opts(vmq_ranch, _, Opts) ->
 protocol_opts(cowboy_clear, Type, Opts) when
     (Type == mqttws) or (Type == mqttwss)
 ->
+    MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
+    MaxHeaderValueLength = proplists:get_value(max_header_value_length, Opts, 4096),
     MOpts =
         case proplists:get_value(proxy_protocol, Opts, false) of
             false -> default_session_opts(Opts);
@@ -364,7 +366,9 @@ protocol_opts(cowboy_clear, Type, Opts) when
         end,
     maps:merge(maps:from_list(MOpts), #{
         env => #{dispatch => dispatch(Type, Opts)},
-        stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
+        stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h],
+        max_request_line_length => MaxRequestLength,
+        max_header_value_length => MaxHeaderValueLength
     });
 protocol_opts(cowboy_clear, _, Opts) ->
     Apply = fun(Mod, Fun, Param) ->
@@ -389,7 +393,13 @@ protocol_opts(cowboy_clear, _, Opts) ->
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
-    #{env => #{dispatch => Dispatch}, max_request_line_length => MaxRequestLength, opts => Opts};
+    MaxHeaderValueLength = proplists:get_value(max_header_value_length, Opts, 4096),
+    #{
+        env => #{dispatch => Dispatch},
+        max_request_line_length => MaxRequestLength,
+        max_header_value_length => MaxHeaderValueLength,
+        opts => Opts
+    };
 protocol_opts(vmq_cluster_com, _, Opts) ->
     Opts.
 
