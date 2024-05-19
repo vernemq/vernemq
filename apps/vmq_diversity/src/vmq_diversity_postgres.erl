@@ -255,14 +255,14 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                         undefined ->
                                             MaybeHostNameCheck;
                                         CF ->
-                                            [{cacertfile, CF}]
+                                            [{cacertfile, CF} | MaybeHostNameCheck]
                                     end,
                                 MaybeSystemCAs =
                                     case SystemCAs of
                                         false ->
                                             MaybeCacertfile;
                                         true ->
-                                            [{cacerts, public_key:cacerts_get()}]
+                                            [{cacerts, public_key:cacerts_get()} | MaybeCacertfile]
                                     end,
                                 [P || {_, V} = P <- MaybeSystemCAs, V /= ""];
                             false ->
