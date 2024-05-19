@@ -105,7 +105,7 @@
  ]}.
 
 %% @doc Setting the depth for CA chains
-{mapping, "vmq_diversity.postgres.ssl.depth", "vmq_diversity.d_config.postgres.depth", [
+{mapping, "vmq_diversity.postgres.ssl.depth", "vmq_diversity.db_config.postgres.depth", [
                                                            {default, 3},
                                                            {datatype, integer},
                                                            hidden
@@ -119,7 +119,7 @@
                                                         ]}.
 %% @doc Whether the client verifies the server cert or not.
 %% Use "verify_peer" in production.
-{mapping, "vmq_diversity.postgres.ssl.verify", "vmq_diversity.d_config.postgres.verify", [
+{mapping, "vmq_diversity.postgres.ssl.verify", "vmq_diversity.db_config.postgres.verify", [
                                                                 {default, 'verify_peer'},
                                                                 {datatype, {enum, ['verify_none', 
                                                                             'verify_peer']}}
@@ -127,7 +127,7 @@
 
 %% @doc Whether to use the System CAs (public_key:cacerts_get/0).
 %% Can be used as an alternative to provide a CAcertfile
-{mapping, "vmq_diversity.postgres.ssl.use_system_cas", "vmq_diversity.d_config.postgres.use_system_cas", [
+{mapping, "vmq_diversity.postgres.ssl.use_system_cas", "vmq_diversity.db_config.postgres.use_system_cas", [
                                                                 {default, on},
                                                                 {datatype, flag}
                                                                ]}. 
