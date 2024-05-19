@@ -252,7 +252,7 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                     end,
                                 MaybeCacertfile =
                                     case CaCertFile of
-                                        undefined ->
+                                        [] ->
                                             MaybeHostNameCheck;
                                         CF ->
                                             [{cacertfile, CF} | MaybeHostNameCheck]
