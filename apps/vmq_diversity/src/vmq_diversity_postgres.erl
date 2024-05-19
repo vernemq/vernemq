@@ -239,7 +239,7 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                     case CustomizeHostnameCheck0 of
                                         'https' ->
                                             [
-                                                {match_fun, [
+                                                {customize_hostname_check, [
                                                     {match_fun,
                                                         public_key:pkix_verify_hostname_match_fun(
                                                             https
