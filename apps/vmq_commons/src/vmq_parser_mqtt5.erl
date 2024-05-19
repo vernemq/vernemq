@@ -120,7 +120,7 @@ variable(
     <<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
     <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Rest/binary>>
 ) when
-    QoS < 3
+    QoS < 3, MessageId > 0
 ->
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
@@ -833,7 +833,7 @@ gen_connack(SP, RC, Properties) ->
 
 gen_publish(Topic, Qos, Payload, Opts) ->
     Frame = #mqtt5_publish{
-        message_id = proplists:get_value(mid, Opts, 0),
+        message_id = proplists:get_value(mid, Opts, 1),
         topic = ensure_binary(Topic),
         qos = Qos,
         retain = proplists:get_value(retain, Opts, false),
