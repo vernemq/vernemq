@@ -42,6 +42,7 @@ groups() ->
      uname_password_denied,
      uname_password_success,
      change_subscriber_id,
+     auth_data_no_method,
      enhanced_authentication,
      enhanced_auth_no_other_packets,
      enhanced_auth_method_not_supported,
@@ -146,6 +147,17 @@ change_subscriber_id(_Config) ->
     %% TODO: should we be allowed to do this? If we should, should we
     %% then respond with the assigned_client_id property?
     {skip, not_implemented}.
+
+
+auth_data_no_method(_Config) ->
+   vmq_server_cmd:set_config(allow_anonymous, true),
+   vmq_config:configure_node(),
+   Connect = packetv5:gen_connect(<<"Client12">>, [{keepalive, 10},
+                                              {properties,  #{p_authentication_data => <<"ThisIsNotValid">>}}]),
+   Connack = packetv5:gen_connack(),
+
+   {error, closed} = packetv5:do_client_connect(Connect, Connack, []).
+                                          
 
 -define(AUTH_METHOD, <<"AuthMethod">>).
 

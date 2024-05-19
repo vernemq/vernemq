@@ -1,3 +1,5 @@
+- Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
+
 ## VerneMQ 2.0.0
 
 - New feature: Synchronized wait for retained message store
