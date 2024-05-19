@@ -233,7 +233,8 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                     {certfile, CertFile},
                                     {keyfile, KeyFile},
                                     {verify, Verify},
-                                    {depth, Depth}
+                                    {depth, Depth},
+                                    {server_name_indication, Host}
                                 ],
                                 MaybeHostNameCheck =
                                     case CustomizeHostnameCheck0 of
