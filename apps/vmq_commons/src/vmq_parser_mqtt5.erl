@@ -100,7 +100,7 @@ variable(
     %% QoS 0
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest, ?allowedPubProps) of
+            case parse_properties(Rest, ?allowedClientPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         topic = ParsedTopic,
@@ -124,7 +124,7 @@ variable(
 ->
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest, ?allowedPubProps) of
+            case parse_properties(Rest, ?allowedClientPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         message_id = MessageId,

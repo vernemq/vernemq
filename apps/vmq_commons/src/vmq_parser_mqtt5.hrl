@@ -83,14 +83,13 @@
     ?M5_QUOTA_EXCEEDED
 ]).
 
--define(allowedPubProps, [
+-define(allowedClientPubProps, [
     ?M5P_PAYLOAD_FORMAT_INDICATOR,
     ?M5P_MESSAGE_EXPIRY_INTERVAL,
     ?M5P_TOPIC_ALIAS,
     ?M5P_RESPONSE_TOPIC,
     ?M5P_CORRELATION_DATA,
     ?M5P_USER_PROPERTY,
-    ?M5P_SUBSCRIPTION_ID,
     ?M5P_CONTENT_TYPE
 ]).
 -define(allowedSubProps, [

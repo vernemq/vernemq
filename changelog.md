@@ -1,3 +1,4 @@
+- Bugfix: Client Pub Messages should not accept subscription identifier (#2283)
 - New feature: max_header_value_length option, solves #2267
 
 ## VerneMQ 2.0.0
