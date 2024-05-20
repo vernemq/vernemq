@@ -1,3 +1,5 @@
+- Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
+
 ## VerneMQ 2.0.0
 
 - New feature: Synchronized wait for retained message store
