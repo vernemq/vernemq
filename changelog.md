@@ -1,3 +1,4 @@
+- Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
 - Update clique and plumtree dependencies
 - Update luerl dependency to 1.2.0
 - New feature: max_header_value_length option, solves #2267
