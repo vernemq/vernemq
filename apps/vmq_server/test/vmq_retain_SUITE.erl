@@ -71,6 +71,7 @@ groups() ->
     GroupOpts = [shuffle, parallel],
     [
      {mqttv4, GroupOpts, Tests},
+     {mqttv4waitsync, GroupOpts, Tests},
      {mqttv5, GroupOpts,
       [
        retain_with_properties,
@@ -78,7 +79,15 @@ groups() ->
        subscribe_retain_as_published_test,
        subscribe_retain_handling_flags_test,
        subscribe_retain_subid_test
-       |Tests]}
+       |Tests]},
+       {mqttv5waitsync, GroupOpts,
+       [
+        retain_with_properties,
+        retain_with_message_expiry,
+        subscribe_retain_as_published_test,
+        subscribe_retain_handling_flags_test,
+        subscribe_retain_subid_test
+        |Tests]} 
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
