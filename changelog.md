@@ -1,3 +1,4 @@
+- Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
 - Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
 - Update clique and plumtree dependencies
 - Update luerl dependency to 1.2.0
