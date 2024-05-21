@@ -1,3 +1,4 @@
+- Bugfix: Ensure that client_id, username and topics are well-formed UTF8 strings (#2283)
 - Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
 - Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
 - Update clique and plumtree dependencies
