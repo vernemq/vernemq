@@ -121,7 +121,7 @@ variable(
     <<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
     <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>
 ) when
-    QoS < 3
+    QoS < 3, MessageId > 0
 ->
     case vmq_topic:validate_topic(publish, Topic) of
         {ok, ParsedTopic} ->
@@ -144,7 +144,9 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
     #mqtt_pubrel{message_id = MessageId};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubcomp{message_id = MessageId};
-variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) when
+    MessageId > 0
+->
     case parse_topics(Topics, ?SUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_subscribe{
@@ -154,7 +156,9 @@ variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) -
         E ->
             E
     end;
-variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) when
+    MessageId > 0
+->
     case parse_topics(Topics, ?UNSUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_unsubscribe{
@@ -474,7 +478,7 @@ gen_publish(Topic, Qos, Payload, Opts) ->
         qos = Qos,
         retain = proplists:get_value(retain, Opts, false),
         topic = ensure_binary(Topic),
-        message_id = proplists:get_value(mid, Opts, 0),
+        message_id = proplists:get_value(mid, Opts, 1),
         payload = ensure_binary(Payload)
     },
     iolist_to_binary(serialise(Frame)).
