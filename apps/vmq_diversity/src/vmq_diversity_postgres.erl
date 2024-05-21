@@ -200,12 +200,72 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                         proplists:get_value(keyfile, DefaultConf)
                                     )
                                 ),
+                                Verify = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"verify">>,
+                                        Options,
+                                        proplists:get_value(verify, DefaultConf)
+                                    )
+                                ),
+                                Depth = vmq_diversity_utils:int(
+                                    maps:get(
+                                        <<"depth">>,
+                                        Options,
+                                        proplists:get_value(depth, DefaultConf)
+                                    )
+                                ),
+                                CustomizeHostnameCheck0 = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"customize_hostname_check">>,
+                                        Options,
+                                        proplists:get_value(customize_hostname_check, DefaultConf)
+                                    )
+                                ),
+                                SystemCAs = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"use_system_cas">>,
+                                        Options,
+                                        proplists:get_value(use_system_cas, DefaultConf)
+                                    )
+                                ),
+
                                 L = [
                                     {certfile, CertFile},
-                                    {cacertfile, CaCertFile},
-                                    {keyfile, KeyFile}
+                                    {keyfile, KeyFile},
+                                    {verify, Verify},
+                                    {depth, Depth},
+                                    {server_name_indication, Host}
                                 ],
-                                [P || {_, V} = P <- L, V /= ""];
+                                MaybeHostNameCheck =
+                                    case CustomizeHostnameCheck0 of
+                                        'https' ->
+                                            [
+                                                {customize_hostname_check, [
+                                                    {match_fun,
+                                                        public_key:pkix_verify_hostname_match_fun(
+                                                            https
+                                                        )}
+                                                ]}
+                                                | L
+                                            ];
+                                        _ ->
+                                            L
+                                    end,
+                                MaybeCacertfile =
+                                    case CaCertFile of
+                                        [] ->
+                                            MaybeHostNameCheck;
+                                        CF ->
+                                            [{cacertfile, CF} | MaybeHostNameCheck]
+                                    end,
+                                MaybeSystemCAs =
+                                    case SystemCAs of
+                                        false ->
+                                            MaybeCacertfile;
+                                        true ->
+                                            [{cacerts, public_key:cacerts_get()} | MaybeCacertfile]
+                                    end,
+                                [P || {_, V} = P <- MaybeSystemCAs, V /= ""];
                             false ->
                                 []
                         end,
