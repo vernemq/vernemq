@@ -232,10 +232,13 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
 
 build_result(Results, Columns) ->
     BinColumns = [list_to_bitstring(X) || X <- Columns],
-    Result = case Results of
-            [] -> [];
-            [{PubACL, SubACL}] -> [lists:zip(BinColumns, [list_to_bitstring(PubACL), list_to_bitstring(SubACL)])]
-    end,
+    Result =
+        case Results of
+            [] ->
+                [];
+            [{PubACL, SubACL}] ->
+                [lists:zip(BinColumns, [list_to_bitstring(PubACL), list_to_bitstring(SubACL)])]
+        end,
     Result.
 
 hash_method(_, St) ->
