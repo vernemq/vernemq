@@ -184,13 +184,13 @@ handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
             error:{lua_error, Reason, _} ->
                 ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
-                    [Function, Args, State#state.script, Reason]
+                    [Function, proplists:delete(password, Args), State#state.script, Reason]
                 ),
                 {error, State};
             E:R ->
                 ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
-                    [Function, Args, State#state.script, {E, R}]
+                    [Function, proplists:delete(password, Args), State#state.script, {E, R}]
                 ),
                 {error, State}
         end,
@@ -238,6 +238,7 @@ load_script(Id, Script) ->
         {vmq_diversity_cockroachdb, <<"cockroachdb">>},
         {vmq_diversity_mongo, <<"mongodb">>},
         {vmq_diversity_redis, <<"redis">>},
+        {vmq_diversity_odbc, <<"odbc">>},
         {vmq_diversity_http, <<"http">>},
         {vmq_diversity_json, <<"json">>},
         {vmq_diversity_bcrypt, <<"bcrypt">>},
@@ -256,7 +257,6 @@ load_script(Id, Script) ->
     {_, InitState1} = luerl:do(Do1, luerl:init()),
     Do2 = "__SCRIPT_INSTANCE_ID__ = " ++ integer_to_list(Id),
     {_, InitState2} = luerl:do(Do2, InitState1),
-
     LuaState =
         lists:foldl(
             fun({Mod, NS}, LuaStateAcc) ->
@@ -274,10 +274,11 @@ load_script(Id, Script) ->
             InitState2,
             Libs
         ),
-
     try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->
             {ok, NewLuaState}
+        %   {ok, _, NewLuaState} ->
+        %       {ok, NewLuaState};
     catch
         error:{lua_error, Reason, _} ->
             {error, Reason};

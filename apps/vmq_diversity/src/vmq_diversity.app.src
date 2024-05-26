@@ -24,7 +24,8 @@
         hackney,
         jsx,
         bcrypt,
-        gen_server2
+        gen_server2,
+        odbc
     ]},
     {env, [
         {keep_state, false},

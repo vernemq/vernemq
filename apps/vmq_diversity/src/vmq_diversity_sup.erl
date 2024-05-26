@@ -181,6 +181,69 @@ start_all_pools([{memcached, ProviderConfig} | Rest], Acc) ->
     ],
     ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WorkerArgs),
     start_all_pools(Rest, [ChildSpec | Acc]);
+start_all_pools([{odbc, ProviderConfig} | Rest], Acc) ->
+    PoolId = proplists:get_value(id, ProviderConfig),
+    PoolOpts = proplists:get_value(opts, ProviderConfig, []),
+    Size = proplists:get_value(size, PoolOpts, 5),
+    MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
+    WorkerArgs = lists:keydelete(
+        size,
+        1,
+        lists:keydelete(max_overflow, 1, PoolOpts)
+    ),
+    StartFun = fun() ->
+        CS = proplists:get_value(connection_string, WorkerArgs, undefined),
+        Driver = proplists:get_value(driver, WorkerArgs),
+        Hostname = proplists:get_value(host, WorkerArgs, "localhost"),
+        Port = proplists:get_value(port, WorkerArgs, 5432),
+        Database = proplists:get_value(database, WorkerArgs),
+        Username = proplists:get_value(user, WorkerArgs),
+        Password = proplists:get_value(password, WorkerArgs),
+        Ssl = proplists:get_value(ssl, WorkerArgs),
+        SslMode =
+            case Ssl of
+                true -> "Require";
+                _ -> "Prefer"
+            end,
+        % TODO: Is it possible to give a CACert file to the ODBC driver
+        % in a connection string?
+        _Cafile = proplists:get_value(cacertfile, WorkerArgs),
+        ConnectionStr =
+            case CS of
+                undefined ->
+                    io_lib:format(
+                        "Driver=~s;Server=~s;Port=~s;Database=~s;UID=~s;PWD=~s;SSL=~s;SslMode=~s;",
+                        [
+                            Driver,
+                            Hostname,
+                            integer_to_list(Port),
+                            Database,
+                            Username,
+                            Password,
+                            Ssl,
+                            SslMode
+                        ]
+                    );
+                _ ->
+                    CS
+            end,
+        odbc:connect(ConnectionStr, [{extended_errors, on}])
+    end,
+    TerminateFun = fun(Pid) -> odbc:disconnect(Pid) end,
+    WrapperArgs = [
+        {reconnect_timeout, 5000},
+        {name, odbc},
+        {start_fun, StartFun},
+        {terminate_fun, TerminateFun}
+    ],
+    PoolArgs = [
+        {name, {local, PoolId}},
+        {worker_module, vmq_diversity_worker_wrapper},
+        {size, Size},
+        {max_overflow, MaxOverflow}
+    ],
+    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WrapperArgs),
+    start_all_pools(Rest, [ChildSpec | Acc]);
 start_all_pools([{kv, ProviderConfig} | Rest], Acc) ->
     TableId = proplists:get_value(id, ProviderConfig),
     TableOpts = proplists:get_value(opts, ProviderConfig, []),

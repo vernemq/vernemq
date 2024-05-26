@@ -31,6 +31,10 @@
                                                                    {datatype, directory}
                                                                   ]}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% PostgreSQL
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%                                                               
+
 {mapping, "vmq_diversity.auth_postgres.enabled", "vmq_diversity.auth_cache.postgres.enabled",
  [{datatype, flag},
   {default, off}]}.
@@ -137,6 +141,88 @@
  [{datatype, {enum, [crypt, bcrypt]}},
   {default, crypt}
  ]}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ODBC
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+{mapping, "vmq_diversity.auth_odbc.enabled", "vmq_diversity.auth_cache.odbc.enabled",
+ [{datatype, flag},
+  {default, off}]}.
+{mapping, "vmq_diversity.auth_odbc.script", "vmq_diversity.auth_cache.odbc.file",
+ [{datatype, file},
+  {default, "{{platform_share_dir}}/lua/auth/odbc.lua"},
+  hidden
+ ]}.
+
+{mapping, "vmq_diversity.odbc.connection_string", "vmq_diversity.db_config.odbc.connection_string",
+ [{datatype, string},
+  {default, undefined}]}.
+
+{mapping, "vmq_diversity.odbc.driver", "vmq_diversity.db_config.odbc.driver",
+ [{datatype, string},
+  {default, undefined}]}.
+
+{mapping, "vmq_diversity.odbc.host", "vmq_diversity.db_config.odbc.host",
+ [{datatype, string},
+  {default, "localhost"},
+  {commented, "localhost"}]}.
+
+{mapping, "vmq_diversity.odbc.port", "vmq_diversity.db_config.odbc.port",
+ [{datatype, integer},
+  {default, 5432},
+  {commented, 5432}]}.
+
+{mapping, "vmq_diversity.odbc.user", "vmq_diversity.db_config.odbc.user",
+ [{datatype, string},
+  {default, "root"},
+  {commented, "root"}]}.
+
+{mapping, "vmq_diversity.odbc.password", "vmq_diversity.db_config.odbc.password",
+ [{datatype, string},
+  {default, "password"},
+  {commented, "password"}]}.
+
+{mapping, "vmq_diversity.odbc.database", "vmq_diversity.db_config.odbc.database",
+ [{datatype, string},
+  {default, "vernemq_db"},
+  {commented, "vernemq_db"}]}.
+
+{mapping, "vmq_diversity.odbc.pool_size", "vmq_diversity.db_config.odbc.pool_size",
+ [{datatype, integer},
+  {default, 5},
+  hidden]}.
+
+%% @doc Specify if the postgresql driver should use TLS or not.
+{mapping, "vmq_diversity.odbc.ssl", "vmq_diversity.db_config.odbc.ssl",
+ [{datatype, flag},
+  {default, off}
+ ]}.
+
+ %% @doc The cafile is used to define the path to a file containing
+%% the PEM encoded CA certificates that are trusted.
+{mapping, "vmq_diversity.odbc.cafile", "vmq_diversity.db_config.odbc.cacertfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {commented, "{{platform_etc_dir}}/cafile.pem"},
+  {validators, ["file-exists", "file-is-readable"]}
+ ]}.
+
+ %% @doc The password hashing method to use in ODCB:
+{mapping, "vmq_diversity.odbc.password_hash_method", "vmq_diversity.db_config.odbc.password_hash_method",
+ [{datatype, {enum, [crypt, md5, sha1, sha256_cockroachdb, sha256_mysql, sha512_mysql, sha256_pg, sha512_pg, bcrypt, hashbytes256, hashbytes512]}},
+  {default, crypt}
+ ]}.
+
+ {mapping, "vmq_diversity.odbc.driver", "vmq_diversity.db_config.odbc.driver",
+ [{datatype, string},
+  {default, "{PostgreSQL Unicode}"}]}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% CockroachDB
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {mapping, "vmq_diversity.auth_cockroachdb.enabled", "vmq_diversity.auth_cache.cockroachdb.enabled",
  [{datatype, flag},
@@ -245,6 +331,10 @@
   {default, bcrypt}
  ]}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% MySQL
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 {mapping, "vmq_diversity.auth_mysql.enabled", "vmq_diversity.auth_cache.mysql.enabled",
  [{datatype, flag},
   {default, off}]}.
@@ -299,6 +389,10 @@
  [{datatype, {enum, [password, md5, sha1, sha256]}},
   {default, password}
  ]}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% MongoDB
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
  [{datatype, flag},
@@ -394,6 +488,9 @@
   {commented, "{{platform_etc_dir}}/keyfile.pem"}
  ]}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Redis
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {mapping, "vmq_diversity.auth_redis.enabled", "vmq_diversity.auth_cache.redis.enabled",
  [{datatype, flag},
@@ -434,6 +531,9 @@
   {default, 5},
   hidden]}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Memcache
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {mapping, "vmq_diversity.memcache.host", "vmq_diversity.db_config.memcache.host",
  [{datatype, string},
