@@ -17,7 +17,7 @@
 ]}.
 
 %% @doc Name of the Erlang node
-%% Default: VerneMQ@127.0.0.1 
+%% Default: VerneMQ@127.0.0.1
 %% Acceptable values:
 %%   - text
 {mapping, "nodename" , "vm_args.-name", [
@@ -39,7 +39,7 @@
                                                   {default, info},
                                                   {datatype, {enum, [debug, info, notice, warning, error, critical, alert, emergency]}}
                                                  ]}.
-%% @doc log format 
+%% @doc log format
 {mapping, "log.template", "kernel.logger", [
                                                   {default, extended},
                                                   {datatype, {enum, [simple, extended]}},
@@ -54,7 +54,13 @@
                                                  {datatype, file}
                                                 ]}.
 
-%% @doc Logger format: text or json. Default text)
+%% @doc Logger format for console logging to standard output: text or json. Default text)
+{mapping, "log.console.console.format", "kernel.logger", [
+                                                  {default, text},
+                                                  {datatype, {enum, [text, json]}}
+                                                 ]}.
+
+%% @doc Logger format for console logging to file: text or json. Default text)
 {mapping, "log.console.file.format", "kernel.logger", [
                                                   {default, text},
                                                   {datatype, {enum, [text, json]}}
@@ -85,7 +91,7 @@
                                           {default, on},
                                           {datatype, flag}
                                         ]}.
-                                           
+
 %% @doc The file where error messages will be logged.
 {mapping, "log.error.file", "kernel.logger", [
                                                {default, "{{platform_log_dir}}/error.log"},
@@ -150,7 +156,7 @@
                                                               ]}.
 
 %% @doc Disables are enables the dedicated sasl logger. Crash logs are also written
-%% to the error log, so this logger is disabled by default. 
+%% to the error log, so this logger is disabled by default.
 {mapping, "log.sasl", "kernel.logger", [
                                           {default, off},
                                           {datatype, flag}
@@ -223,25 +229,30 @@
     Template = case cuttlefish:conf_get("log.template", Conf) of
       extended -> [time, " ", "[", level, "]", {pid, [" ", pid, ""], ""}, {mfa, [" ", mfa, ":", line], ""}, ": ", msg, "\n"];
           _ -> [time, " ", level,": ", msg,"\n"]
-    end, 
+    end,
 
-    ConsoleFileFormater = case cuttlefish:conf_get("log.console.file.format", Conf) of
+    ConsoleFormatter = case cuttlefish:conf_get("log.console.console.format", Conf) of
       json -> vmq_log_json_format;
          _ -> logger_formatter
-    end, 
+    end,
 
-    ErrorFileFormater = case cuttlefish:conf_get("log.error.file.format", Conf) of
+    ConsoleFileFormatter = case cuttlefish:conf_get("log.console.file.format", Conf) of
       json -> vmq_log_json_format;
          _ -> logger_formatter
-    end, 
-    
-    ConsoleLogger     = {handler, console,     logger_std_h, #{config => #{},  filters => [{console, {fun logger_filters:progress/2, stop}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => ConsoleLogLevel}},
-    FileLoggerErr     = {handler, default,     logger_std_h, #{config => #{file => ErrorLogFile,   max_no_bytes => ErrorLogRotationSize,   max_no_files => ErrorLogRotationKeep,   compress_on_rotate => ErrorLogRotationCompress}, formatter => {ErrorFileFormater, #{single_line => true,  template => Template}}, level => error}},
-    ConsoleLoggerFile = {handler, consolefile, logger_std_h, #{config => #{file => ConsoleLogFile, max_no_bytes => ConsoleLogRotationSize, max_no_files => ConsoleLogRotationKeep, compress_on_rotate => ConsoleLogRotationCompress}, filters => [{consolefile, {fun logger_filters:progress/2, stop}}], formatter => {ConsoleFileFormater, #{single_line => true,  template => Template}}, level => ConsoleLogLevel}},
+    end,
+
+    ErrorFileFormatter = case cuttlefish:conf_get("log.error.file.format", Conf) of
+      json -> vmq_log_json_format;
+         _ -> logger_formatter
+    end,
+
+    ConsoleLogger     = {handler, console,     logger_std_h, #{config => #{},  filters => [{console, {fun logger_filters:progress/2, stop}}], formatter => {ConsoleFormatter, #{single_line => true, template => Template}}, level => ConsoleLogLevel}},
+    FileLoggerErr     = {handler, default,     logger_std_h, #{config => #{file => ErrorLogFile,   max_no_bytes => ErrorLogRotationSize,   max_no_files => ErrorLogRotationKeep,   compress_on_rotate => ErrorLogRotationCompress}, formatter => {ErrorFileFormatter, #{single_line => true,  template => Template}}, level => error}},
+    ConsoleLoggerFile = {handler, consolefile, logger_std_h, #{config => #{file => ConsoleLogFile, max_no_bytes => ConsoleLogRotationSize, max_no_files => ConsoleLogRotationKeep, compress_on_rotate => ConsoleLogRotationCompress}, filters => [{consolefile, {fun logger_filters:progress/2, stop}}], formatter => {ConsoleFileFormatter, #{single_line => true,  template => Template}}, level => ConsoleLogLevel}},
     CrashLoggerFile   = {handler, crash,       logger_std_h, #{config => #{file => CrashLogFile,   max_no_bytes => CrashLogRotationSize,   max_no_files => CrashLogRotationKeep,   compress_on_rotate => CrashLogRotationCompress},   filters => [{crash, {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => error}},
     SaslLoggerFile    = {handler, sasl,        logger_std_h, #{config => #{file => SaslLogFile,    max_no_bytes => SaslLogRotationSize,    max_no_files => SaslLogRotationKeep,    compress_on_rotate => SaslLogRotationCompress},    filters => [{sasl,  {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => info}},
     SyslogLogger      = {handler, syslog,      syslog_logger_h, #{}},
-    
+
     ConsoleHandlers = case cuttlefish:conf_get("log.console", Conf) of
                                off -> [];
                                file -> [ConsoleLoggerFile];
@@ -253,7 +264,7 @@
     SyslogLoggerHandler = case cuttlefish:conf_get("log.syslog", Conf) of
                       false -> [];
                          _  -> [SyslogLogger]
-                      end,    
+                      end,
 
     FileLoggerErrHandler = case cuttlefish:conf_get("log.error", Conf) of
                       false -> [];
@@ -273,7 +284,7 @@
     FileLoggerErrHandler ++ ConsoleHandlers ++ CrashLoggerFileHandler ++ SaslLoggerFileHandler ++ SyslogLoggerHandler
  end
 }.
-   
+
 
 %% @doc Whether to enable Erlang's built-in error logger.
 {mapping, "sasl", "kernel.logger_sasl_compatible", [
