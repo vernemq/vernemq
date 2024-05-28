@@ -300,6 +300,130 @@
   {default, password}
  ]}.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% MySQL 2 / MariaDB
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+{mapping, "vmq_diversity.auth_mysql2.enabled", "vmq_diversity.auth_cache.mysql2.enabled",
+ [{datatype, flag},
+  {default, off}]}.
+
+{mapping, "vmq_diversity.auth_mysql2.script", "vmq_diversity.auth_cache.mysql2.file",
+ [{datatype, file},
+  {default, "{{platform_share_dir}}/lua/auth/mysql2.lua"},
+  hidden
+ ]}.
+
+{mapping, "vmq_diversity.mysql2.host", "vmq_diversity.db_config.mysql2.host",
+ [{datatype, string},
+  {default, "localhost"},
+  {commented, "localhost"}]}.
+
+{mapping, "vmq_diversity.mysql2.port", "vmq_diversity.db_config.mysql2.port",
+ [{datatype, integer},
+  {default, 3306},
+  {commented, 3306}]}.
+
+{mapping, "vmq_diversity.mysql2.user", "vmq_diversity.db_config.mysql2.user",
+ [{datatype, string},
+  {default, "root"},
+  {commented, "root"}]}.
+
+{mapping, "vmq_diversity.mysql2.password", "vmq_diversity.db_config.mysql2.password",
+ [{datatype, string},
+  {default, "password"},
+  {commented, "password"}]}.
+
+{mapping, "vmq_diversity.mysql2.database", "vmq_diversity.db_config.mysql2.database",
+ [{datatype, string},
+  {default, "vernemq_db"},
+  {commented, "vernemq_db"}]}.
+
+{mapping, "vmq_diversity.mysql2.pool_size", "vmq_diversity.db_config.mysql2.pool_size",
+ [{datatype, integer},
+  {default, 5},
+  hidden]}.
+
+%% @doc Specify if the MySOL driver should use TLS or not.
+{mapping, "vmq_diversity.mysql2.ssl", "vmq_diversity.db_config.mysql2.ssl",
+ [{datatype, flag},
+  {default, on}
+ ]}.
+
+%% @doc The cafile is used to define the path to a file containing
+%% the PEM encoded CA certificates that are trusted.
+{mapping, "vmq_diversity.mysql2.cafile", "vmq_diversity.db_config.mysql2.cacertfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {commented, "{{platform_etc_dir}}/cafile.pem"},
+  {validators, ["file-exists", "file-is-readable"]}
+ ]}.
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "vmq_diversity.mysql2.certfile", "vmq_diversity.db_config.mysql2.certfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/cert.pem"}
+ ]}.
+
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_diversity.mysql2.keyfile", "vmq_diversity.db_config.mysql2.keyfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/keyfile.pem"}
+ ]}.
+%% @doc Setting the depth for CA chains
+{mapping, "vmq_diversity.mysql2.ssl.depth", "vmq_diversity.db_config.mysql2.depth", [
+                                                           {default, 3},
+                                                           {datatype, integer},
+                                                           hidden
+                                                          ]}.
+
+%% @doc Allow the plugin to open SSL connections to remote DB with wildcard certs
+{mapping, "vmq_diversity.mysql2.ssl.customize_hostname_check", "vmq_diversity.db_config.mysql2.customize_hostname_check", [
+                                                         {datatype, {enum, ['https']}},
+                                                            {default, 'https'},
+                                                            {commented, on}
+                                                        ]}.
+%% @doc Whether the client verifies the server cert or not.
+%% Use "verify_peer" in production.
+{mapping, "vmq_diversity.mysql2.ssl.verify", "vmq_diversity.db_config.mysql2.verify", [
+                                                                {default, 'verify_peer'},
+                                                                {datatype, {enum, ['verify_none',
+                                                                            'verify_peer']}}
+                                                               ]}.
+
+%% @doc Whether to use the System CAs (public_key:cacerts_get/0).
+%% Can be used as an alternative to provide a CAcertfile
+{mapping, "vmq_diversity.mysql2.ssl.use_system_cas", "vmq_diversity.db_config.mysql2.use_system_cas", [
+                                                                {default, on},
+                                                                {datatype, flag}
+                                                               ]}.
+
+%% @doc The password hashing method to use in MySQL:
+%% password: Default for compatibility, deprecated since MySQL 5.7.6 and not
+%%           usable with MySQL 8.0.11+.
+%%           Docs: https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_password
+%%      md5: Calculates an MD5 128-bit checksum of the password.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_md5
+%%     sha1: Calculates the SHA-1 160-bit checksum for the password.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha1
+%%   sha256: Calculates the SHA-2 hash of the password, using 256 bits.
+%%           Works only if MySQL has been configured with SSL support.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha2
+
+{mapping, "vmq_diversity.mysql2.password_hash_method", "vmq_diversity.db_config.mysql2.password_hash_method",
+ [{datatype, {enum, [password, md5, sha1, sha256]}},
+  {default, sha256}
+ ]}.
+
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
  [{datatype, flag},
   {default, off}]}.
