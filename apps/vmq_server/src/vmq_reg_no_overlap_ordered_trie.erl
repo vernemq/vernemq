@@ -170,7 +170,7 @@ sort_subs(Subs) ->
         end,
         Subs
     ).
- 
+
 apply_sort(Map) ->
     % We sort the subs with descending QoS, then just select the first.
     % We can add more sort criteria if needed.
