@@ -642,6 +642,8 @@ stop_plugin(App, State) ->
     end,
     NewState = disable_app_module_plugins(App, State),
     purge_app_modules(App),
+    delete_app_modules(App),
+    purge_app_modules(App),
     application:unload(App),
     NewState.
 
@@ -741,6 +743,11 @@ create_paths(Path) ->
         false ->
             []
     end.
+
+delete_app_modules(App) ->
+    {ok, Modules} = application:get_key(App, modules),
+    lager:debug("deleting modules: ~p", [Modules]),
+    [code:delete(M) || M <- Modules].
 
 purge_app_modules(App) ->
     {ok, Modules} = application:get_key(App, modules),
