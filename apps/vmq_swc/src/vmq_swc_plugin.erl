@@ -218,7 +218,7 @@ summary(SWCGroups) ->
         )
      || SWCGroup <- SWCGroups
     ],
-    [{maps:get({Node, Actor}, NC, {0,0}), maps:size(NC)} || NC <- NodeClocks].
+    [{maps:get({Node, Actor}, NC, {0, 0}), maps:size(NC)} || NC <- NodeClocks].
 
 % The Node is empty when all local Nodeclocks in SWCGroups are
 % 0 and we only have the local Node in the Nodeclocks.
