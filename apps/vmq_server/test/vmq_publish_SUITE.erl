@@ -1120,7 +1120,7 @@ not_allowed_properties(_Config) ->
     PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
  
-    Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_subscription_id => [1]}}]),
+    Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_server_ref => [1]}}]),
     ok = gen_tcp:send(PubSocket, Pub),
     {error, closed} = gen_tcp:recv(PubSocket, 0, 1000).
   

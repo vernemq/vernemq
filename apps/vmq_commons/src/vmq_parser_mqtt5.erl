@@ -51,6 +51,12 @@
     enc_properties/1
 ]).
 
+-ifdef(TEST).
+-define(allowedPubProps, ?allowedServerPubProps).
+-else.
+-define(allowedPubProps, ?allowedClientPubProps).
+-endif.
+
 -spec parse(binary()) ->
     {mqtt5_frame(), binary()}
     | {error, any()}
@@ -100,7 +106,7 @@ variable(
     %% QoS 0
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest, ?allowedClientPubProps) of
+            case parse_properties(Rest, ?allowedPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         topic = ParsedTopic,
@@ -124,7 +130,7 @@ variable(
 ->
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest, ?allowedClientPubProps) of
+            case parse_properties(Rest, ?allowedPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         message_id = MessageId,
