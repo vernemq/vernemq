@@ -24,6 +24,7 @@ table() ->
         {<<"encrypt">>, #erl_func{code = fun encrypt/2}}
     ].
 
+-dialyzer({no_match, decrypt/2}).
 decrypt([Bin], St) when is_binary(Bin) ->
     Plain =
         case credentials_obfuscation:decrypt({encrypted, Bin}) of
