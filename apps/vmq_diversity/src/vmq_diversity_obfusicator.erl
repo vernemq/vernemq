@@ -25,7 +25,14 @@ table() ->
     ].
 
 decrypt([Bin], St) when is_binary(Bin) ->
-    Plain = credentials_obfuscation:decrypt({encrypted, Bin}),
+    Plain =
+        case credentials_obfuscation:decrypt({encrypted, Bin}) of
+            % We still allow this use case for now.
+            {encrypted, Bin} -> Bin;
+            % An example would be a plugin not yet
+            % using obfuscation
+            P -> P
+        end,
     {NewBin, NewSt} = luerl:encode(Plain, St),
     {[NewBin], NewSt}.
 
