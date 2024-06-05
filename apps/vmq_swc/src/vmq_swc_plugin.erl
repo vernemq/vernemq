@@ -207,7 +207,8 @@ extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
 
 summary() ->
-    summary(?SWC_GROUPS).
+    {_, Groups} = ?SWC_GROUPS,
+    summary(Groups).
 summary(SWCGroups) ->
     {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     Node = node(),
@@ -217,7 +218,7 @@ summary(SWCGroups) ->
         )
      || SWCGroup <- SWCGroups
     ],
-    [{maps:get({Node, Actor}, NC), maps:size(NC)} || NC <- NodeClocks].
+    [{maps:get({Node, Actor}, NC, {0, 0}), maps:size(NC)} || NC <- NodeClocks].
 
 % The Node is empty when all local Nodeclocks in SWCGroups are
 % 0 and we only have the local Node in the Nodeclocks.

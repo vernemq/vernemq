@@ -302,6 +302,7 @@ retain_with_properties(Cfg) ->
     ok = packetv5:expect_frame(SubSocket, Pub).
 
 retain_with_message_expiry(Cfg) ->
+    vmq_metrics:reset_counter(queue_message_expired),
     %% set up publisher
     PubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-pub", [{keepalive, 60}]),
     Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
@@ -310,18 +311,18 @@ retain_with_message_expiry(Cfg) ->
     %% Publish some messages
     Expiry60s = #{p_message_expiry_interval => 60},
     PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                 [{properties, Expiry60s}, {mid, 0},
+                                 [{properties, Expiry60s}, {mid, 1},
                                   {retain, true}]),
     ok = gen_tcp:send(PubSocket, PE60s),
-    Puback0 = packetv5:gen_puback(0),
+    Puback0 = packetv5:gen_puback(1),
     ok = packetv5:expect_frame(PubSocket, Puback0),
 
     Expiry1s = #{p_message_expiry_interval => 1},
     PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                [{properties, Expiry1s}, {mid, 1},
+                                [{properties, Expiry1s}, {mid, 2},
                                  {retain, true}]),
     ok = gen_tcp:send(PubSocket, PE1s),
-    Puback1 = packetv5:gen_puback(1),
+    Puback1 = packetv5:gen_puback(2),
     ok = packetv5:expect_frame(PubSocket, Puback1),
     ok = gen_tcp:close(PubSocket),
 

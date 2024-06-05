@@ -121,7 +121,7 @@ variable(
     <<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
     <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>
 ) when
-    QoS < 3
+    QoS < 3, MessageId > 0
 ->
     case vmq_topic:validate_topic(publish, Topic) of
         {ok, ParsedTopic} ->
@@ -144,7 +144,9 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
     #mqtt_pubrel{message_id = MessageId};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubcomp{message_id = MessageId};
-variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) when
+    MessageId > 0
+->
     case parse_topics(Topics, ?SUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_subscribe{
@@ -154,7 +156,9 @@ variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) -
         E ->
             E
     end;
-variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) when
+    MessageId > 0
+->
     case parse_topics(Topics, ?UNSUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_unsubscribe{
@@ -183,22 +187,27 @@ variable(
         % reserved
         0:1, KeepAlive:16/big, ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest0/binary>>
 ) ->
-    Conn0 = #mqtt_connect{
-        proto_ver = ProtoVersion,
-        clean_session = CleanSession,
-        keep_alive = KeepAlive,
-        client_id = ClientId
-    },
+    case ensure_utf8(ClientId) of
+        {ok, ClientId0} ->
+            Conn0 = #mqtt_connect{
+                proto_ver = ProtoVersion,
+                clean_session = CleanSession,
+                keep_alive = KeepAlive,
+                client_id = ClientId0
+            },
 
-    case parse_last_will_topic(Rest0, WillFlag, WillRetain, WillQos, Conn0) of
-        {ok, Rest1, Conn1} ->
-            case parse_username(Rest1, UserNameFlag, Conn1) of
-                {ok, Rest2, Conn2} ->
-                    case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
-                        {ok, <<>>, Conn3} ->
-                            Conn3;
-                        {ok, _, _} ->
-                            {error, invalid_rest_of_binary};
+            case parse_last_will_topic(Rest0, WillFlag, WillRetain, WillQos, Conn0) of
+                {ok, Rest1, Conn1} ->
+                    case parse_username(Rest1, UserNameFlag, Conn1) of
+                        {ok, Rest2, Conn2} ->
+                            case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
+                                {ok, <<>>, Conn3} ->
+                                    Conn3;
+                                {ok, _, _} ->
+                                    {error, invalid_rest_of_binary};
+                                E ->
+                                    E
+                            end;
                         E ->
                             E
                     end;
@@ -246,7 +255,12 @@ parse_last_will_topic(_, _, _, _, _) ->
 parse_username(Rest, 0, Conn) ->
     {ok, Rest, Conn};
 parse_username(<<Len:16/big, UserName:Len/binary, Rest/binary>>, 1, Conn) ->
-    {ok, Rest, Conn#mqtt_connect{username = UserName}};
+    case ensure_utf8(UserName) of
+        {ok, UserName0} ->
+            {ok, Rest, Conn#mqtt_connect{username = UserName0}};
+        E ->
+            E
+    end;
 parse_username(_, 1, _) ->
     {error, cant_parse_username}.
 
@@ -266,16 +280,26 @@ parse_topics(<<>>, _, Topics) ->
 parse_topics(<<L:16/big, Topic:L/binary, 0:6, QoS:2, Rest/binary>>, ?SUBSCRIBE = Sub, Acc) when
     (QoS >= 0) and (QoS < 3)
 ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            parse_topics(Rest, Sub, [{ParsedTopic, QoS} | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    parse_topics(Rest, Sub, [{ParsedTopic, QoS} | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
 parse_topics(<<L:16/big, Topic:L/binary, Rest/binary>>, ?UNSUBSCRIBE = Sub, Acc) ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
@@ -440,6 +464,12 @@ utf8({encrypted, Bin}) ->
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
+ensure_utf8(Bin) when is_binary(Bin) ->
+    case unicode:characters_to_binary(Bin, utf8, utf8) of
+        {error, _, _} -> {error, invalid_utf8_string};
+        X -> {ok, X}
+    end.
+
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
@@ -474,7 +504,7 @@ gen_publish(Topic, Qos, Payload, Opts) ->
         qos = Qos,
         retain = proplists:get_value(retain, Opts, false),
         topic = ensure_binary(Topic),
-        message_id = proplists:get_value(mid, Opts, 0),
+        message_id = proplists:get_value(mid, Opts, 1),
         payload = ensure_binary(Payload)
     },
     iolist_to_binary(serialise(Frame)).
