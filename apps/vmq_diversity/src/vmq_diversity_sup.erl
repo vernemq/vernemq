@@ -72,6 +72,54 @@ start_all_pools([{mysql, ProviderConfig} | Rest], Acc) ->
             % that's ok
             start_all_pools(Rest, Acc)
     end;
+start_all_pools([{mysql2, ProviderConfig} | Rest], Acc) ->
+    PoolId = proplists:get_value(id, ProviderConfig),
+    PoolOpts = proplists:get_value(opts, ProviderConfig, []),
+    Size = proplists:get_value(size, PoolOpts, 5),
+    MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
+    WorkerArgs = lists:keydelete(
+        size,
+        1,
+        lists:keydelete(max_overflow, 1, PoolOpts)
+    ),
+    StartFun = fun() ->
+        Hostname = proplists:get_value(host, WorkerArgs, "localhost"),
+        Port = proplists:get_value(port, WorkerArgs, 5432),
+        Database = proplists:get_value(database, WorkerArgs),
+        Username = proplists:get_value(user, WorkerArgs),
+        Password = proplists:get_value(password, WorkerArgs),
+        Ssl = proplists:get_value(ssl, WorkerArgs),
+        SslOpts = proplists:get_value(ssl_opts, WorkerArgs),
+
+        MySQLOpts = [
+            {host, Hostname},
+            {port, Port},
+            {user, Username},
+            {password, Password},
+            {database, Database}
+        ],
+        MaybeAddSslOpts =
+            case Ssl of
+                true -> [{ssl, SslOpts} | MySQLOpts];
+                false -> MySQLOpts
+            end,
+        mysql:start_link(MaybeAddSslOpts)
+    end,
+    TerminateFun = fun(Pid) -> ok = mysql:stop(Pid) end,
+    WrapperArgs = [
+        {reconnect_timeout, 1000},
+        {name, mysql2},
+        {start_fun, StartFun},
+        {terminate_fun, TerminateFun}
+    ],
+    PoolArgs = [
+        {name, {local, PoolId}},
+        {worker_module, vmq_diversity_worker_wrapper},
+        {size, Size},
+        {max_overflow, MaxOverflow}
+    ],
+    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WrapperArgs),
+    start_all_pools(Rest, [ChildSpec | Acc]);
 start_all_pools([{pgsql, ProviderConfig} | Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
