@@ -106,6 +106,7 @@ groups() ->
                    publish_c2b_topic_alias,
                    publish_b2c_topic_alias,
                    forward_properties,
+                   not_allowed_properties,
                    max_packet_size
                    | V4V5Tests] }
     ].
@@ -1112,6 +1113,17 @@ forward_properties(_Config) ->
 
     disable_on_publish(),
     disable_on_subscribe().
+
+not_allowed_properties(_Config) ->
+
+    PubConnect = packetv5:gen_connect("property-not_allowed-propeties-pub-test", [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+ 
+    Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_server_ref => [1]}}]),
+    ok = gen_tcp:send(PubSocket, Pub),
+    {error, closed} = gen_tcp:recv(PubSocket, 0, 1000).
+  
 
 max_packet_size(Config) ->
     enable_on_publish(),

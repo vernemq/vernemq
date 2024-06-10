@@ -184,13 +184,13 @@ handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
             error:{lua_error, Reason, _} ->
                 ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
-                    [Function, Args, State#state.script, Reason]
+                    [Function, proplists:delete(password, Args), State#state.script, Reason]
                 ),
                 {error, State};
             E:R ->
                 ?LOG_ERROR(
                     "can't call function ~p with args ~p in ~p due to ~p",
-                    [Function, Args, State#state.script, {E, R}]
+                    [Function, proplists:delete(password, Args), State#state.script, {E, R}]
                 ),
                 {error, State}
         end,
@@ -234,6 +234,7 @@ ch_state(_, #state{keep = false} = State) ->
 load_script(Id, Script) ->
     Libs = [
         {vmq_diversity_mysql, <<"mysql">>},
+        {vmq_diversity_mysql2, <<"mysql2">>},
         {vmq_diversity_postgres, <<"postgres">>},
         {vmq_diversity_cockroachdb, <<"cockroachdb">>},
         {vmq_diversity_mongo, <<"mongodb">>},

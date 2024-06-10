@@ -302,6 +302,7 @@ retain_with_properties(Cfg) ->
     ok = packetv5:expect_frame(SubSocket, Pub).
 
 retain_with_message_expiry(Cfg) ->
+    vmq_metrics:reset_counter(queue_message_expired),
     %% set up publisher
     PubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-pub", [{keepalive, 60}]),
     Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),

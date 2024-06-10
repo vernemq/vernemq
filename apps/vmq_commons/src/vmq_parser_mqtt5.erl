@@ -51,6 +51,12 @@
     enc_properties/1
 ]).
 
+-ifdef(TEST).
+-define(allowedPubProps, ?allowedServerPubProps).
+-else.
+-define(allowedPubProps, ?allowedClientPubProps).
+-endif.
+
 -spec parse(binary()) ->
     {mqtt5_frame(), binary()}
     | {error, any()}

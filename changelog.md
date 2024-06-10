@@ -1,5 +1,6 @@
-
 - Bugfix: make session keepalive timers not use OS timestamps to protect against OS clock jumps
+- New feature (vmq_diversity): add alternative MySQL auth plugin (MySQL2), initial version
+- Bugfix: Client Pub Messages should not accept subscription identifier (#2283)
 - Enhancement: Support JSON Logformat on Console (#2295)
 - Bugfix: Ensure that client_id, username and topics are well-formed UTF8 strings (#2283)
 - Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
