@@ -1,3 +1,4 @@
+- Bugfix: make session keepalive timers not use OS timestamps to protect against OS clock jumps
 - New feature (vmq_diversity): add alternative MySQL auth plugin (MySQL2), initial version
 - Bugfix: Client Pub Messages should not accept subscription identifier (#2283)
 - Enhancement: Support JSON Logformat on Console (#2295)

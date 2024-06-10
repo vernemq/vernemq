@@ -31,8 +31,6 @@
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
--type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
-
 -record(cap_settings, {
     allow_register = false :: boolean(),
     allow_publish = false :: boolean(),
@@ -61,8 +59,7 @@
     proto_ver :: undefined | pos_integer(),
     queue_pid :: pid() | undefined,
 
-    last_time_active = os:timestamp() :: timestamp(),
-    last_trigger = os:timestamp() :: timestamp(),
+    last_time_active = erlang:monotonic_time(microsecond) :: integer(),
 
     %% config
     allow_anonymous = false :: boolean(),
@@ -111,7 +108,7 @@ init(
         proto_ver = ProtoVer
     } = ConnectFrame
 ) ->
-    rand:seed(exsplus, os:timestamp()),
+    rand:seed(exsplus),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(
@@ -539,8 +536,8 @@ connected(
         username = UserName
     } = State
 ) ->
-    Now = os:timestamp(),
-    case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
+    Now = erlang:monotonic_time(microsecond),
+    case (Now - Last) > (1500000 * KeepAlive) of
         true ->
             case proplists:get_value(keepalive_as_warning, vmq_config:get_env(logging, []), true) of
                 false ->
@@ -1398,7 +1395,7 @@ do_throttle(_, #state{max_message_rate = Rate}) ->
 
 -spec set_last_time_active(boolean(), state()) -> state().
 set_last_time_active(true, State) ->
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     State#state{last_time_active = Now};
 set_last_time_active(false, State) ->
     State.
@@ -1438,22 +1435,22 @@ set_retry(MsgTag, MsgId, Interval, RetryQueue) ->
         true ->
             %% no waiting ack
             vmq_mqtt_fsm_util:send_after(Interval, retry),
-            Now = os:timestamp(),
+            Now = erlang:monotonic_time(microsecond),
             queue:in({Now, {MsgTag, MsgId}}, RetryQueue);
         false ->
-            Now = os:timestamp(),
+            Now = erlang:monotonic_time(microsecond),
             queue:in({Now, {MsgTag, MsgId}}, RetryQueue)
     end.
 
 handle_retry(Interval, RetryQueue, WAcks) ->
     %% the fired timer was set for the oldest element in the queue!
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, []).
 
 handle_retry(
     Now, Interval, {{value, {Ts, {MsgTag, MsgId} = RetryId} = Val}, RetryQueue}, WAcks, Acc
 ) ->
-    NowDiff = timer:now_diff(Now, Ts) div 1000,
+    NowDiff = (Now - Ts) div 1000,
     case NowDiff < Interval of
         true ->
             vmq_mqtt_fsm_util:send_after(Interval - NowDiff, retry),
