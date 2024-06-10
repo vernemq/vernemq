@@ -234,6 +234,7 @@ ch_state(_, #state{keep = false} = State) ->
 load_script(Id, Script) ->
     Libs = [
         {vmq_diversity_mysql, <<"mysql">>},
+        {vmq_diversity_mysql2, <<"mysql2">>},
         {vmq_diversity_postgres, <<"postgres">>},
         {vmq_diversity_cockroachdb, <<"cockroachdb">>},
         {vmq_diversity_mongo, <<"mongodb">>},
