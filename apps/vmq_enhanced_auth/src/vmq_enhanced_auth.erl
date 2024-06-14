@@ -41,9 +41,8 @@
 
 -import(vmq_topic, [words/1, match/2]).
 
--include("apps/vmq_server/src/vmq_server.hrl").
+-include_lib("vmq_server/src/vmq_server.hrl").
 
--define(INIT_ACL, {[], [], [], [], [], []}).
 -define(TABLES, [
     vmq_enhanced_auth_acl_read_pattern,
     vmq_enhanced_auth_acl_write_pattern,
@@ -159,11 +158,11 @@ auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
     auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
 
 auth_on_register(
-    {_IpAddr, _Port} = Peer,
-    {_MountPoint, _ClientId} = SubscriberId,
+    {_IpAddr, _Port} = _Peer,
+    {_MountPoint, _ClientId} = _SubscriberId,
     UserName,
     Password,
-    CleanSession
+    _CleanSession
 ) ->
     %% do whatever you like with the params, all that matters
     %% is the return value of this function
@@ -587,7 +586,7 @@ verify(Password, SecretKey) ->
     try jwerl:verify(Password, hs256, SecretKey) of
         _ -> jwerl:verify(Password, hs256, SecretKey)
     catch
-        error:Error -> {error, invalid_signature}
+        error:_Error -> {error, invalid_signature}
     end.
 
 check_rid(Claims, UserName) ->
