@@ -106,16 +106,14 @@ Documentation](https://docs.vernemq.com) or checkout the product page
 [VerneMQ](https://vernemq.com) if you require more information on the available
 commercial [support options](https://vernemq.com/services.html).
 
-## Community Release Schedule
+## VerneMQ Release Schedule
 
-Next major release: not yet scheduled.
+VerneMQ releases will be annonced based on bugfixes and features.
 
-Minor releases: At the end of March, July and November (every 4th month).
-
-Bugfix releases: Usually a bugfix release is released between minor releases or
+Usually a bugfix release will be cut between minor releases or
 if there's an urgent bugfix pending.
 
-Custom release cycles and releases are available for commercial users.
+Custom releases can be offered for commercial users.
 
 ## Quick Start
 
