@@ -27,6 +27,7 @@ register_cli() ->
     vmq_session_reauthorize_cmd(),
     vmq_retain_show_cmd(),
     vmq_retain_delete_cmd(),
+    vmq_retain_delete_expired_cmd(),
     vmq_loq_show_cmd(),
     vmq_log_level_cmd(),
 
@@ -42,6 +43,7 @@ register_cli() ->
     clique:register_usage(["vmq-admin", "session", "reauthorize"], vmq_session_reauthorize_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain", "show"], retain_show_usage()),
+    clique:register_usage(["vmq-admin", "retain", "delete-expired"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain", "delete"], retain_delete_usage()),
     clique:register_usage(["vmq-admin", "log"], log_usage()),
     clique:register_usage(["vmq-admin", "log", "level"], log_level_usage()).
@@ -95,6 +97,18 @@ vmq_retain_delete_cmd() ->
             [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_retain_delete_expired_cmd() ->
+    Cmd = ["vmq-admin", "retain", "delete-expired"],
+    Callback = fun
+        (_, [], _Flags) ->
+            Expired = vmq_retain_srv:fold_expired(),
+            [clique_status:table([[{expired, Expired}]])];
+        (_, _, _) ->
+            Text = clique_status:text(retain_usage()),
+            [clique_status:alert([Text])]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
 
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "show"],
@@ -548,8 +562,9 @@ retain_usage() ->
         "vmq-admin retain <sub-command>\n\n",
         "  Inspect MQTT retained messages.\n\n",
         "  Sub-commands:\n",
-        "    show        Show and filter running sessions\n",
-        "    delete      Delete retained message\n",
+        "    show              Show and filter running sessions\n",
+        "    delete            Delete retained message\n",
+        "    delete-expired    Delete all expired messages\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
