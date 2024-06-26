@@ -1,0 +1,6 @@
+%% @doc set the backend users reload interval in seconds, the value 0 disables
+%% the automatic reloading of the backend users from acl file.
+{mapping, "vmq_metrics_plus.backend_client_reload_interval", "vmq_metrics_plus.interval", [
+                                                                                            {default, 60},
+                                                                                            {datatype, integer}
+                                                                                          ]}.
