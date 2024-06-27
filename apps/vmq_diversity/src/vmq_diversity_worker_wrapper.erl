@@ -37,6 +37,8 @@
     code_change/3
 ]).
 
+-export([describe_odbc_table/2]).
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
@@ -80,6 +82,10 @@ start_link(Opts) ->
 
 apply(Pid, Mod, Fun, Args) ->
     gen_server:call(Pid, {apply, Mod, Fun, Args}, infinity).
+
+% to find Erlang ODBC data types of your table
+describe_odbc_table(Pid, Table) ->
+    gen_server:call(Pid, {describe_odbc_table, Table}, 8000).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -130,6 +136,9 @@ init(Opts) ->
 %%--------------------------------------------------------------------
 handle_call({apply, _, _, _}, _From, #state{connected = false} = State) ->
     {reply, {error, not_connected}, State};
+handle_call({describe_odbc_table, Table}, _From, #state{worker = {_Mref, Pid}} = State) ->
+    Reply = odbc:describe_table(Pid, Table, 8000),
+    {reply, Reply, State};
 handle_call({apply, Mod, Fun, Args}, _From, #state{worker = {_MRef, Pid}} = State) when
     is_pid(Pid)
 ->

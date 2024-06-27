@@ -239,6 +239,7 @@ load_script(Id, Script) ->
         {vmq_diversity_cockroachdb, <<"cockroachdb">>},
         {vmq_diversity_mongo, <<"mongodb">>},
         {vmq_diversity_redis, <<"redis">>},
+        {vmq_diversity_odbc, <<"odbc">>},
         {vmq_diversity_http, <<"http">>},
         {vmq_diversity_json, <<"json">>},
         {vmq_diversity_bcrypt, <<"bcrypt">>},
@@ -257,7 +258,6 @@ load_script(Id, Script) ->
     {_, InitState1} = luerl:do(Do1, luerl:init()),
     Do2 = "__SCRIPT_INSTANCE_ID__ = " ++ integer_to_list(Id),
     {_, InitState2} = luerl:do(Do2, InitState1),
-
     LuaState =
         lists:foldl(
             fun({Mod, NS}, LuaStateAcc) ->
@@ -275,10 +275,11 @@ load_script(Id, Script) ->
             InitState2,
             Libs
         ),
-
     try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->
             {ok, NewLuaState}
+        %   {ok, _, NewLuaState} ->
+        %       {ok, NewLuaState};
     catch
         error:{lua_error, Reason, _} ->
             {error, Reason};
