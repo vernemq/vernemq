@@ -551,7 +551,7 @@ retain_compat_pre_test(_Cfg) ->
     Pre = <<"msg">>,
     Pre = vmq_reg:retain_pre(Pre),
 
-    Future = {retain_msg, 1, <<"future_msg">>, something, else},
+    Future = {retain_msg, 1, <<"future_msg">>, something, different},
     <<"future_msg">> = vmq_reg:retain_pre(Future).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

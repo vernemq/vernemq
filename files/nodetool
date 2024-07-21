@@ -9,7 +9,7 @@
 %% -------------------------------------------------------------------
 
 %% installed by node_package (github.com/basho/node_package)
-
+-mode(interpret).
 main(Args) ->
     io:setopts([{encoding, utf8}]),
     ok = start_epmd(),
