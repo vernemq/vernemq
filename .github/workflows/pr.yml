@@ -157,11 +157,11 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-22.04
-          # Monterrey
-          - macos-12
+          - ubuntu-24.04
+          # Sonoma
+          - macos-13
         otp:
-          - "26.1"
+          - "26.2"
           - "25.3"
           - "24.3"
 
