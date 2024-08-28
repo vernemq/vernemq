@@ -24,7 +24,14 @@
 -type nodeclock() :: bvv().
 -type object() :: dcc().
 -type context() :: vv().
--type dotkeymap() :: vmq_swc_dkm:dkm().
+
+-record(dkm, {
+    latest :: ets:table(),
+    latest_candidates :: ets:table(),
+    gc_candidates :: ets:table()
+}).
+
+-type dotkeymap() :: #dkm{}.
 
 -define(DELETED, '$deleted').
 

@@ -61,8 +61,8 @@ get(Config, Type, Key) ->
     get(Config, Type, Key, []).
 
 -spec get(config(), type(), db_key(), opts()) -> {ok, db_value()} | not_found.
-get(#swc_config{db_backend = Backend} = Config, Type, Key, Opts) ->
-    vmq_swc_metrics:timed_measurement({?METRIC, read}, Backend, read, [Config, Type, Key, Opts]).
+get(#swc_config{db_backend = Backend} = Config, Type, PDKey, Opts) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, read}, Backend, read, [Config, Type, PDKey, Opts]).
 
 -spec delete(config(), type(), db_key()) -> ok.
 delete(#swc_config{db_backend = Backend} = Config, Type, Key) ->

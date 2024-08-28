@@ -25,7 +25,9 @@
     childspecs/2,
     write/3,
     read/4,
-    fold/5
+    fold/5,
+    % for testing
+    decode_key/1
 ]).
 
 -export([
@@ -43,10 +45,12 @@
     data_root :: string(),
     open_opts = [],
     config,
-    read_opts = [],
+    read_opts = [
+        {verify_checksums, false},
+        {fill_cache, true}
+    ],
     write_opts = [],
-    fold_opts = [{fill_cache, false}],
-    refs = ets:new(?MODULE, [])
+    fold_opts = [{fill_cache, false}]
 }).
 
 % vmq_swc_db impl
@@ -63,8 +67,8 @@ write(#swc_config{db = DBName}, Objects, _Opts) ->
     gen_server:call(DBName, {write, Objects}, infinity).
 
 -spec read(config(), type(), db_key(), opts()) -> {ok, db_value()} | not_found.
-read(#swc_config{db = DBName}, Type, Key, _Opts) ->
-    gen_server:call(DBName, {read, Type, Key}, infinity).
+read(#swc_config{db = DBName}, Type, PDKey, _Opts) ->
+    gen_server:call(DBName, {read, Type, PDKey}, infinity).
 
 -spec fold(config(), type(), foldfun(), any(), first | db_key()) -> any().
 fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey) ->
@@ -257,6 +261,14 @@ config_value(Key, Config, Default) ->
             Default;
         {ok, Value} ->
             Value
+    end.
+
+decode_key(Key) ->
+    case Key of
+        <<"default#KVV">> -> 'KVV';
+        <<"default#BVV">> -> 'BVV';
+        <<A:4/binary, PDK/binary>> -> {A, sext:decode(PDK)};
+        _ -> Key
     end.
 
 open_db(Opts, State) ->

@@ -116,7 +116,6 @@ fold(SwcGroup, Fun, Acc, Prefix, Opts) ->
     ResolveMethod = get_option(resolver, Opts, fun max_resolver/1),
     AllowPut = get_option(allow_put, Opts, true),
     Config = config(SwcGroup),
-
     vmq_swc_store:fold_values(
         Config,
         fun
@@ -135,6 +134,8 @@ fold(SwcGroup, Fun, Acc, Prefix, Opts) ->
         Prefix
     ).
 
+maybe_resolve(_, _, {undefined, _}, _, _) ->
+    undefined;
 maybe_resolve(_Config, _PKey, {[Value], _Context}, _Method, _AllowPut) ->
     Value;
 maybe_resolve(Config, PKey, {Values, Context}, ResolverFun, AllowPut) ->

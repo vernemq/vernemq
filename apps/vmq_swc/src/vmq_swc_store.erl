@@ -77,7 +77,6 @@
     %id                :: peer(),
     id :: swc_id(),
     old_id :: swc_id(),
-    mode,
     group,
     config :: config(),
     dotkeymap :: dotkeymap(),
@@ -115,6 +114,26 @@ write_batch(Config, [{_Key, _Val, _Context} | _] = WriteOps) ->
     enqueue_op_sync(Config, {write, WriteOps}).
 
 -spec read(config(), key()) -> {[value()], context()}.
+read(#swc_config{group = Group} = Config, <<"KVV">>) ->
+    vmq_swc_db:get(Config, ?DB_DEFAULT, <<"KVV">>);
+read(#swc_config{group = Group} = Config, <<"BVV">>) ->
+    vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>);
+read(#swc_config{group = Group} = Config, {Prefix, RestKey} = PKey) when
+    Prefix == {vmq, subscriber}; Prefix == {vmq, retain}; Prefix == {vmq, config}
+->
+    LRef = persistent_term:get({dkm_latest, Group}, undefined),
+    case LRef of
+        undefined ->
+            {[], undefined};
+        _ ->
+            Entry = ets:lookup(LRef, sext:encode(PKey)),
+            case Entry of
+                [] ->
+                    {[], undefined};
+                [{_, {_, DotCounter}}] ->
+                    read(Config, Prefix, RestKey, DotCounter)
+            end
+    end;
 read(Config, Key) ->
     SKey = sext:encode(Key),
     Obj0 = maybe_get_cached_object(Config, SKey),
@@ -124,24 +143,39 @@ read(Config, Key) ->
     Context = swc_kv:context(Obj1),
     {Values, Context}.
 
+-spec read(config(), term(), key(), integer()) -> {[value()], context()}.
+read(Config, Prefix, Key, DotCounter) ->
+    PDKey = sext:encode({Prefix, {DotCounter, Key}}),
+    Obj0 = maybe_get_cached_object(Config, PDKey),
+    LocalClock = get_cached_node_clock(Config),
+    Obj1 = swc_kv:fill(Obj0, LocalClock),
+    Values = swc_kv:values(Obj1),
+    Context = swc_kv:context(Obj1),
+    {Values, Context}.
+
 -spec fold_values(
     config(), fun((key(), {[value()], context()}, any()) -> any()), any(), key_prefix()
 ) -> any().
+
 fold_values(Config, Fun, Acc, FullPrefix) ->
-    LocalClock = get_cached_node_clock(Config),
+    LocalClock =
+        case get_cached_node_clock(Config) of
+            {_, {0, 0}} -> get_nodeclock(Config);
+            NC -> NC
+        end,
     %% apparently 0 < '_'
-    SFirstKey = sext:encode({FullPrefix, 0}),
+    SFirstKey = sext:encode({FullPrefix, {0, 0}}),
     vmq_swc_db:fold(
         Config,
         ?DB_OBJ,
         fun(SKey, BValue, AccAcc) ->
             case sext:decode(SKey) of
-                {FullPrefix, _Key} = PKey ->
+                {FullPrefix, _Key} = FullKey ->
                     Obj0 = binary_to_term(BValue),
                     Obj1 = swc_kv:fill(Obj0, LocalClock),
                     Values = swc_kv:values(Obj1),
                     Context = swc_kv:context(Obj1),
-                    Fun(PKey, {Values, Context}, AccAcc);
+                    Fun(FullKey, {Values, Context}, AccAcc);
                 _ ->
                     stop
             end
@@ -267,14 +301,22 @@ init([
 
     NodeClock = get_nodeclock(Config),
     Watermark = get_watermark(Config),
-
     DKM = init_dotkeymap(Config),
+    #dkm{latest = LRef} = DKM,
+    persistent_term:put({dkm_latest, Group}, LRef),
     case application:get_env(vmq_swc, periodic_gc, true) of
         true ->
             self() ! do_gc;
         false ->
             ignore
     end,
+    NodeClockInitial =
+        case maps:size(NodeClock) of
+            0 ->
+                #{SWC_ID => {0, 0}};
+            _ ->
+                NodeClock
+        end,
 
     IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
@@ -334,7 +376,7 @@ init([
         group = Group,
         config = Config,
         dotkeymap = DKM,
-        nodeclock = NodeClock,
+        nodeclock = NodeClockInitial,
         watermark = Watermark,
         auto_gc = IsAutoGc,
         periodic_gc = IsPeriodicGc,
@@ -374,9 +416,6 @@ handle_call(
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
     db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
     r_o_w_cache_clear(Config),
-    %   io:format("Batch, Replicate Objects ~p~n", [ReplicateObjects]),
-    %   io:format("Batch, DBOpts ~p~n", [DbOps]),
-    %   io:format("Batch, NodeClock ~p~n", [NodeClock]),
     case IsBroadcastEnabled of
         true ->
             #swc_config{group = SwcGroup, transport = TMod} = Config,
@@ -400,7 +439,6 @@ handle_call(
     {reply, ok, State0#state{subscriptions = Subs1}};
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
     {Peer, _Actor} = Id,
-    %   ?LOG_INFO("Local ID in lock request: ~p~n", [Id]),
     case node(OwnerPid) == Peer of
         true when SyncLock == undefined ->
             MRef = monitor(process, OwnerPid),
@@ -411,8 +449,8 @@ handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = Sta
         false ->
             {reply, {error, invalid_lock_request}, State0}
     end;
-handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config = Config} = State0) ->
-    spawn_link(
+handle_call({sync_missing, OriginPeer, Dots}, From, #state{config = Config} = State0) ->
+    Pid = spawn_link(
         fun() ->
             Result =
                 lists:filtermap(
@@ -472,7 +510,9 @@ handle_call(
                 State1;
             {true, RemoteWatermark} ->
                 NodeClock0 = sync_clocks(
-                    {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
+                    {RemotePeer, RemoteActor},
+                    RemoteNodeClock,
+                    State1#state.nodeclock
                 ),
                 Watermark = update_watermark_after_sync(
                     State1#state.watermark,
@@ -485,7 +525,8 @@ handle_call(
                 UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
                 UpdateWatermark_DBop = update_watermark_db_op(Watermark),
                 db_write(
-                    Config, lists:reverse([UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps])
+                    Config,
+                    lists:reverse([UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps])
                 ),
                 incremental_gc(State1#state{watermark = Watermark, nodeclock = NodeClock0})
         end,
@@ -741,13 +782,16 @@ fill_strip_save_batch(
                 end
             end,
             {NodeClock0, []},
-            MissingObjects
+            lists:reverse(MissingObjects)
         ),
     % save the synced objects and strip their causal history
     State1 = State0#state{nodeclock = NodeClock1},
     FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp, nil),
     {FinalDBOps, State1}.
 
+strip_save_batch([], DBOps, _State, _DbgCategory, _OriginPid) when is_list(DBOps) ->
+    {A, B} = lists:partition(fun({X, _, _}) -> X == obj end, DBOps),
+    lists:flatten([A | B]);
 strip_save_batch([], DBOps, _State, _DbgCategory, _OriginPid) ->
     DBOps;
 strip_save_batch(
@@ -787,7 +831,11 @@ strip_save_batch(
     strip_save_batch(Rest, DBOps2, State, DbgCategory, OriginPid).
 
 event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginPid) ->
-    {FullPrefix, Key} = sext:decode(SKey),
+    {FullPrefix, Key} =
+        case sext:decode(SKey) of
+            {Prefix, {_C, {MP, ClientId}}} -> {Prefix, {MP, ClientId}};
+            {Prefix, {MP, ClientId}} -> {Prefix, {MP, ClientId}}
+        end,
     OldValues = swc_kv:values(OldObj),
     SubsForPrefix = maps:get(FullPrefix, Subscriptions, []),
     lists:foreach(
@@ -810,8 +858,11 @@ process_write_op(
     {Key, Value, MaybeContext},
     {AccReplicate0, AccDBOps0, #state{config = Config, id = Id, nodeclock = NodeClock0} = State0}
 ) ->
-    % sext encode key
-    SKey = sext:encode(Key),
+    % generate a new dot for this write/delete and add it to the node clock
+    {Counter, NodeClock1} = swc_node:event(NodeClock0, Id),
+    {Prefix, SubscriberId} = Key,
+    DottedKey = {Prefix, {Counter, SubscriberId}},
+    SKey = sext:encode(DottedKey),
     % get and fill the causal history of the local key
     DiskObj = swc_kv:fill(get_obj_for_key(Config, SKey), NodeClock0),
 
@@ -826,7 +877,6 @@ process_write_op(
     % discard obsolete values wrt. the causal context
     DiscardObj = swc_kv:discard(DiskObj, Context),
     % generate a new dot for this write/delete and add it to the node clock
-    {Counter, NodeClock1} = swc_node:event(NodeClock0, Id),
     % test if this is a delete; if not, add dot-value to the Obj
     NewObj =
         case Value of
@@ -881,8 +931,8 @@ enqueue_op_sync(Config, Op) ->
     end.
 
 -spec get_obj_for_key(config(), db_key()) -> object().
-get_obj_for_key(Config, SKey) ->
-    case vmq_swc_db:get(Config, ?DB_OBJ, SKey) of
+get_obj_for_key(Config, PDKey) ->
+    case vmq_swc_db:get(Config, ?DB_OBJ, PDKey) of
         {ok, BObj} -> binary_to_term(BObj);
         not_found -> swc_kv:new()
     end.
@@ -995,6 +1045,7 @@ get_watermark(Config) ->
     end.
 
 -spec db_write(config(), list(db_op())) -> ok.
+% DbOps need to be {Type, DottedKey, Object}
 db_write(Config, DbOps) ->
     vmq_swc_db:put_many(Config, DbOps).
 

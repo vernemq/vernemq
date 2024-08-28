@@ -80,19 +80,13 @@
 -define(CHECKOLD(OldId, Peers), lists:member(OldId, Peers)).
 -endif.
 
--record(dkm, {
-    latest = ets:new(?MODULE, [public]),
-    latest_candidates = ets:new(?MODULE, [public]),
-    gc_candidates = ets:new(?MODULE, [public])
-}).
-
--type dkm() :: #dkm{}.
-
--export_type([dkm/0]).
-
 -spec init() -> dotkeymap().
 init() ->
-    #dkm{}.
+    #dkm{
+        latest = ets:new(?MODULE, [public]),
+        latest_candidates = ets:new(?MODULE, [public]),
+        gc_candidates = ets:new(?MODULE, [public])
+    }.
 
 info(DKM, object_count) ->
     ets:info(DKM#dkm.latest, size);

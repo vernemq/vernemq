@@ -39,7 +39,8 @@
     remote_watermark,
     obj_cnt = 0,
     batch_size,
-    missing_dots
+    missing_dots,
+    start_ts
 }).
 
 start_link(#swc_config{} = Config, Peer, Timeout) ->
@@ -97,7 +98,7 @@ prepare(
         {state_timeout, Timeout, remote_watermark}
     ]};
 prepare(cast, {remote_watermark, {error, Reason}}, #state{group = Group, peer = Peer} = State) ->
-    %% Failed to get remote node clock
+    %% Failed to get remote watermark
     ?LOG_WARNING("Replica ~p: AE exchange with ~p couldn't request remote watermark due to ~p", [
         Group, Peer, Reason
     ]),
@@ -133,6 +134,25 @@ local_sync_repair(
     {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
     as_event(
         fun() ->
+            MissingObjects = vmq_swc_store:remote_sync_missing(
+                Config, RemotePeer, lists:reverse(BatchOfDots)
+            ),
+            {ok, MissingObjects}
+        end
+    ),
+    {next_state, local_sync_repair,
+        State#state{missing_dots = Rest, start_ts = erlang:monotonic_time(millisecond)}, [
+            {state_timeout, State#state.timeout, sync_repair}
+        ]};
+local_sync_repair(
+    cast,
+    continue,
+    #state{config = Config, peer = RemotePeer, missing_dots = MissingDots, batch_size = BatchSize} =
+        State
+) ->
+    {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
+    as_event(
+        fun() ->
             MissingObjects = vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots),
             {ok, MissingObjects}
         end
@@ -140,6 +160,12 @@ local_sync_repair(
     {next_state, local_sync_repair, State#state{missing_dots = Rest}, [
         {state_timeout, State#state.timeout, sync_repair}
     ]};
+local_sync_repair(
+    cast,
+    {sync_finished, FinalObjectCount},
+    State
+) ->
+    teardown(State#state{obj_cnt = FinalObjectCount});
 local_sync_repair(
     cast,
     {ok, MissingObjects},
@@ -151,23 +177,34 @@ local_sync_repair(
         obj_cnt = ObjCnt
     } = State
 ) ->
-    case State#state.missing_dots of
-        [] ->
-            vmq_swc_store:sync_repair(
-                Config,
-                MissingObjects,
-                RemotePeer,
-                swc_node:base(RemoteClock),
-                {true, RemoteWatermark}
-            ),
-            teardown(State#state{obj_cnt = ObjCnt + length(MissingObjects)});
-        _ ->
-            vmq_swc_store:sync_repair(
-                Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), false
-            ),
-            {next_state, local_sync_repair, State#state{obj_cnt = ObjCnt + length(MissingObjects)},
-                [{next_event, internal, start}]}
-    end;
+    as_event(
+        fun() ->
+            case State#state.missing_dots of
+                [] ->
+                    vmq_swc_store:sync_repair(
+                        Config,
+                        MissingObjects,
+                        RemotePeer,
+                        swc_node:base(RemoteClock),
+                        {true, RemoteWatermark}
+                    ),
+                    FinalObjectCount = ObjCnt + length(MissingObjects),
+                    {sync_finished, FinalObjectCount};
+                _ ->
+                    vmq_swc_store:sync_repair(
+                        Config,
+                        MissingObjects,
+                        RemotePeer,
+                        swc_node:base(RemoteClock),
+                        false
+                    ),
+                    continue
+            end
+        end
+    ),
+    {next_state, local_sync_repair, State#state{obj_cnt = ObjCnt + length(MissingObjects)}, [
+        {state_timeout, State#state.timeout, sync_repair}
+    ]};
 local_sync_repair(cast, Msg, #state{group = Group, peer = Peer} = State) ->
     ?LOG_ERROR(
         "Replica ~p: AE exchange with ~p received unknown message during local sync repair: ~p", [
@@ -183,10 +220,14 @@ local_sync_repair(state_timeout, sync_repair, #state{group = Group, peer = Peer}
     ),
     teardown(State).
 
-teardown(#state{group = Group, peer = Peer, obj_cnt = ObjCnt} = State) ->
+teardown(#state{group = Group, peer = Peer, obj_cnt = ObjCnt, start_ts = Start} = State) ->
     case State#state.obj_cnt > 0 of
         true ->
-            ?LOG_INFO("Replica ~p: AE exchange with ~p synced ~p objects", [Group, Peer, ObjCnt]);
+            End = erlang:monotonic_time(millisecond),
+            Diff = End - Start,
+            ?LOG_INFO("Replica ~p: AE exchange with ~p synced ~p objects in ~p milliseconds", [
+                Group, Peer, ObjCnt, Diff
+            ]);
         false ->
             ?LOG_DEBUG("Replica ~p: AE exchange with ~p, nothing to synchronize", [Group, Peer])
     end,

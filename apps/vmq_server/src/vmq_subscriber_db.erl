@@ -51,7 +51,7 @@ fold(FoldFun, Acc) ->
         ?SUBSCRIBER_DB,
         fun
             ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-            ({SubscriberId, Subs}, AccAcc) -> FoldFun({SubscriberId, Subs}, AccAcc)
+            ({{_Counter, SubscriberId}, Subs}, AccAcc) -> FoldFun({SubscriberId, Subs}, AccAcc)
         end,
         Acc
     ).
