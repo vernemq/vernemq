@@ -141,11 +141,12 @@ insert(
     Key
 ) ->
     Dot = {Id, Cnt},
-    case ets:insert_new(LT, {Key, Dot}) of
+    UndottedKey = maybe_remove_counter(Key),
+    case ets:insert_new(LT, {UndottedKey, Dot}) of
         true ->
             [{dkm, sext:encode(Dot), Key}];
         false ->
-            Res = ets:lookup(LT, Key),
+            Res = ets:lookup(LT, UndottedKey),
             [{_, {OldId, _}}] = Res,
             Peers = ?PEERS(),
             CheckOld = ?CHECKOLD(OldId, Peers),
@@ -153,33 +154,33 @@ insert(
                 case Res of
                     [{_, {OldId, _} = CurrentDot}] when CheckOld == false ->
                         % remove possible GC candidate
-                        ets:delete(GCT, Key),
-                        ets:insert(LT, {Key, Dot}),
+                        ets:delete(GCT, UndottedKey),
+                        ets:insert(LT, {UndottedKey, Dot}),
 
-                        case ets:lookup(LTC, Key) of
+                        case ets:lookup(LTC, UndottedKey) of
                             [] ->
                                 % no candidate available, ignore this entry
                                 [CurrentDot];
                             [{_, Dots}] ->
-                                ets:insert(LTC, [{Key, maps:put(Id, Cnt, Dots)}, {Dot, Key}]),
+                                ets:insert(LTC, [{UndottedKey, maps:put(Id, Cnt, Dots)}, {Dot, UndottedKey}]),
                                 ets:delete(LTC, CurrentDot),
                                 [CurrentDot]
                         end;
                     [{_, {Id, CurrentCnt} = CurrentDot}] when Cnt > CurrentCnt ->
                         % remove possible GC candidate
-                        ets:delete(GCT, Key),
-                        TmpDot = replace_candidate_or_gc(DKM, Dot, CurrentDot, Key),
+                        ets:delete(GCT, UndottedKey),
+                        TmpDot = replace_candidate_or_gc(DKM, Dot, CurrentDot, UndottedKey),
                         % dot newer than current dot -> replace
-                        ets:insert(LT, {Key, Dot}),
+                        ets:insert(LT, {UndottedKey, Dot}),
                         [TmpDot];
                     [{_, {Id, _} = CurrentDot}] ->
                         % new dot is older than current dot -> replace candidate or gc
-                        [replace_candidate_or_gc(DKM, Dot, CurrentDot, Key)];
+                        [replace_candidate_or_gc(DKM, Dot, CurrentDot, UndottedKey)];
                     [{_, CurrentDot}] ->
                         % remove possible GC candidate
-                        ets:delete(GCT, Key),
+                        ets:delete(GCT, UndottedKey),
                         % this is a new latest candidate
-                        insert_candidates(DKM, Dot, CurrentDot, Key)
+                        insert_candidates(DKM, Dot, CurrentDot, UndottedKey)
                 end,
             {ShouldInsertDot, DbOps} =
                 lists:foldl(
@@ -366,6 +367,13 @@ destroy(#dkm{latest = LT, gc_candidates = GCT}) ->
     ets:delete(LT),
     ets:delete(GCT),
     ok.
+
+maybe_remove_counter(Key) when is_binary(Key) ->
+    maybe_remove_counter(sext:decode(Key));
+maybe_remove_counter({Prefix, {Counter, Key}} = _DottedKey) when is_integer(Counter) ->
+    sext:encode({Prefix, Key});
+maybe_remove_counter(Key) when is_tuple(Key) ->
+    sext:encode(Key).
 
 test() ->
     DKM = init(),
