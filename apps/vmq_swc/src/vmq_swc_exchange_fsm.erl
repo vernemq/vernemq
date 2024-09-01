@@ -39,7 +39,8 @@
     remote_watermark,
     obj_cnt = 0,
     batch_size,
-    missing_dots
+    missing_dots,
+    start_ts
 }).
 
 start_link(#swc_config{} = Config, Peer, Timeout) ->
@@ -120,9 +121,10 @@ update_local(
     %vmq_swc_store:update_watermark(Config, RemotePeer, RemoteClock),
     % calculate the dots missing on this node but exist on remote node
     MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
-    {next_state, local_sync_repair, State#state{missing_dots = MissingDots}, [
-        {next_event, internal, start}
-    ]}.
+    {next_state, local_sync_repair,
+        State#state{missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)}, [
+            {next_event, internal, start}
+        ]}.
 
 local_sync_repair(
     internal,
@@ -183,10 +185,14 @@ local_sync_repair(state_timeout, sync_repair, #state{group = Group, peer = Peer}
     ),
     teardown(State).
 
-teardown(#state{group = Group, peer = Peer, obj_cnt = ObjCnt} = State) ->
+teardown(#state{group = Group, peer = Peer, obj_cnt = ObjCnt, start_ts = Start} = State) ->
     case State#state.obj_cnt > 0 of
         true ->
-            ?LOG_INFO("Replica ~p: AE exchange with ~p synced ~p objects", [Group, Peer, ObjCnt]);
+            End = erlang:monotonic_time(millisecond),
+            SyncTime = End - Start,
+            ?LOG_INFO("Replica ~p: AE exchange with ~p synced ~p objects in ~p milliseconds", [
+                Group, Peer, ObjCnt, SyncTime
+            ]);
         false ->
             ?LOG_DEBUG("Replica ~p: AE exchange with ~p, nothing to synchronize", [Group, Peer])
     end,
