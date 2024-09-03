@@ -271,7 +271,7 @@ init([
     DKM = init_dotkeymap(Config),
     case application:get_env(vmq_swc, periodic_gc, true) of
         true ->
-            self() ! do_gc;
+            erlang:send_after(application:get_env(vmq_swc, gc_interval, 15000), self(), do_gc);
         false ->
             ignore
     end,
@@ -532,6 +532,9 @@ handle_cast(Request, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
     {noreply, State}.
 
+handle_info({prune_leaving, Leaving}, #state{dotkeymap = DKM} = State) ->
+    lists:map(fun(L) -> vmq_swc_dkm:enforce_prune_for_peer(DKM, L) end, Leaving),
+    {noreply, State};
 handle_info(do_gc, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
     Watermark = update_watermark_internal(Id, NodeClock, State0),
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
@@ -577,12 +580,13 @@ code_change(_, _, State) ->
 %% INTERNAL
 set_peers(
     NewPeers,
-    #state{id = Id, config = Config, dotkeymap = _DKM, nodeclock = LocalClock0, watermark = WM0} =
+    #state{id = Id, config = Config, nodeclock = LocalClock0, watermark = WM0} =
         State
 ) ->
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
+
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
 
@@ -601,7 +605,10 @@ set_peers(
 
                 {TmpClock0, fix_watermark(WM0, NewPeers)}
         end,
-
+    case length(LeftPeers) of
+        0 -> ignore;
+        _ -> self() ! {prune_leaving, LeftPeers}
+    end,
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
 

@@ -65,6 +65,7 @@
     mark_for_gc/2,
     prune/3, prune/4,
     prune_for_peer/2,
+    enforce_prune_for_peer/2,
     destroy/1,
     test/0
 ]).
@@ -366,6 +367,24 @@ prune_for_peer(#dkm{latest = LT} = DKM, Id) ->
         end,
         [],
         LT
+    ).
+
+% Enforce deletion of all dots for a specific Peer, having dots in LT AND in
+% GCT
+enforce_prune_for_peer(#dkm{latest = LT, gc_candidates = GCT} = _DKM, Id) ->
+    ets:foldl(
+        fun({Key}, Acc0) ->
+            case ets:lookup(LT, Key) of
+                [{Key, {I, _Cnt} = CurrentDot}] when I == Id ->
+                    ets:delete(LT, Key),
+                    ets:delete(GCT, Key),
+                    [{?DB_DKM, sext:encode(CurrentDot), ?DELETED}, {?DB_OBJ, Key, ?DELETED} | Acc0];
+                _ ->
+                    Acc0
+            end
+        end,
+        [],
+        GCT
     ).
 
 destroy(#dkm{latest = LT, gc_candidates = GCT}) ->
