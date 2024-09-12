@@ -252,7 +252,7 @@ subscription_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
     vmq_subscriber:fold(
-        fun({Topic, SubInfo, _Node}, Acc) ->
+        fun({Topic, SubInfo, _Node, _CS}, Acc) ->
             {QoS, SubOpts} =
                 case SubInfo of
                     {_, _} ->
