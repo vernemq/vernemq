@@ -359,6 +359,12 @@ match_(_, [], Acc) ->
     Acc.
 
 initialize_trie(
+    {_MP, [<<"$share">>, _Group | _Topic], {_SubscriberId, _SubInfo, Node, CleanSession}}, Acc
+) when
+    Node =:= node(), CleanSession == true
+->
+    Acc;
+initialize_trie(
     {MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node, _CleanSession}}, Acc
 ) ->
     add_complex_topic(MP, Topic, {Node, Group}, true),

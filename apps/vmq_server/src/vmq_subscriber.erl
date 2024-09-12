@@ -273,10 +273,10 @@ get_node_subs(Node, Subs) ->
 fold(Fun, Acc, Subs) ->
     lists:foldl(
         fun
-            ({Node, CleanSession, NSubs}, AccAcc) ->
+            ({Node, _CleanSession, NSubs}, AccAcc) ->
                 lists:foldl(
                     fun({Topic, SubInfo}, AccAccAcc) ->
-                        Fun({Topic, SubInfo, Node, CleanSession}, AccAccAcc)
+                        Fun({Topic, SubInfo, Node}, AccAccAcc)
                     end,
                     AccAcc,
                     NSubs
