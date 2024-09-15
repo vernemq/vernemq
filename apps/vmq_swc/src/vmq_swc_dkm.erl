@@ -63,7 +63,7 @@
     init/0,
     insert/4,
     mark_for_gc/2,
-    prune/3, prune/4,
+    prune/4,
     prune_for_peer/2,
     enforce_prune_for_peer/2,
     destroy/1,
@@ -278,18 +278,18 @@ mark_for_gc(#dkm{latest = LT, gc_candidates = GCT}, Key) ->
     end,
     ok.
 
--spec prune(dotkeymap(), watermark(), [db_op()]) -> [db_op()].
-prune(#dkm{} = DKM, Watermark, DbOps) ->
+-spec prune(dotkeymap(), watermark(), [db_op()], nodeclock()) -> [db_op()].
+prune(#dkm{} = DKM, Watermark, DbOps, NodeClock) ->
     lists:foldl(
         fun(Id, Acc) ->
             Min = swc_watermark:min(Watermark, Id),
-            prune(DKM, Id, Min, Acc)
+            prune_(DKM, Id, Min, Acc)
         end,
         DbOps,
         swc_watermark:peers(Watermark)
     ).
 
-prune(#dkm{gc_candidates = GCT} = DKM, Id, Min, DbOps) ->
+prune_(#dkm{gc_candidates = GCT} = DKM, Id, Min, DbOps) ->
     ets:foldl(
         fun({Key}, Acc) -> prune_latest_dot(DKM, Key, Id, Min, Acc, true) end,
         prune_candidates(DKM, Id, Min, DbOps),

@@ -25,7 +25,9 @@
     childspecs/2,
     write/3,
     read/4,
-    fold/5
+    fold/5,
+    fold_with_iterator/7,
+    get_ref/1
 ]).
 
 -export([
@@ -69,6 +71,12 @@ read(#swc_config{db = DBName}, Type, Key, _Opts) ->
 fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey) ->
     gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey}, infinity).
 
+fold_with_iterator(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N, Itr) ->
+    gen_server:call(DBName, {fold_with_iterator, Type, FoldFun, Acc, FirstKey, N, Itr}, infinity).
+
+get_ref(#swc_config{db = DBName}) ->
+    gen_server:call(DBName, get_ref).
+
 %% gen_server impl
 start_link(#swc_config{db = DBName} = Config, Opts) ->
     gen_server:start_link({local, DBName}, ?MODULE, [Config | Opts], []).
@@ -109,10 +117,62 @@ handle_call({write, Objects}, _From, State) ->
     {reply, ok, State};
 handle_call({read, Type, Key}, _From, State) ->
     {reply, eleveldb:get(State#state.ref, key(Type, Key), State#state.read_opts), State};
+handle_call(get_ref, _From, State) ->
+    {reply, State#state.ref, State};
 handle_call({fold, Type, FoldFun, Acc, FirstKey0}, From, State) ->
     spawn_link(
         fun() ->
             {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
+            FirstKey1 =
+                case FirstKey0 of
+                    first ->
+                        key(Type, <<>>);
+                    _ ->
+                        key(Type, FirstKey0)
+                end,
+            KeyPrefix = key_prefix(Type),
+            KeyPrefixSize = byte_size(KeyPrefix),
+            Result = iterate(
+                FoldFun,
+                Acc,
+                Itr,
+                key_prefix(Type),
+                KeyPrefixSize,
+                eleveldb:iterator_move(Itr, FirstKey1)
+            ),
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State};
+handle_call({fold, Type, FoldFun, Acc, FirstKey0, N}, From, State) ->
+    spawn_link(
+        fun() ->
+            {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
+            FirstKey1 =
+                case FirstKey0 of
+                    first ->
+                        key(Type, <<>>);
+                    _ ->
+                        key(Type, FirstKey0)
+                end,
+            KeyPrefix = key_prefix(Type),
+            KeyPrefixSize = byte_size(KeyPrefix),
+            Result = iterate(
+                FoldFun,
+                Acc,
+                Itr,
+                key_prefix(Type),
+                KeyPrefixSize,
+                eleveldb:iterator_move(Itr, FirstKey1)
+            ),
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State};
+
+handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, N, Itr}, From, State) ->
+    spawn_link(
+        fun() ->
             FirstKey1 =
                 case FirstKey0 of
                     first ->
@@ -161,7 +221,10 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             case FoldFun(Key, Value, Acc0) of
                 stop ->
                     eleveldb:iterator_close(Itr),
-                    Acc0;
+                    case Acc0 of
+                        {Acc2, _N} when is_list(Acc2) -> Acc2;
+                        _ -> Acc0
+                    end;
                 Acc1 ->
                     iterate(
                         FoldFun,
@@ -174,7 +237,10 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             end;
         _ ->
             eleveldb:iterator_close(Itr),
-            Acc0
+            case Acc0 of
+                {Acc2, _N} when is_list(Acc2) -> Acc2;
+                _ -> Acc0
+            end
     end;
 iterate(_, Acc, _Itr, _, _, {error, _}) ->
     %% no need to close the iterator

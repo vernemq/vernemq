@@ -26,7 +26,9 @@
     get/4,
     delete/3,
     fold/4,
-    fold/5
+    fold/5,
+    fold/6,
+    fold_with_iterator/7
 ]).
 
 -callback childspecs(config(), any()) -> list().
@@ -98,3 +100,14 @@ fold(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey) -
     vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
         Config, Type, FoldFun, Acc, StartKey
     ]).
+-spec fold(config(), type(), foldfun(), any(), first | db_key(), integer()) -> any().
+fold(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
+        Config, Type, FoldFun, Acc, StartKey, UpTo
+    ]).
+
+fold_with_iterator(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo, Itr) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
+        Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
+    ]).
+

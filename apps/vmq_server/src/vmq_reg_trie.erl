@@ -27,7 +27,8 @@
 -export([
     start_link/0,
     fold/4,
-    stats/0
+    stats/0,
+    init_subscriptions/0
 ]).
 
 %% gen_server callbacks
@@ -63,6 +64,9 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init_subscriptions() ->
+    gen_server2:call(?MODULE, init_subs, 60000).
 
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
@@ -172,6 +176,18 @@ info(T, What) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    create_tables(),
+    Self = self(),
+    spawn_link(
+        fun() ->
+            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
+            Self ! subscribers_loaded
+        end
+    ),
+    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    {ok, #state{event_handler = EventHandler}}.
+
+create_tables() ->
     DefaultETSOpts = [
         public,
         named_table,
@@ -182,16 +198,7 @@ init([]) ->
     _ = ets:new(vmq_trie_topic, [{keypos, 1} | DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs, [bag | DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs_fanout, [ordered_set | DefaultETSOpts]),
-    _ = ets:new(vmq_trie_remote_subs, [{keypos, 1} | DefaultETSOpts]),
-    Self = self(),
-    spawn_link(
-        fun() ->
-            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
-            Self ! subscribers_loaded
-        end
-    ),
-    EventHandler = vmq_reg:subscribe_subscriber_changes(),
-    {ok, #state{event_handler = EventHandler}}.
+    _ = ets:new(vmq_trie_remote_subs, [{keypos, 1} | DefaultETSOpts]).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -210,6 +217,14 @@ init([]) ->
 handle_call({event, Event}, _From, #state{event_handler = Handler} = State) ->
     %% used only for testing/microbenchmarking
     handle_event(Handler, Event),
+    {reply, ok, State};
+handle_call(init_subs, _From, State) ->
+    spawn_link(
+        fun() ->
+            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
+            self() ! subscribers_loaded
+        end
+    ),
     {reply, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -252,8 +267,9 @@ handle_info(
         queue:to_list(Q)
     ),
     NrOfSubscribers = ets:info(vmq_trie_subs, size),
+    NrOfRemoteSubscribers = ets:info(vmq_trie_remote_subs, size),
     persistent_term:put(subscribe_trie_ready, 1),
-    ?LOG_INFO("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
+    ?LOG_INFO("loaded ~p local subscriptions and ~p remote subscriptions into ~p", [NrOfSubscribers, NrOfRemoteSubscribers, ?MODULE]),
     {noreply, State#state{status = ready, event_queue = undefined}};
 handle_info(Event, #state{status = init, event_queue = Q} = State) ->
     {noreply, State#state{event_queue = queue:in(Event, Q)}};
@@ -355,15 +371,17 @@ match_(Topic, [{NodeOrGroup, _} | Rest], Acc) ->
 match_(_, [], Acc) ->
     Acc.
 
-initialize_trie({MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node}}, Acc) ->
+initialize_trie({MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node, _CleanSession}}, Acc) ->
     add_complex_topic(MP, Topic, {Node, Group}, true),
     add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {SubscriberId, SubInfo, Node}}, Acc) when Node =:= node() ->
+initialize_trie({_, _, {_, _, Node, CleanSession}}, Acc) when Node =:= node() , CleanSession == true ->
+    Acc;
+initialize_trie({MP, Topic, {SubscriberId, SubInfo, Node, _CleanSession}}, Acc) when Node =:= node() ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_subscriber(MP, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {_SubscriberId, _SubInfo, Node}}, Acc) ->
+initialize_trie({MP, Topic, {_SubscriberId, _SubInfo, Node, _CleanSession}}, Acc) ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     Acc.
