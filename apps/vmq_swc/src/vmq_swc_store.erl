@@ -51,6 +51,7 @@
     set_group_members/2,
     % testing
     node_clock_by_storename/1,
+    get_nodeclock/1,
     % testing
     watermark_by_storename/1,
     rpc_broadcast/3,
@@ -296,6 +297,13 @@ init([
     StartSync =/= 0 andalso erlang:send_after(1000, self(), sync),
 
     NodeClock = get_nodeclock(Config),
+    NodeClock1 = case NodeClock of
+        M when map_size(M) == 0 ->
+                    {1, NC} = swc_node:event(NodeClock, SWC_ID),
+                    NC;
+        _ -> NodeClock
+        end,
+        
     Watermark = get_watermark(Config),
 
     DKM = init_dotkeymap(Config),
@@ -374,7 +382,7 @@ init([
         group = Group,
         config = Config,
         dotkeymap = DKM,
-        nodeclock = NodeClock,
+        nodeclock = NodeClock1,
         watermark = Watermark,
         auto_gc = IsAutoGc,
         periodic_gc = IsPeriodicGc,
@@ -675,6 +683,10 @@ set_peers(
 
                 {TmpClock0, fix_watermark(WM0, NewPeers)}
         end,
+    case length(LeftPeers) of
+        0 -> ignore;
+        _ -> self() ! {prune_leaving, LeftPeers}
+    end,
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
 
