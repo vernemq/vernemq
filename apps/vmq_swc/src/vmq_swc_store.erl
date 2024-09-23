@@ -272,19 +272,19 @@ get_init_sync(#swc_config{store = StoreName} = Config) ->
     gen_server:call(StoreName, get_init_sync).
 
 set_init_sync_by_groupname(Group, InitSync) when is_boolean(InitSync) ->
- StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
-gen_server:call(StoreName, {set_init_sync, InitSync}).
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    gen_server:call(StoreName, {set_init_sync, InitSync}).
 
 set_broadcast_by_groupname(Group, IsBroadcastEnabled) when
-is_boolean(IsBroadcastEnabled)
+    is_boolean(IsBroadcastEnabled)
 ->
     StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
 
-gen_server:call(StoreName, {set_broadcast, IsBroadcastEnabled}).
+    gen_server:call(StoreName, {set_broadcast, IsBroadcastEnabled}).
 
 reset_iterator_by_groupname(Group) ->
     StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
-gen_server:call(StoreName, reset_itr).
+    gen_server:call(StoreName, reset_itr).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% GEN_SERVER Callbacks
@@ -297,13 +297,19 @@ init([
     StartSync =/= 0 andalso erlang:send_after(1000, self(), sync),
 
     NodeClock = get_nodeclock(Config),
-    NodeClock1 = case NodeClock of
-        M when map_size(M) == 0 ->
-                    {1, NC} = swc_node:event(NodeClock, SWC_ID),
-                    NC;
-        _ -> NodeClock
+    NodeClock1 =
+        case NodeClock of
+            M when map_size(M) == 0 ->
+                {1, NC} = swc_node:event(NodeClock, SWC_ID),
+                NC;
+            _ ->
+                Entry = swc_node:get(SWC_ID, NodeClock),
+                case Entry of
+                    {0, N} -> swc_node:store_entry(SWC_ID, {1, N}, NodeClock);
+                    _ -> NodeClock
+                end
         end,
-        
+
     Watermark = get_watermark(Config),
 
     DKM = init_dotkeymap(Config),
@@ -314,18 +320,19 @@ init([
             ignore
     end,
 
-  %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
+    %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
     Init = vmq_swc_db:get(Config, default, <<"ISY">>, []),
-    Init1 = case Init of
-        not_found -> false;
-        {ok, Res} -> binary_to_term(Res)
-    end,
-    IsBroadcastEnabled = 
+    Init1 =
+        case Init of
+            not_found -> false;
+            {ok, Res} -> binary_to_term(Res)
+        end,
+    IsBroadcastEnabled =
         case Init1 of
-        false -> false;
-        _ -> application:get_env(vmq_swc, enable_broadcast, true)
+            false -> false;
+            _ -> application:get_env(vmq_swc, enable_broadcast, true)
         end,
 
     ets:new(StoreName, [public, named_table, {read_concurrency, true}]),
@@ -420,20 +427,20 @@ handle_call(
             {[], [], State0},
             Batch
         ),
-        case IsBroadcastEnabled of
-            true ->
-                #swc_config{group = SwcGroup, transport = TMod} = Config,
-                lists:foreach(
-                    fun(Peer) ->
-                        TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [
-                            Local, lists:reverse(ReplicateObjects)
-                        ])
-                    end,
-                    Peers1
-                );
-            _ ->
-                ok
-        end,
+    case IsBroadcastEnabled of
+        true ->
+            #swc_config{group = SwcGroup, transport = TMod} = Config,
+            lists:foreach(
+                fun(Peer) ->
+                    TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [
+                        Local, lists:reverse(ReplicateObjects)
+                    ])
+                end,
+                Peers1
+            );
+        _ ->
+            ok
+    end,
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
     db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
     r_o_w_cache_clear(Config),
@@ -561,27 +568,32 @@ handle_call(Request, From, State) ->
 
 handle_cast({set_group_members, UpdatedPeerList}, State) ->
     {noreply, set_peers(UpdatedPeerList, State)};
-handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers = Peers, config = Config, init_sync = InitSync} = State0) ->
+handle_cast(
+    {swc_broadcast, FromPeer, Objects},
+    #state{peers = Peers, config = Config, init_sync = InitSync} = State0
+) ->
     Peers1 = proplists:get_keys(Peers),
     case lists:member(FromPeer, Peers1) of
         true ->
             GlobalSync = persistent_term:get({vmq_swc_group_coordinator, init_sync}, 0),
             case InitSync of
-                false -> {noreply, State0};
+                false ->
+                    {noreply, State0};
                 true when GlobalSync == 1 ->
-                {DbOps, #state{nodeclock = NodeClock} = State1} =
-                    lists:foldl(
-                        fun(Object, Acc) ->
-                            process_replicate_op(Object, Acc)
-                        end,
-                        {[], State0},
-                        Objects
-                    ),
-                UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
-                db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-                {noreply, cache_node_clock(State1)};
-                _ -> {noreply, State0}
-                end;
+                    {DbOps, #state{nodeclock = NodeClock} = State1} =
+                        lists:foldl(
+                            fun(Object, Acc) ->
+                                process_replicate_op(Object, Acc)
+                            end,
+                            {[], State0},
+                            Objects
+                        ),
+                    UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
+                    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
+                    {noreply, cache_node_clock(State1)};
+                _ ->
+                    {noreply, State0}
+            end;
         false ->
             % drop broadcast
             ?LOG_DEBUG("Dropping SWC broadcast from Peer ~p~n", [FromPeer]),
@@ -592,9 +604,10 @@ handle_cast({jump_old_clocks, RemoteClock}, #state{peers = Peers, nodeclock = Lo
     OldIds = RemoteIds -- Peers,
     % update the counters for the old ids from the remote
     % fold over the LocalClock
+    BasedRemoteClock = swc_node:base(RemoteClock),
     NewLocalClock = lists:foldl(
         fun(Id, Acc) ->
-            Entry = swc_node:get(Id, RemoteClock),
+            Entry = swc_node:get(Id, BasedRemoteClock),
             swc_node:store_entry(Id, Entry, Acc)
         end,
         LocalClock,
@@ -649,7 +662,9 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(Reason, #state{watermark = Watermark, nodeclock = NodeClock}) ->
-    ?LOG_DEBUG("Store terminating with NodeClock: ~p~n WaterMark: ~p for Reason ~p~n", [NodeClock, Watermark, Reason]),
+    ?LOG_DEBUG("Store terminating with NodeClock: ~p~n WaterMark: ~p for Reason ~p~n", [
+        NodeClock, Watermark, Reason
+    ]),
     ok.
 
 code_change(_, _, State) ->
