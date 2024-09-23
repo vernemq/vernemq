@@ -1080,10 +1080,10 @@ subscribe_subscriber_changes() ->
 
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
-        fun({MP, _} = SubscriberId, Subs, AAcc) ->
+        fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
             vmq_subscriber:fold(
                 fun({Topic, QoS, Node}, AAAcc) ->
-                    FoldFun({MP, Topic, {SubscriberId, QoS, Node}}, AAAcc)
+                    FoldFun({MP, Topic, {SubscriberId, QoS, Node, CleanSession}}, AAAcc)
                 end,
                 AAcc,
                 Subs

@@ -56,10 +56,14 @@ init([]) ->
         id => vmq_swc_peer_service_events,
         start => {vmq_swc_peer_service_events, start_link, []}
     },
+    GroupCoordinator = #{
+        id => vmq_swc_group_coordinator,
+        start => {vmq_swc_group_coordinator, start_link, []}
+    },
 
     _State = vmq_swc_peer_service_manager:init(),
 
-    {ok, {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker]}}.
+    {ok, {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker, GroupCoordinator]}}.
 
 %%====================================================================
 %% Internal functions
