@@ -2229,8 +2229,6 @@
 %% @doc Specifies the metadata plugin that is used for storing and replicating
 %% VerneMQ metadata objects such as MQTT subscriptions and retained messages.
 %%
-%% The default is kept at `vmq_plumtree` for compatibility with existing deployments.
-%%
 %% For new cluster deployments, the recommendation is to use 'vmq_swc' from the
 %% beginning. Note that the 2 protocols are not compatible, so clusters can't be
 %% mixed.

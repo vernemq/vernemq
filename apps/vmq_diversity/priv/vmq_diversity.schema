@@ -349,7 +349,7 @@
 %% @doc Specify if the MySOL driver should use TLS or not.
 {mapping, "vmq_diversity.mysql2.ssl", "vmq_diversity.db_config.mysql2.ssl",
  [{datatype, flag},
-  {default, on}
+  {default, off}
  ]}.
 
 %% @doc The cafile is used to define the path to a file containing

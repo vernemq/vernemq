@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 25.3.2
+  DEFAULT_RELEASE_OTP: 26.2
 
 jobs:
   code_checks:
@@ -43,7 +43,7 @@ jobs:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Install Erlang/OTP
-        uses: erlef/setup-beam@v1.17
+        uses: erlef/setup-beam@v1.18
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Check code formatting (erlfmt)
@@ -105,7 +105,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Install Erlang/OTP
-        uses: erlef/setup-beam@v1.17
+        uses: erlef/setup-beam@v1.18
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Cache _build/default
@@ -161,7 +161,7 @@ jobs:
           # Monterrey
           - macos-12
         otp:
-          - "26.1"
+          - "26.2"
           - "25.3"
           - "24.3"
 
@@ -193,7 +193,7 @@ jobs:
         # setup beam doesn't provide MacOS packages
         # we use Homebrew to instal them
         if: ${{ !startsWith(matrix.os , 'macos') }}
-        uses: erlef/setup-beam@v1.17
+        uses: erlef/setup-beam@v1.18
         with:
           otp-version: ${{ matrix.otp }}
           version-type: strict

@@ -14,7 +14,7 @@ Also, note that Promises are not impositions (obligations).
 - to treat you in a friendly, respectful and inclusive way (see also our [Code of Conduct](https://github.com/vernemq/vernemq/blob/main/CODE_OF_CONDUCT.md))
 - to build and test a binary package for every tagged VerneMQ release. This might take some time, and we might decide to jump or retract a release if issues surface in open testing.
 - to build at least a .deb and a .rpm based package.
-- to build at least 2 Docker images (currently Alpine and Buster-based).
+- to build at least 2 Docker images (currently Alpine and Debian-based).
 - the hold any additional conditions of the subscription CLA (forwarded with subscription)
 
 ## To Contributors, we promise:
