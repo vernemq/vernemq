@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 25.3.2
+  DEFAULT_RELEASE_OTP: 26.2
 
 jobs:
   code_checks:
@@ -161,7 +161,7 @@ jobs:
           # Monterrey
           - macos-12
         otp:
-          - "26.1"
+          - "26.2"
           - "25.3"
           - "24.3"
 
