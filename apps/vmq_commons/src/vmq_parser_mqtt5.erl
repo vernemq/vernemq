@@ -743,9 +743,11 @@ utf8(Bin) when is_binary(Bin) ->
 
 ensure_utf8(Bin) when is_binary(Bin) ->
     case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
-        {{error, _, _}, _} -> {error, invalid_utf8_string};  % Invalid UTF-8
-        {_, {_, _}} -> {error, invalid_utf8_string};         % NULL character found
-        {X, nomatch} -> {ok, X}              
+        % Invalid UTF-8
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        % NULL character found
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
     end.
 
 binary(X) ->
