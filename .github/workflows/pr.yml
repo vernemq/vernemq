@@ -196,7 +196,7 @@ jobs:
         uses: erlef/setup-beam@v1.18.2
         with:
           otp-version: ${{ matrix.otp }}
-          version-type: strict
+          version-type: loose
       - name: Cache build
         uses: actions/cache@v3
         with:
