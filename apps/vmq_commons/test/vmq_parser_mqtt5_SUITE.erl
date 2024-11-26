@@ -38,7 +38,8 @@ all() ->
      parse_unparse_pingreq_test,
      parse_unparse_pingresp_test,
      parse_unparse_disconnect_test,
-     parse_unparse_auth_test].
+     parse_unparse_auth_test,
+     no_null_char_in_client].
 
 parse_unparse_tests(_Config) ->
     Properties = #{p_session_expiry_interval => 12341234},
@@ -259,6 +260,10 @@ parse_unparse_properties_test(_Config) ->
 
     parse_unparse_property(#{p_shared_subs_available => true}),
     parse_unparse_property(#{p_shared_subs_available => false}).
+
+no_null_char_in_client(_Config) ->
+    C = vmq_parser_mqtt5:gen_connect(<<1,0>>, []),
+    {{error, invalid_utf8_string}, <<>>} = vmq_parser_mqtt5:parse(C).
 
 parse_unparse_property(Property) ->
     Encoded = enc_property_(Property),
