@@ -22,16 +22,19 @@
 register_cli() ->
     vmq_session_list_cmd(),
     vmq_session_disconnect_cmd(),
+    vmq_session_unsubscribe_cmd(),
     vmq_session_disconnect_clients_cmd(),
     vmq_session_disconnect_batch_cmd(),
     vmq_session_reauthorize_cmd(),
     vmq_retain_show_cmd(),
     vmq_retain_delete_cmd(),
+    vmq_retain_delete_expired_cmd(),
     vmq_loq_show_cmd(),
     vmq_log_level_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
+    clique:register_usage(["vmq-admin", "session", "unsubscribe"], vmq_session_unsubscribe_usage()),
     clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()),
     clique:register_usage(
         ["vmq-admin", "session", "disconnect", "clients"], vmq_session_disconnect_clients_usage()
@@ -42,6 +45,7 @@ register_cli() ->
     clique:register_usage(["vmq-admin", "session", "reauthorize"], vmq_session_reauthorize_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain", "show"], retain_show_usage()),
+    clique:register_usage(["vmq-admin", "retain", "delete-expired"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain", "delete"], retain_delete_usage()),
     clique:register_usage(["vmq-admin", "log"], log_usage()),
     clique:register_usage(["vmq-admin", "log", "level"], log_level_usage()).
@@ -96,6 +100,18 @@ vmq_retain_delete_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+vmq_retain_delete_expired_cmd() ->
+    Cmd = ["vmq-admin", "retain", "delete-expired"],
+    Callback = fun
+        (_, [], _Flags) ->
+            Expired = vmq_retain_srv:fold_expired(),
+            [clique_status:table([[{expired, Expired}]])];
+        (_, _, _) ->
+            Text = clique_status:text(retain_usage()),
+            [clique_status:alert([Text])]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "show"],
     KeySpecs = [],
@@ -105,6 +121,61 @@ vmq_session_list_cmd() ->
         ["peer_port", "peer_host", "user", "mountpoint", "client_id", "is_online"],
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- [limit, rowtimeout | ValidInfoItems]],
     Callback = vmq_ql_callback("sessions", DefaultFields, []),
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_session_unsubscribe_cmd() ->
+    Cmd = ["vmq-admin", "session", "unsubscribe"],
+    KeySpecs = [
+        {'client-id', [{typecast, fun(ClientId) -> ClientId end}]},
+        {'topic', [{typecast, fun(Topic) -> Topic end}]}
+    ],
+    FlagSpecs = [
+        {plugin, [
+            {shortname, "p"},
+            {longname, "plugin"}
+        ]},
+        {mountpoint, [
+            {shortname, "m"},
+            {longname, "mountpoint"},
+            {typecast, fun(Mountpoint) -> Mountpoint end}
+        ]}
+    ],
+
+    Callback = fun
+        (_, [{'client-id', ClientId}, {'topic', Topic}], Flags) ->
+            DoCallPlugin = lists:keymember(plugin, 1, Flags),
+
+            case proplists:get_value(mountpoint, Flags, "") of
+                undefined ->
+                    %% Unparsable mountpoint or without value
+                    Text = clique_status:text("Invalid mountpoint value"),
+                    [clique_status:alert([Text])];
+                Mountpoint ->
+                    SubscriberId = {Mountpoint, list_to_binary(ClientId)},
+                    Topic0 = list_to_binary(Topic),
+                    Res =
+                        case vmq_reg:unsubscribe(true, SubscriberId, [vmq_topic:word(Topic0)]) of
+                            ok ->
+                                case DoCallPlugin of
+                                    true ->
+                                        vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, Topic0]);
+                                    _ ->
+                                        ok
+                                end,
+                                ok;
+                            V ->
+                                V
+                        end,
+
+                    case Res of
+                        ok -> [clique_status:text("Done")];
+                        _ -> [clique_status:text("Not successfull")]
+                    end
+            end;
+        (_, _, _) ->
+            Text = clique_status:text(vmq_session_unsubscribe_usage()),
+            [clique_status:alert([Text])]
+    end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_session_disconnect_cmd() ->
@@ -463,6 +534,7 @@ session_usage() ->
         "  Manage MQTT sessions.\n\n",
         "  Sub-commands:\n",
         "    show        Show and filter running sessions\n",
+        "    unsubscribe Unsubscribes from a topic\n",
         "    disconnect  Forcefully disconnect a session\n",
         "    reauthorize Reauthorize subscriptions of a session\n",
         "  Use --help after a sub-command for more details.\n"
@@ -489,6 +561,17 @@ vmq_session_show_usage() ->
         "      Limits the time spent when fetching a single row.\n"
         "      Default is 100 milliseconds.\n"
         | Options
+    ].
+
+vmq_session_unsubscribe_usage() ->
+    [
+        "vmq-admin session unsubscribe client-id=<ClientId> topic=<Topic>\n\n",
+        "  Unsubscribes a topic for a given client\n\n",
+        "  --plugin, -p\n",
+        "      calls on_topic_unsubscribed plugin handler\n",
+        "  --mountpoint=<Mountpoint>, -m\n",
+        "      specifies the mountpoint, defaults to the default mountpoint\n",
+        "\n\n"
     ].
 
 vmq_session_disconnect_usage() ->
@@ -548,8 +631,9 @@ retain_usage() ->
         "vmq-admin retain <sub-command>\n\n",
         "  Inspect MQTT retained messages.\n\n",
         "  Sub-commands:\n",
-        "    show        Show and filter running sessions\n",
-        "    delete      Delete retained message\n",
+        "    show              Show and filter running sessions\n",
+        "    delete            Delete retained message\n",
+        "    delete-expired    Delete all expired messages\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 

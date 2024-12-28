@@ -24,7 +24,8 @@
     insert/3,
     delete/2,
     match_fold/4,
-    stats/0
+    stats/0,
+    fold_expired/0
 ]).
 
 %% gen_server callbacks
@@ -137,6 +138,21 @@ stats() ->
                     {V, (MC + MU) * erlang:system_info(wordsize)}
             end
     end.
+
+fold_expired() ->
+    Fun = fun
+        ({{MP, Topic}, {retain_msg, _, #{p_message_expiry_interval := _}, {TS, _}}}, Acc) ->
+            case vmq_time:is_past(TS) of
+                true ->
+                    vmq_retain_srv:delete(MP, Topic),
+                    Acc + 1;
+                _ ->
+                    Acc
+            end;
+        ({{_, _}, {retain_msg, _, _, _}}, Acc) ->
+            Acc
+    end,
+    ets:foldl(Fun, 0, ?RETAIN_CACHE).
 
 %%%===================================================================
 %%% gen_server callbacks

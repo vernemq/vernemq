@@ -349,7 +349,7 @@
 %% @doc Specify if the MySOL driver should use TLS or not.
 {mapping, "vmq_diversity.mysql2.ssl", "vmq_diversity.db_config.mysql2.ssl",
  [{datatype, flag},
-  {default, on}
+  {default, off}
  ]}.
 
 %% @doc The cafile is used to define the path to a file containing
@@ -423,6 +423,11 @@
  [{datatype, {enum, [password, md5, sha1, sha256]}},
   {default, sha256}
  ]}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% MongoDB
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
  [{datatype, flag},
@@ -517,6 +522,40 @@
   {validators, ["file-exists", "file-is-readable"]},
   {commented, "{{platform_etc_dir}}/keyfile.pem"}
  ]}.
+
+%% @doc Setting the depth for CA chains
+{mapping, "vmq_diversity.mongodb.ssl.depth", "vmq_diversity.db_config.mongodb.depth", [
+                                                           {default, 3},
+                                                           {datatype, integer},
+                                                           hidden
+                                                          ]}.
+
+%% @doc Server Name Indication
+{mapping, "vmq_diversity.mongodb.ssl.sni", "vmq_diversity.db_config.mongodb.sni", [
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+
+%% @doc Allow the plugin to open SSL connections to remote DB with wildcard certs
+{mapping, "vmq_diversity.mongodb.ssl.customize_hostname_check", "vmq_diversity.db_config.mongodb.customize_hostname_check", [
+                                                         {datatype, {enum, ['https']}},
+                                                            {default, 'https'},
+                                                            {commented, on}
+                                                        ]}.
+%% @doc Whether the client verifies the server cert or not.
+%% Use "verify_peer" in production.
+{mapping, "vmq_diversity.mongodb.ssl.verify", "vmq_diversity.db_config.mongodb.verify", [
+                                                                {default, 'verify_peer'},
+                                                                {datatype, {enum, ['verify_none',
+                                                                            'verify_peer']}}
+                                                               ]}.
+
+%% @doc Whether to use the System CAs (public_key:cacerts_get/0).
+%% Can be used as an alternative to provide a CAcertfile
+{mapping, "vmq_diversity.mongodb.ssl.use_system_cas", "vmq_diversity.db_config.mongodb.use_system_cas", [
+                                                                {default, on},
+                                                                {datatype, flag}
+                                                               ]}.
 
 
 {mapping, "vmq_diversity.auth_redis.enabled", "vmq_diversity.auth_cache.redis.enabled",

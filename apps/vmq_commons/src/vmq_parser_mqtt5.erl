@@ -66,6 +66,8 @@ parse(Data) ->
 
 -spec parse(binary(), non_neg_integer()) ->
     {mqtt5_frame(), binary()} | {error, atom()} | {{error, atom()}, any()} | more.
+parse(Data, MaxSize) when MaxSize > ?MAX_PACKET_SIZE ->
+    parse(Data, ?MAX_PACKET_SIZE);
 parse(<<Fixed:1/binary, 0:1, DataSize:7, Data/binary>>, MaxSize) ->
     parse(DataSize, MaxSize, Fixed, Data);
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>, MaxSize) ->
@@ -79,20 +81,19 @@ parse(<<_:8/binary, _/binary>>, _) ->
 parse(_, _) ->
     more.
 
-parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
-    %% no max size limit
-    <<Var:DataSize/binary, Rest/binary>> = Data,
-    {variable(Fixed, Var), Rest};
-parse(DataSize, 0, _Fixed, Data) when byte_size(Data) < DataSize ->
-    more;
+parse(DataSize, 0, Fixed, Data) ->
+    parse(DataSize, ?MAX_PACKET_SIZE, Fixed, Data);
 parse(DataSize, MaxSize, Fixed, Data) when
     byte_size(Data) >= DataSize,
-    byte_size(Data) =< MaxSize
+    byte_size(Data) =< MaxSize,
+    MaxSize =< ?MAX_PACKET_SIZE
 ->
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, MaxSize, _, _) when
-    DataSize > MaxSize
+parse(DataSize, MaxSize, _, Data) when
+    DataSize > MaxSize;
+    MaxSize > ?MAX_PACKET_SIZE;
+    byte_size(Data) > ?MAX_PACKET_SIZE
 ->
     {error, packet_exceeds_max_size};
 parse(_, _, _, _) ->
@@ -741,9 +742,12 @@ utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
 ensure_utf8(Bin) when is_binary(Bin) ->
-    case unicode:characters_to_binary(Bin, utf8, utf8) of
-        {error, _, _} -> {error, invalid_utf8_string};
-        X -> {ok, X}
+    case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
+        % Invalid UTF-8
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        % NULL character found
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
     end.
 
 binary(X) ->
