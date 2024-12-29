@@ -161,10 +161,13 @@ jobs:
           # Sonoma
           - macos-13
         otp:
+          - "27.2"
           - "26.2"
           - "25.3"
-          - "24.3"
-
+        exclude:
+          - os: macos-12
+            otp: "27.2"
+            
     steps:
       - name: Install dependencies (Linux)
         if: ${{ startsWith(matrix.os, 'ubuntu') }}

@@ -29,6 +29,13 @@ endif
 ##
 ## Developer targets
 ##
+
+## build a release including debugger and wx
+## after a fresh checkout, run 'make rel' (to create default release),
+## then 'make debug_build'
+debug_build: PROFILE = as debug_build
+debug_build: rel
+
 ##  devN - Make a dev build for node N
 dev% :
 	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
