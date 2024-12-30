@@ -37,7 +37,6 @@
     rpc_sync_missing/3,
 
     sync_repair/5,
-
     node_clock/1,
     remote_node_clock/2,
     rpc_node_clock/1,
@@ -47,18 +46,24 @@
     rpc_watermark/1,
 
     update_watermark/3,
-
+    jump_old_clocks/2,
     do_gc/2,
     set_group_members/2,
     % testing
     node_clock_by_storename/1,
+    get_nodeclock/1,
     % testing
     watermark_by_storename/1,
     rpc_broadcast/3,
     % testing
     fix_watermark/2,
     % testing
-    set_nodeclock/2
+    set_nodeclock/2,
+    init_and_reset_dkm/1,
+    set_init_sync_by_groupname/2,
+    set_broadcast_by_groupname/2,
+    get_init_sync/1,
+    reset_iterator_by_groupname/1
 ]).
 
 -export([
@@ -89,7 +94,9 @@
     auto_gc :: boolean(),
     periodic_gc :: boolean(),
     subscriptions = #{},
-    broadcast_enabled :: boolean()
+    broadcast_enabled :: boolean(),
+    init_sync :: boolean(),
+    iterator = undefined
 }).
 
 %-define(DBG_OP(Str, Format), io:format(Str, Format)).
@@ -255,6 +262,30 @@ set_broadcast(#swc_config{store = StoreName}, IsBroadcastEnabled) when
 set_group_members(#swc_config{store = StoreName}, Members) ->
     gen_server:cast(StoreName, {set_group_members, Members}).
 
+jump_old_clocks(#swc_config{store = StoreName} = Config, RemoteClock) ->
+    gen_server:cast(StoreName, {jump_old_clocks, RemoteClock}).
+
+init_and_reset_dkm(#swc_config{store = StoreName} = Config) ->
+    gen_server:cast(StoreName, init_dkm).
+
+get_init_sync(#swc_config{store = StoreName} = Config) ->
+    gen_server:call(StoreName, get_init_sync).
+
+set_init_sync_by_groupname(Group, InitSync) when is_boolean(InitSync) ->
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    gen_server:call(StoreName, {set_init_sync, InitSync}).
+
+set_broadcast_by_groupname(Group, IsBroadcastEnabled) when
+    is_boolean(IsBroadcastEnabled)
+->
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+
+    gen_server:call(StoreName, {set_broadcast, IsBroadcastEnabled}).
+
+reset_iterator_by_groupname(Group) ->
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    gen_server:call(StoreName, reset_itr).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% GEN_SERVER Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
@@ -266,19 +297,43 @@ init([
     StartSync =/= 0 andalso erlang:send_after(1000, self(), sync),
 
     NodeClock = get_nodeclock(Config),
+    NodeClock1 =
+        case NodeClock of
+            M when map_size(M) == 0 ->
+                {1, NC} = swc_node:event(NodeClock, SWC_ID),
+                NC;
+            _ ->
+                Entry = swc_node:get(SWC_ID, NodeClock),
+                case Entry of
+                    {0, N} -> swc_node:store_entry(SWC_ID, {1, N}, NodeClock);
+                    _ -> NodeClock
+                end
+        end,
+
     Watermark = get_watermark(Config),
 
     DKM = init_dotkeymap(Config),
     case application:get_env(vmq_swc, periodic_gc, true) of
         true ->
-            self() ! do_gc;
+            erlang:send_after(application:get_env(vmq_swc, gc_interval, 15000), self(), do_gc);
         false ->
             ignore
     end,
 
-    IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
+    %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
+    Init = vmq_swc_db:get(Config, default, <<"ISY">>, []),
+    Init1 =
+        case Init of
+            not_found -> false;
+            {ok, Res} -> binary_to_term(Res)
+        end,
+    IsBroadcastEnabled =
+        case Init1 of
+            false -> false;
+            _ -> application:get_env(vmq_swc, enable_broadcast, true)
+        end,
 
     ets:new(StoreName, [public, named_table, {read_concurrency, true}]),
     ets:new(CacheName, [public, named_table, {read_concurrency, true}]),
@@ -334,11 +389,12 @@ init([
         group = Group,
         config = Config,
         dotkeymap = DKM,
-        nodeclock = NodeClock,
+        nodeclock = NodeClock1,
         watermark = Watermark,
         auto_gc = IsAutoGc,
         periodic_gc = IsPeriodicGc,
-        broadcast_enabled = IsBroadcastEnabled
+        broadcast_enabled = IsBroadcastEnabled,
+        init_sync = Init1
     }),
     {ok, State}.
 
@@ -371,12 +427,6 @@ handle_call(
             {[], [], State0},
             Batch
         ),
-    UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
-    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-    r_o_w_cache_clear(Config),
-    %   io:format("Batch, Replicate Objects ~p~n", [ReplicateObjects]),
-    %   io:format("Batch, DBOpts ~p~n", [DbOps]),
-    %   io:format("Batch, NodeClock ~p~n", [NodeClock]),
     case IsBroadcastEnabled of
         true ->
             #swc_config{group = SwcGroup, transport = TMod} = Config,
@@ -391,6 +441,9 @@ handle_call(
         _ ->
             ok
     end,
+    UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
+    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
+    r_o_w_cache_clear(Config),
     {reply, ok, cache_node_clock(State1)};
 handle_call(
     {subscribe, FullPrefix, ConvertFun, Pid}, _From, #state{subscriptions = Subs0} = State0
@@ -447,6 +500,8 @@ handle_call({set_node_clock, NodeClock}, _From, State) ->
     {reply, ok, State#state{nodeclock = NodeClock}};
 handle_call(get_watermark, _From, #state{watermark = Watermark} = State) ->
     {reply, Watermark, State};
+handle_call(reset_itr, _From, State) ->
+    {reply, ok, State#state{iterator = undefined}};
 handle_call(
     {update_watermark, _OriginPeer, RemotePeer, RemoteNodeClock},
     _From,
@@ -503,35 +558,73 @@ handle_call(dump_dotkeymap, _, #state{dotkeymap = DKM} = State) ->
     {reply, vmq_swc_dkm:dump(DKM), State};
 handle_call({set_broadcast, IsBroadcastEnabled}, _From, State) ->
     {reply, ok, State#state{broadcast_enabled = IsBroadcastEnabled}};
+handle_call({set_init_sync, Synced}, _From, State) ->
+    {reply, ok, State#state{init_sync = Synced}};
+handle_call(get_init_sync, _From, State) ->
+    {reply, State#state.init_sync, State};
 handle_call(Request, From, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
     {reply, {error, wrong_request}, State}.
 
 handle_cast({set_group_members, UpdatedPeerList}, State) ->
     {noreply, set_peers(UpdatedPeerList, State)};
-handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers = Peers, config = Config} = State0) ->
+handle_cast(
+    {swc_broadcast, FromPeer, Objects},
+    #state{peers = Peers, config = Config, init_sync = InitSync} = State0
+) ->
     Peers1 = proplists:get_keys(Peers),
     case lists:member(FromPeer, Peers1) of
         true ->
-            {DbOps, #state{nodeclock = NodeClock} = State1} =
-                lists:foldl(
-                    fun(Object, Acc) ->
-                        process_replicate_op(Object, Acc)
-                    end,
-                    {[], State0},
-                    Objects
-                ),
-            UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
-            db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-            {noreply, cache_node_clock(State1)};
+            GlobalSync = persistent_term:get({vmq_swc_group_coordinator, init_sync}, 0),
+            case InitSync of
+                false ->
+                    {noreply, State0};
+                true when GlobalSync == 1 ->
+                    {DbOps, #state{nodeclock = NodeClock} = State1} =
+                        lists:foldl(
+                            fun(Object, Acc) ->
+                                process_replicate_op(Object, Acc)
+                            end,
+                            {[], State0},
+                            Objects
+                        ),
+                    UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
+                    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
+                    {noreply, cache_node_clock(State1)};
+                _ ->
+                    {noreply, State0}
+            end;
         false ->
             % drop broadcast
+            ?LOG_DEBUG("Dropping SWC broadcast from Peer ~p~n", [FromPeer]),
             {noreply, State0}
     end;
+handle_cast({jump_old_clocks, RemoteClock}, #state{peers = Peers, nodeclock = LocalClock} = State) ->
+    RemoteIds = swc_node:ids(RemoteClock),
+    OldIds = RemoteIds -- Peers,
+    % update the counters for the old ids from the remote
+    % fold over the LocalClock
+    BasedRemoteClock = swc_node:base(RemoteClock),
+    NewLocalClock = lists:foldl(
+        fun(Id, Acc) ->
+            Entry = swc_node:get(Id, BasedRemoteClock),
+            swc_node:store_entry(Id, Entry, Acc)
+        end,
+        LocalClock,
+        OldIds
+    ),
+    State1 = State#state{nodeclock = NewLocalClock},
+    {noreply, State1};
+handle_cast(init_dkm, #state{config = Config} = State) ->
+    DKM = init_dotkeymap(Config),
+    {noreply, State#state{dotkeymap = DKM}};
 handle_cast(Request, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
     {noreply, State}.
 
+handle_info({prune_leaving, Leaving}, #state{dotkeymap = DKM} = State) ->
+    lists:map(fun(L) -> vmq_swc_dkm:enforce_prune_for_peer(DKM, L) end, Leaving),
+    {noreply, State};
 handle_info(do_gc, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
     Watermark = update_watermark_internal(Id, NodeClock, State0),
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
@@ -568,7 +661,10 @@ handle_info(Info, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, #state{watermark = Watermark, nodeclock = NodeClock}) ->
+    ?LOG_DEBUG("Store terminating with NodeClock: ~p~n WaterMark: ~p for Reason ~p~n", [
+        NodeClock, Watermark, Reason
+    ]),
     ok.
 
 code_change(_, _, State) ->
@@ -577,12 +673,13 @@ code_change(_, _, State) ->
 %% INTERNAL
 set_peers(
     NewPeers,
-    #state{id = Id, config = Config, dotkeymap = _DKM, nodeclock = LocalClock0, watermark = WM0} =
+    #state{id = Id, config = Config, nodeclock = LocalClock0, watermark = WM0} =
         State
 ) ->
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
+
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
 
@@ -601,7 +698,10 @@ set_peers(
 
                 {TmpClock0, fix_watermark(WM0, NewPeers)}
         end,
-
+    case length(LeftPeers) of
+        0 -> ignore;
+        _ -> self() ! {prune_leaving, LeftPeers}
+    end,
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
 
@@ -887,8 +987,10 @@ get_obj_for_key(Config, SKey) ->
         not_found -> swc_kv:new()
     end.
 
-incremental_gc(#state{config = Config, watermark = Watermark, dotkeymap = DKM} = State) ->
-    DBOps = vmq_swc_dkm:prune(DKM, Watermark, []),
+incremental_gc(
+    #state{config = Config, watermark = Watermark, dotkeymap = DKM, nodeclock = NodeClock} = State
+) ->
+    DBOps = vmq_swc_dkm:prune(DKM, Watermark, [], NodeClock),
     db_write(Config, DBOps),
     State.
 

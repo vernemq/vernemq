@@ -32,6 +32,8 @@
     peer :: swc_id(),
     group :: atom(),
     db :: db_name(),
+    dkm :: db_name(),
+    dkm_backend :: atom(),
     db_backend :: atom(),
     store :: atom(),
     r_o_w_cache :: atom(),
