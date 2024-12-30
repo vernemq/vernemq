@@ -90,7 +90,25 @@
 -- IF YOU USE THE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
 
-function validate_result_client_side(results, reg)
+local function client_side_hashing(method)
+    return method == "bcrypt"
+end
+
+local function do_hash(method, password, passhash)
+    if method == "bcrypt" then
+        return bcrypt.hashpw(password, passhash)
+    else
+        return false
+    end
+end
+
+local function cache_result(reg, row)
+    local publish_acl = json.decode(row.publish_acl)
+    local subscribe_acl = json.decode(row.subscribe_acl)
+    cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
+end
+
+local function validate_result_client_side(results, reg, method)
    pwd = obf.decrypt(reg.password)
    if #results > 0 then
       local targetRow
@@ -119,7 +137,7 @@ function validate_result_client_side(results, reg)
    return false
 end
 
-function validate_result_server_side(results, reg)
+local function validate_result_server_side(results, reg)
    if #results > 0 then
       local targetRow
       --   search for a specific rule for the client client_id
@@ -152,8 +170,9 @@ function auth_on_register_common(db_library, reg)
                 mountpoint=$1 AND
                 (client_id=$2 OR client_id='*') AND
                 username=$3]], reg.mountpoint, reg.client_id, reg.username)
-         return validate_result_client_side(results, reg)
+         return validate_result_client_side(results, reg, method)
       else
+         local server_hash = ""
          -- use server side hash functions
          if method == "crypt" then
             -- only supported in postgresql
@@ -177,22 +196,4 @@ function auth_on_register_common(db_library, reg)
    else
       return false
    end
-end
-
-function client_side_hashing(method)
-    return method == "bcrypt"
-end
-
-function do_hash(method, password, passhash)
-    if method == "bcrypt" then
-        return bcrypt.hashpw(password, passhash)
-    else
-        return false
-    end
-end
-
-function cache_result(reg, row)
-    local publish_acl = json.decode(row.publish_acl)
-    local subscribe_acl = json.decode(row.subscribe_acl)
-    cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
 end
