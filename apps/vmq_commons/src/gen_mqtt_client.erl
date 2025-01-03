@@ -267,7 +267,8 @@ try_transport_connect(Pid, State) ->
             gen_fsm:send_event(Pid, {on_transport_connect, Sock});
         {error, _Reason} ->
             error_logger:error_msg("connection to ~p:~p failed due to ~p", [Host, Port, _Reason]),
-            gen_fsm:send_event_after(3000, connect)
+            timer:sleep(3000),
+            gen_fsm:send_event(Pid, connect)
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
