@@ -38,7 +38,7 @@
     code_change/3
 ]).
 
--record(state, {}).
+-record(state, {expiry_cleanup}).
 
 -define(RETAIN_DB, {vmq, retain}).
 -define(RETAIN_CACHE, ?MODULE).
@@ -170,6 +170,7 @@ fold_expired() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    ExpCleanup = vmq_config:get_env(expire_retain_cache, 60) * 1000,
     vmq_metadata:subscribe(?RETAIN_DB),
     vmq_metadata:fold(
         ?RETAIN_DB,
@@ -186,7 +187,13 @@ init([]) ->
         self(),
         persist
     ),
-    {ok, #state{}}.
+    case ExpCleanup of
+        C when is_integer(C), C > 0 ->
+            erlang:send_after(ExpCleanup, self(), remove_expired);
+        _ ->
+            ignore
+    end,
+    {ok, #state{expiry_cleanup = ExpCleanup}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -241,6 +248,14 @@ handle_info(persist, State) ->
         vmq_config:get_env(retain_persist_interval, 1000),
         self(),
         persist
+    ),
+    {noreply, State};
+handle_info(remove_expired, #state{expiry_cleanup = ExpCleanup} = State) ->
+    fold_expired(),
+    erlang:send_after(
+        ExpCleanup,
+        self(),
+        remove_expired
     ),
     {noreply, State};
 handle_info(_, State) ->
