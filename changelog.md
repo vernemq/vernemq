@@ -1,3 +1,5 @@
+- Bugfix: Configuration parsing for domain sockets (#2372)
+- Dependency: Update Cuttlefish to 3.4.0
 - New feature: admin cmd 'vmq-admin session unsubscribe" 
 - Enhancement: Do not populate routing and subscription tables with non-persistent sessions when booting from disk.
 
