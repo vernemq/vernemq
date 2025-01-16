@@ -64,6 +64,7 @@
     insert/4,
     mark_for_gc/2,
     prune/4,
+    prune_/4,
     prune_for_peer/2,
     enforce_prune_for_peer/2,
     destroy/1,
