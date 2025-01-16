@@ -1,5 +1,7 @@
 ## VerneMQ 2.1.0 (RC 1)
 
+- Bugfix: Configuration parsing for domain sockets (#2372)
+- Dependency: Update Cuttlefish to 3.4.0
 - Retain Cache/Server: Add setting (`expire_retain_cache`) for automatic removal of expired retained messages (#2373) 
 - vmq_diversity (PostGreSQL): Add method parameter to validate_result_client_side (#2361)
 - vmq_diversity: change mongodb-erlang dep to fork supporting MongoDB 6 (#2358)
