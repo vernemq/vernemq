@@ -40,7 +40,7 @@ init_per_testcase(basic_store_test, Config) ->
     application:set_env(vmq_swc, db_backend, proplists:get_value(db_backend, Config)),
     application:set_env(vmq_swc, dkm_backend, proplists:get_value(dkm_backend, Config)),
     application:set_env(vmq_swc, dkm_dir, proplists:get_value(dkm_dir, Config)),
-    {ok, _} = vmq_swc:start(basic),
+    ok = vmq_swc_plugin:plugin_start([basic]),
     Config;
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, {1000, 500}},{auto_gc, true}|Config0], % afa: why did we set sync_interval to 0 before?
@@ -112,9 +112,10 @@ basic_store_test(_Config) ->
       end, Prefixes).
 
 read_write_delete_test(Config) ->
-    [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    ?assertEqual({0,0,true}, rpc:call(Node1, vmq_swc_plugin, history, [[test]])),
-    [?assertEqual({0,0,true}, rpc:call(Node, vmq_swc_plugin, history, [[test]]))
+    [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),    
+    % We only have 1 SWC partition, so empty history is {1,0,true} before joining
+    ?assertEqual({1,0,true}, rpc:call(Node1, vmq_swc_plugin, history, [[test]])),
+    [?assertEqual({1,0,true}, rpc:call(Node, vmq_swc_plugin, history, [[test]]))
     || Node <- OtherNodes],
     [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
