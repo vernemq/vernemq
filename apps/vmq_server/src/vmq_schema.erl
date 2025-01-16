@@ -293,6 +293,9 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLUseIdents} = lists:unzip(
         extract("listener.ssl", "use_identity_as_username", BoolVal, Conf)
     ),
+    {SSLIPs, SSLForwardClientCerts} = lists:unzip(
+        extract("listener.ssl", "forward_connection_opts", BoolVal, Conf)
+    ),
     {SSLIPs, SSLPSKSupport} = lists:unzip(
         extract("listener.ssl", "psk_support", BoolVal, Conf)
     ),
@@ -321,6 +324,9 @@ translate_listeners(Conf) ->
     ),
     {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(
         extract("listener.wss", "use_identity_as_username", BoolVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLForwardClientCerts} = lists:unzip(
+        extract("listener.wss", "forward_connection_opts", BoolVal, Conf)
     ),
 
     % VMQS
@@ -449,6 +455,7 @@ translate_listeners(Conf) ->
             SSLRequireCerts,
             SSLVersions,
             SSLUseIdents,
+            SSLForwardClientCerts,
             SSLPSKSupport,
             SSLPSKFile,
             SSLPSKFileSeparator,
@@ -477,6 +484,7 @@ translate_listeners(Conf) ->
             WS_SSLRequireCerts,
             WS_SSLVersions,
             WS_SSLUseIdents,
+            WS_SSLForwardClientCerts,
             WS_SSLMaxLengths,
             WS_SSLHeaderLengths,
             WS_SSLAllowedProto
@@ -574,6 +582,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "require_certificate",
             "tls_version",
             "use_identity_as_username",
+            "forward_connection_opts",
             "psk_support",
             "pskfile",
             "pskfile_separator",

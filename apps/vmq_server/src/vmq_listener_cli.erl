@@ -156,7 +156,11 @@ vmq_listener_start_cmd() ->
             end}
         ]},
         {psk_support, [
-            {longname, "psk_support"}
+            {longname, "psk_support"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
         ]},
         {ciphers, [
             {longname, "ciphers"},
@@ -175,7 +179,20 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
-        {require_certificate, [{longname, "require_certificate"}]},
+        {require_certificate, [
+            {longname, "require_certificate"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
+        {forward_connection_opts, [
+            {longname, "forward_connection_opts"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
         {tls_version, [
             {longname, "tls_version"},
             {typecast, fun
@@ -186,8 +203,20 @@ vmq_listener_start_cmd() ->
                 (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
             end}
         ]},
-        {use_identity_as_username, [{longname, "use_identity_as_username"}]},
-        {allow_anonymous_override, [{longname, "allow_anonymous_override"}]},
+        {use_identity_as_username, [
+            {longname, "use_identity_as_username"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
+        {allow_anonymous_override, [
+            {longname, "allow_anonymous_override"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
         {config_mod, [
             {longname, "config_mod"},
             {typecast, fun(M) -> list_to_existing_atom(M) end}

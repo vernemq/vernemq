@@ -45,6 +45,7 @@
 
 -export([
     auth_on_register/5,
+    auth_on_register/6,
     auth_on_publish/6,
     auth_on_subscribe/3,
     on_register/3,
@@ -59,6 +60,7 @@
     on_session_expired/1,
 
     auth_on_register_m5/6,
+    auth_on_register_m5/7,
     auth_on_publish_m5/7,
     auth_on_subscribe_m5/4,
     on_register_m5/4,
@@ -291,6 +293,27 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
         {clean_session, CleanSession}
     ]).
 
+-spec auth_on_register(peer(), subscriber_id(), username(), password(), boolean(), map()) ->
+    'next' | 'ok' | {'error', _} | {'ok', [auth_on_register_hook:reg_modifiers()]}.
+auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
+    all_till_ok(auth_on_register, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nullify(UserName)},
+        {password, nullify(PasswordPlain)},
+        {clean_session, CleanSession},
+        Opts
+    ]).
+
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
     'next'
     | 'ok'
@@ -313,6 +336,33 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
         {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
         {properties, Props}
+    ]).
+
+-spec auth_on_register_m5(
+    peer(), subscriber_id(), username(), password(), boolean(), properties(), map()
+) ->
+    'next'
+    | 'ok'
+    | {'error', #{reason_code => auth_on_register_m5_hook:err_reason_code_name()} | atom()}
+    | {'ok', auth_on_register_m5_hook:reg_modifiers()}.
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, Opts) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
+    all_till_ok(auth_on_register_m5, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nullify(UserName)},
+        {password, nullify(PasswordPlain)},
+        {clean_start, CleanStart},
+        {properties, Props},
+        Opts
     ]).
 
 -spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
@@ -1236,6 +1286,7 @@ encode_payload(_, Args, Opts) ->
                 ({client_id, V}) -> {client_id, V};
                 ({properties, V}) -> {properties, encode_props(V, Opts)};
                 ({payload, V}) -> {payload, b64encode(V, Opts)};
+                ({conn_opts, #{client_cert := C} = _V}) -> {client_cert, b64encode(C, Opts)};
                 (V) -> V
             end,
             Args
