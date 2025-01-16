@@ -106,8 +106,9 @@ fold(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, U
         Config, Type, FoldFun, Acc, StartKey, UpTo
     ]).
 
-fold_with_iterator(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo, Itr) ->
+fold_with_iterator(
+    #swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
+) ->
     vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
         Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
     ]).
-

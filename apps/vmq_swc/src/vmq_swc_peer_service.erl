@@ -54,7 +54,7 @@ attempt_join(Node) ->
     PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join, true),
     case PreventNonEmptyJoin of
         true ->
-            History = vmq_swc_plugin:history(SwcGroups), 
+            History = vmq_swc_plugin:history(SwcGroups),
             ?LOG_DEBUG("History before Join ~p~n", [History]),
             L = length(SwcGroups),
             case History of

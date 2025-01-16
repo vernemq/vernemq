@@ -158,8 +158,9 @@ initial_sync_new(
             vmq_swc_store:sync_repair(
                 Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), false
             ),
-            {next_state, initial_sync_new, State#state{obj_cnt = ObjCnt + length(MissingObjects)},
-                [{next_event, internal, init_sync}]}
+            {next_state, initial_sync_new, State#state{obj_cnt = ObjCnt + length(MissingObjects)}, [
+                {next_event, internal, init_sync}
+            ]}
     end;
 initial_sync_new(cast, Msg, #state{group = Group, peer = Peer} = State) ->
     ?LOG_ERROR(
@@ -186,18 +187,26 @@ update_local(
     % calculate the dots missing on this node but existing on remote node
     MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
     Init = vmq_swc_store:get_init_sync(Config),
-    GlobalInit = persistent_term:get({vmq_swc_group_coordinator, init_sync},0),
-    
+    GlobalInit = persistent_term:get({vmq_swc_group_coordinator, init_sync}, 0),
+
     case Init of
         false when GlobalInit == 0 ->
-            {next_state, initial_sync_new, State#state{missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)}, [
-                {next_event, internal, init_sync}
-            ]};
+            {next_state, initial_sync_new,
+                State#state{
+                    missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
+                },
+                [
+                    {next_event, internal, init_sync}
+                ]};
         true when GlobalInit == 1 ->
-            {next_state, local_sync_repair, State#state{missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)}, [
-                {next_event, internal, start}
-            ]};
-        _ -> 
+            {next_state, local_sync_repair,
+                State#state{
+                    missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
+                },
+                [
+                    {next_event, internal, start}
+                ]};
+        _ ->
             % not yet allowed to AE sync
             {stop, normal, State}
     end.
@@ -288,9 +297,11 @@ teardown_initial(
         true ->
             End = erlang:monotonic_time(millisecond),
             SyncTime = End - Start,
-            ?LOG_INFO("Replica ~p: finished initial sync with ~p synced ~p objects in ~p milliseconds", [
-                Group, Peer, ObjCnt, SyncTime
-            ]),
+            ?LOG_INFO(
+                "Replica ~p: finished initial sync with ~p synced ~p objects in ~p milliseconds", [
+                    Group, Peer, ObjCnt, SyncTime
+                ]
+            ),
             vmq_swc_store:jump_old_clocks(Config, RemoteClock);
         false ->
             ?LOG_DEBUG("Replica ~p: initial sync with ~p, nothing to synchronize", [Group, Peer])
@@ -358,6 +369,6 @@ as_event(F) ->
     ok.
 
 set_init_sync(#swc_config{group = Group} = Config, Bool) ->
-    ok = vmq_swc_store:set_init_sync_by_groupname(Group, Bool), 
+    ok = vmq_swc_store:set_init_sync_by_groupname(Group, Bool),
     ok = vmq_swc_db:put(Config, default, <<"ISY">>, term_to_binary(Bool)),
     vmq_swc_group_coordinator:group_initialized(Group, Bool).

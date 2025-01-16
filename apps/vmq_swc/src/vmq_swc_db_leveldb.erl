@@ -169,7 +169,6 @@ handle_call({fold, Type, FoldFun, Acc, FirstKey0, N}, From, State) ->
         end
     ),
     {noreply, State};
-
 handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, N, Itr}, From, State) ->
     spawn_link(
         fun() ->

@@ -63,7 +63,8 @@ init([]) ->
 
     _State = vmq_swc_peer_service_manager:init(),
 
-    {ok, {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker, GroupCoordinator]}}.
+    {ok,
+        {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker, GroupCoordinator]}}.
 
 %%====================================================================
 %% Internal functions

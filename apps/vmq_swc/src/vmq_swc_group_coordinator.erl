@@ -17,7 +17,6 @@
 -include("vmq_swc.hrl").
 -include_lib("kernel/include/logger.hrl").
 
-
 -behaviour(gen_server).
 
 %% API
@@ -52,14 +51,14 @@ group_initialized(Group, Bool) ->
     gen_server:call(?MODULE, {change_init, Group, Bool}).
 
 sync_state() ->
-        gen_server:call(?MODULE, get_sync_state).
+    gen_server:call(?MODULE, get_sync_state).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 init([]) ->
-    {_, Groups} = persistent_term:get({vmq_swc_plugin,swc}),
+    {_, Groups} = persistent_term:get({vmq_swc_plugin, swc}),
     GroupsInitState = [{G, false} || G <- Groups],
     {ok, #state{sync_state = maps:from_list(GroupsInitState)}}.
 
@@ -89,13 +88,18 @@ code_change(_OldVsn, State, _Extra) ->
 check_sync_state(M) ->
     L = maps:to_list(M),
     case lists:all(fun({_, B}) -> B == true end, L) of
-        true -> % all partitions are now init synced, we set a global marker
-                persistent_term:put({?MODULE, init_sync},1),
-                ok = enable_broadcast(L);
-        _ -> ok
+        % all partitions are now init synced, we set a global marker
+        true ->
+            persistent_term:put({?MODULE, init_sync}, 1),
+            ok = enable_broadcast(L);
+        _ ->
+            ok
     end.
 
 enable_broadcast(L) ->
     ?LOG_DEBUG("Enable full broadcast for Groups ~p~n", [L]),
-    lists:foldl(fun({Group, _}, _Acc) -> ok = vmq_swc_store:set_broadcast_by_groupname(Group, true) end, ok, L).
-
+    lists:foldl(
+        fun({Group, _}, _Acc) -> ok = vmq_swc_store:set_broadcast_by_groupname(Group, true) end,
+        ok,
+        L
+    ).
