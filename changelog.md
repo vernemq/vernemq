@@ -1,3 +1,4 @@
+- Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
 - New feature: admin cmd 'vmq-admin session unsubscribe" 
 - Enhancement: Do not populate routing and subscription tables with non-persistent sessions when booting from disk.
 
