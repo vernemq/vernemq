@@ -2269,3 +2269,15 @@
                                                                                                         {datatype, flag},
                                                                                                         hidden
                                                                                                        ]}.
+
+%% @doc Retain Cache expiry cleanup in seconds
+%% Cleanup expired retained messages
+%% (set by the publisher using message-expiry-interval). 
+%% Setting to 0 disables the feature. This feature is only helpful
+%% when you never overwrite or consume retained messages; usually
+%% expired retained messages are cleaned up at the next delivery attempt.
+{mapping, "expire_retain_cache", "vmq_server.expire_retain_cache", [
+                                                             {default, 60},
+                                                             {commented, 60},
+                                                             {datatype, integer}
+                                                            ]}.

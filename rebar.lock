@@ -19,7 +19,7 @@
   0},
  {<<"cuttlefish">>,
   {git,"https://github.com/Kyorai/cuttlefish.git",
-       {ref,"8097b9c3e068cb20622ca699362b68ff0903514e"}},
+       {ref,"a48eab9b0b5ff3073b89ba3d5429d7a17dfe18e4"}},
   0},
  {<<"edown">>,
   {git,"https://github.com/uwiger/edown.git",
