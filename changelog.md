@@ -1,5 +1,6 @@
 ## VerneMQ 2.1.0 (RC 1)
 
+- Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
 - Bugfix: Configuration parsing for domain sockets (#2372)
 - Dependency: Update Cuttlefish to 3.4.0
 - Retain Cache/Server: Add setting (`expire_retain_cache`) for automatic removal of expired retained messages (#2373) 

@@ -209,6 +209,15 @@ extract_val(undefined) -> undefined.
 summary() ->
     {_, Groups} = ?SWC_GROUPS,
     summary(Groups).
+summary(SWCGroup) when is_atom(SWCGroup) ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Node = node(),
+    NodeClocks = [
+        vmq_swc_store:node_clock_by_storename(
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SWCGroup))
+        )
+    ],
+    [{maps:get({Node, Actor}, NC, {1, 0}), maps:size(NC)} || NC <- NodeClocks];
 summary(SWCGroups) ->
     {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     Node = node(),
@@ -218,7 +227,7 @@ summary(SWCGroups) ->
         )
      || SWCGroup <- SWCGroups
     ],
-    [{maps:get({Node, Actor}, NC, {0, 0}), maps:size(NC)} || NC <- NodeClocks].
+    [{maps:get({Node, Actor}, NC, {1, 0}), maps:size(NC)} || NC <- NodeClocks].
 
 % The Node is empty when all local Nodeclocks in SWCGroups are
 % 0 and we only have the local Node in the Nodeclocks.
@@ -229,7 +238,11 @@ history() ->
     history(SWCGroups).
 history(SWCGroups) ->
     LocalClockList = summary(SWCGroups),
-    NrOfGroups = length(SWCGroups),
+    NrOfGroups =
+        case SWCGroups of
+            X when is_atom(X) -> 1;
+            _ -> length(SWCGroups)
+        end,
     {{LocalDots, Gap}, TotalClocks} =
         lists:foldl(
             fun(X, {{A, B}, C}) ->

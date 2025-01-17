@@ -5,6 +5,13 @@
                                              hidden
                                             ]}.
 
+%% @doc Set the path to the DKM (dot key map) metadata directory.
+{mapping, "vmq_swc.dkm_directory", "vmq_swc.dkm_dir", [
+                                             {default, "{{platform_data_dir}}/swc_dkm"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.
+
 %% @doc Set the storage backend either leveldb, rocksdb or leveled (Erlang based LevelDB variant)
 {mapping, "vmq_swc.db_backend", "vmq_swc.db_backend", [
                                              {default, leveldb},

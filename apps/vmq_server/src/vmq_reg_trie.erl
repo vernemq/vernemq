@@ -27,7 +27,8 @@
 -export([
     start_link/0,
     fold/4,
-    stats/0
+    stats/0,
+    init_subscriptions/0
 ]).
 
 %% gen_server callbacks
@@ -63,6 +64,9 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init_subscriptions() ->
+    gen_server2:call(?MODULE, init_subs, 60000).
 
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
@@ -172,6 +176,18 @@ info(T, What) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    create_tables(),
+    Self = self(),
+    spawn_link(
+        fun() ->
+            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
+            Self ! subscribers_loaded
+        end
+    ),
+    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    {ok, #state{event_handler = EventHandler}}.
+
+create_tables() ->
     DefaultETSOpts = [
         public,
         named_table,
@@ -182,16 +198,7 @@ init([]) ->
     _ = ets:new(vmq_trie_topic, [{keypos, 1} | DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs, [bag | DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs_fanout, [ordered_set | DefaultETSOpts]),
-    _ = ets:new(vmq_trie_remote_subs, [{keypos, 1} | DefaultETSOpts]),
-    Self = self(),
-    spawn_link(
-        fun() ->
-            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
-            Self ! subscribers_loaded
-        end
-    ),
-    EventHandler = vmq_reg:subscribe_subscriber_changes(),
-    {ok, #state{event_handler = EventHandler}}.
+    _ = ets:new(vmq_trie_remote_subs, [{keypos, 1} | DefaultETSOpts]).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -210,6 +217,14 @@ init([]) ->
 handle_call({event, Event}, _From, #state{event_handler = Handler} = State) ->
     %% used only for testing/microbenchmarking
     handle_event(Handler, Event),
+    {reply, ok, State};
+handle_call(init_subs, _From, State) ->
+    spawn_link(
+        fun() ->
+            ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
+            self() ! subscribers_loaded
+        end
+    ),
     {reply, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -358,12 +373,6 @@ match_(Topic, [{NodeOrGroup, _} | Rest], Acc) ->
 match_(_, [], Acc) ->
     Acc.
 
-initialize_trie(
-    {_MP, [<<"$share">>, _Group | _Topic], {_SubscriberId, _SubInfo, Node, CleanSession}}, Acc
-) when
-    Node =:= node(), CleanSession == true
-->
-    Acc;
 initialize_trie(
     {MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node, _CleanSession}}, Acc
 ) ->

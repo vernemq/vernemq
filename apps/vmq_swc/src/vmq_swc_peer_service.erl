@@ -54,8 +54,11 @@ attempt_join(Node) ->
     PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join, true),
     case PreventNonEmptyJoin of
         true ->
-            case vmq_swc_plugin:history(SwcGroups) of
-                {0, 0, true} ->
+            History = vmq_swc_plugin:history(SwcGroups),
+            ?LOG_DEBUG("History before Join ~p~n", [History]),
+            L = length(SwcGroups),
+            case History of
+                {L, 0, true} ->
                     connect_node(Node);
                 _ ->
                     ?LOG_INFO("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),

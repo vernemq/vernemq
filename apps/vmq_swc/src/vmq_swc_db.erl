@@ -26,7 +26,9 @@
     get/4,
     delete/3,
     fold/4,
-    fold/5
+    fold/5,
+    fold/6,
+    fold_with_iterator/7
 ]).
 
 -callback childspecs(config(), any()) -> list().
@@ -53,18 +55,33 @@ put_many(Config, PutOps) ->
     put_many(Config, PutOps, []).
 
 -spec put_many(config(), list(db_op()), opts()) -> ok.
-put_many(#swc_config{db_backend = Backend} = Config, PutOps, Opts) ->
-    vmq_swc_metrics:timed_measurement({?METRIC, write}, Backend, write, [Config, PutOps, Opts]).
+put_many(#swc_config{db_backend = Backend, dkm_backend = DkmBackend} = Config, PutOps, Opts) ->
+    {DkmOps, ObjOps} = lists:partition(fun({X, _, _}) -> X == dkm end, PutOps),
+    vmq_swc_metrics:timed_measurement({?METRIC, write}, DkmBackend, write, [Config, DkmOps, Opts]),
+    vmq_swc_metrics:timed_measurement({?METRIC, write}, Backend, write, [Config, ObjOps, Opts]).
 
 -spec get(config(), type(), db_key()) -> {ok, db_value()} | not_found.
 get(Config, Type, Key) ->
     get(Config, Type, Key, []).
 
 -spec get(config(), type(), db_key(), opts()) -> {ok, db_value()} | not_found.
-get(#swc_config{db_backend = Backend} = Config, Type, Key, Opts) ->
-    vmq_swc_metrics:timed_measurement({?METRIC, read}, Backend, read, [Config, Type, Key, Opts]).
+get(#swc_config{db_backend = Backend, dkm_backend = DkmBackend} = Config, Type, Key, Opts) ->
+    case Type of
+        dkm ->
+            vmq_swc_metrics:timed_measurement({?METRIC, read}, DkmBackend, read, [
+                Config, dkm, Key, Opts
+            ]);
+        _ ->
+            vmq_swc_metrics:timed_measurement({?METRIC, read}, Backend, read, [
+                Config, Type, Key, Opts
+            ])
+    end.
 
 -spec delete(config(), type(), db_key()) -> ok.
+delete(#swc_config{dkm_backend = DkmBackend} = Config, dkm, Key) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, delete}, DkmBackend, write, [
+        Config, [{dkm, Key, ?DELETED}], []
+    ]);
 delete(#swc_config{db_backend = Backend} = Config, Type, Key) ->
     vmq_swc_metrics:timed_measurement({?METRIC, delete}, Backend, write, [
         Config, [{Type, Key, ?DELETED}], []
@@ -75,7 +92,23 @@ fold(Config, Type, FoldFun, Acc) ->
     fold(Config, Type, FoldFun, Acc, first).
 
 -spec fold(config(), type(), foldfun(), any(), first | db_key()) -> any().
+fold(#swc_config{dkm_backend = DkmBackend} = Config, dkm, FoldFun, Acc, StartKey) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, scan}, DkmBackend, fold, [
+        Config, dkm, FoldFun, Acc, StartKey
+    ]);
 fold(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey) ->
     vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
         Config, Type, FoldFun, Acc, StartKey
+    ]).
+-spec fold(config(), type(), foldfun(), any(), first | db_key(), integer()) -> any().
+fold(#swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
+        Config, Type, FoldFun, Acc, StartKey, UpTo
+    ]).
+
+fold_with_iterator(
+    #swc_config{db_backend = Backend} = Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
+) ->
+    vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
+        Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
     ]).

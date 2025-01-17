@@ -13,7 +13,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_swc_db_leveldb).
+-module(vmq_swc_dkm_leveldb).
 -include("vmq_swc.hrl").
 -include_lib("kernel/include/logger.hrl").
 
@@ -25,9 +25,7 @@
     childspecs/2,
     write/3,
     read/4,
-    fold/5,
-    fold_with_iterator/7,
-    get_ref/1
+    fold/5
 ]).
 
 -export([
@@ -60,26 +58,20 @@ childspecs(#swc_config{group = SwcGroup} = Config, Opts) ->
     ].
 
 -spec write(config(), list(db_op()), opts()) -> ok.
-write(#swc_config{db = DBName}, Objects, _Opts) ->
-    gen_server:call(DBName, {write, Objects}, infinity).
+write(#swc_config{dkm = DkmName}, Objects, _Opts) ->
+    gen_server:call(DkmName, {write, Objects}, infinity).
 
 -spec read(config(), type(), db_key(), opts()) -> {ok, db_value()} | not_found.
-read(#swc_config{db = DBName}, Type, Key, _Opts) ->
-    gen_server:call(DBName, {read, Type, Key}, infinity).
+read(#swc_config{dkm = DkmName}, Type, Key, _Opts) ->
+    gen_server:call(DkmName, {read, Type, Key}, infinity).
 
 -spec fold(config(), type(), foldfun(), any(), first | db_key()) -> any().
-fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey) ->
-    gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey}, infinity).
-
-fold_with_iterator(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N, Itr) ->
-    gen_server:call(DBName, {fold_with_iterator, Type, FoldFun, Acc, FirstKey, N, Itr}, infinity).
-
-get_ref(#swc_config{db = DBName}) ->
-    gen_server:call(DBName, get_ref).
+fold(#swc_config{dkm = DkmName}, Type, FoldFun, Acc, FirstKey) ->
+    gen_server:call(DkmName, {fold, Type, FoldFun, Acc, FirstKey}, infinity).
 
 %% gen_server impl
-start_link(#swc_config{db = DBName} = Config, Opts) ->
-    gen_server:start_link({local, DBName}, ?MODULE, [Config | Opts], []).
+start_link(#swc_config{dkm = DkmName} = Config, Opts) ->
+    gen_server:start_link({local, DkmName}, ?MODULE, [Config | Opts], []).
 
 init([#swc_config{peer = SWC_ID, group = SwcGroup} = _Config | Opts]) ->
     %% Initialize random seed
@@ -88,9 +80,9 @@ init([#swc_config{peer = SWC_ID, group = SwcGroup} = _Config | Opts]) ->
     DefaultDataDir = filename:join(<<".">>, Peer),
 
     DataDir = proplists:get_value(
-        data_dir,
+        dkm_dir,
         Opts,
-        application:get_env(vmq_swc, data_dir, binary_to_list(DefaultDataDir))
+        application:get_env(vmq_swc, dkm_dir, binary_to_list(DefaultDataDir))
     ),
     %% Initialize state
     S0 = init_state(filename:join(DataDir, SwcGroup), Opts),
@@ -117,61 +109,10 @@ handle_call({write, Objects}, _From, State) ->
     {reply, ok, State};
 handle_call({read, Type, Key}, _From, State) ->
     {reply, eleveldb:get(State#state.ref, key(Type, Key), State#state.read_opts), State};
-handle_call(get_ref, _From, State) ->
-    {reply, State#state.ref, State};
 handle_call({fold, Type, FoldFun, Acc, FirstKey0}, From, State) ->
     spawn_link(
         fun() ->
             {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
-            FirstKey1 =
-                case FirstKey0 of
-                    first ->
-                        key(Type, <<>>);
-                    _ ->
-                        key(Type, FirstKey0)
-                end,
-            KeyPrefix = key_prefix(Type),
-            KeyPrefixSize = byte_size(KeyPrefix),
-            Result = iterate(
-                FoldFun,
-                Acc,
-                Itr,
-                key_prefix(Type),
-                KeyPrefixSize,
-                eleveldb:iterator_move(Itr, FirstKey1)
-            ),
-            gen_server:reply(From, Result)
-        end
-    ),
-    {noreply, State};
-handle_call({fold, Type, FoldFun, Acc, FirstKey0, N}, From, State) ->
-    spawn_link(
-        fun() ->
-            {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
-            FirstKey1 =
-                case FirstKey0 of
-                    first ->
-                        key(Type, <<>>);
-                    _ ->
-                        key(Type, FirstKey0)
-                end,
-            KeyPrefix = key_prefix(Type),
-            KeyPrefixSize = byte_size(KeyPrefix),
-            Result = iterate(
-                FoldFun,
-                Acc,
-                Itr,
-                key_prefix(Type),
-                KeyPrefixSize,
-                eleveldb:iterator_move(Itr, FirstKey1)
-            ),
-            gen_server:reply(From, Result)
-        end
-    ),
-    {noreply, State};
-handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, N, Itr}, From, State) ->
-    spawn_link(
-        fun() ->
             FirstKey1 =
                 case FirstKey0 of
                     first ->
@@ -210,9 +151,7 @@ code_change(_OldVsn, _NewVsn, State) ->
 key(Type, Key) ->
     <<(key_prefix(Type))/binary, Key/binary>>.
 
-key_prefix(?DB_OBJ) -> <<"obj#">>;
-key_prefix(?DB_DKM) -> <<"dkm#">>;
-key_prefix(?DB_DEFAULT) -> <<"default#">>.
+key_prefix(?DB_DKM) -> <<"dkm#">>.
 
 iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
     case PrefixedKey of
@@ -220,10 +159,7 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             case FoldFun(Key, Value, Acc0) of
                 stop ->
                     eleveldb:iterator_close(Itr),
-                    case Acc0 of
-                        {Acc2, _N} when is_list(Acc2) -> Acc2;
-                        _ -> Acc0
-                    end;
+                    Acc0;
                 Acc1 ->
                     iterate(
                         FoldFun,
@@ -236,10 +172,7 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             end;
         _ ->
             eleveldb:iterator_close(Itr),
-            case Acc0 of
-                {Acc2, _N} when is_list(Acc2) -> Acc2;
-                _ -> Acc0
-            end
+            Acc0
     end;
 iterate(_, Acc, _Itr, _, _, {error, _}) ->
     %% no need to close the iterator
@@ -302,7 +235,7 @@ init_state(DataRoot, Config) ->
 
     %% Generate a debug message with the options we'll use for each operation
     ?LOG_DEBUG(
-        "datadir ~s options for LevelDB: ~p\n",
+        "datadir ~s options for DKM LevelDB: ~p\n",
         [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]
     ),
     #state{
@@ -332,7 +265,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
     DataRoot = State0#state.data_root,
     case eleveldb:open(DataRoot, State0#state.open_opts) of
         {ok, Ref} ->
-            ?LOG_INFO("Opening LevelDB SWC database at ~p~n", [DataRoot]),
+            ?LOG_INFO("Opening LevelDB SWC DKM database at ~p~n", [DataRoot]),
             {ok, State0#state{ref = Ref}};
         %% Check specifically for lock error, this can be caused if
         %% a crashed instance takes some time to flush leveldb information
@@ -342,7 +275,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
             case lists:prefix("Corruption: truncated record ", OpenErr) of
                 true ->
                     ?LOG_INFO(
-                        "VerneMQ LevelDB SWC Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
+                        "VerneMQ LevelDB SWC DKM Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
                         [DataRoot, OpenErr]
                     ),
                     case eleveldb:repair(DataRoot, []) of
@@ -357,7 +290,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
                         true ->
                             SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
                             ?LOG_INFO(
-                                "VerneMQ LevelDB SWC Store backend retrying ~p in ~p ms after error ~s\n",
+                                "VerneMQ LevelDB SWC DKM Store backend retrying ~p in ~p ms after error ~s\n",
                                 [DataRoot, SleepFor, OpenErr]
                             ),
                             timer:sleep(SleepFor),
