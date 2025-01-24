@@ -181,7 +181,7 @@ update_local(
     internal,
     start,
     #state{
-        config = Config, local_clock = NodeClock, remote_clock = RemoteClock
+        group = Group, config = Config, local_clock = NodeClock, remote_clock = RemoteClock
     } = State
 ) ->
     % calculate the dots missing on this node but existing on remote node
@@ -197,6 +197,15 @@ update_local(
                 },
                 [
                     {next_event, internal, init_sync}
+                ]};
+        true when GlobalInit == 0 ->
+            vmq_swc_group_coordinator:group_initialized(Group, true),
+            {next_state, local_sync_repair,
+                State#state{
+                    missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
+                },
+                [
+                    {next_event, internal, start}
                 ]};
         true when GlobalInit == 1 ->
             {next_state, local_sync_repair,
