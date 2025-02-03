@@ -102,7 +102,7 @@
         ]},
         {outgoing_clustering_buffer_size, 10000},
         {remote_enqueue_timeout, 5000},
-        {outgoing_connect_opts, []},
+        {outgoing_connect_options, []},
         {outgoing_connect_params_module, vmq_cluster_node},
         {outgoing_connect_timeout, 10000},
         {shared_subscription_policy, prefer_local},
