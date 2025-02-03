@@ -1,3 +1,7 @@
+## VerneMQ 2.1.0 (RC 2)
+
+- Bugfix: set correct state of init_sync flag when booting from disk
+
 ## VerneMQ 2.1.0 (RC 1)
 
 - Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
