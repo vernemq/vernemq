@@ -122,7 +122,7 @@ setup_mock_vmq_cluster_node(Config) ->
 setup_mock_vmq_cluster_node(Config, Opts) ->
     Node = proplists:get_value(node, Config),
     % make the test_com1 node connect to myself
-    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_options, Opts, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_options, lists:flatten([[{keepalive, true}, {send_timeout, 0}] | Opts]), false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
