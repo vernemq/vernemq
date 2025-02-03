@@ -2067,6 +2067,24 @@
          Term
  end}.
 
+
+%% @doc Set the TCP connection options for the outgoing part
+%% of the vmq transport logic (inter-node traffic). The options
+%% will be given to gen_tcp:connect/4 or ssl:connect/4. Note that
+%% "binary" and "{active, true}" are hard-coded options.
+{mapping, "outgoing_connect_options", "vmq_server.outgoing_connect_options", [
+                                                                  {default, "[{keepalive, true}, {send_timeout, 0}]"},
+                                                                  {datatype, string},
+                                                                  hidden
+                                                                 ]}.
+{translation, "vmq_server.outgoing_connect_options",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("outgoing_connect_options", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
 %% @doc Distribution policy for shared subscriptions. Default is
 %% 'prefer_local' which will ensure that local subscribers will be
 %% used if any are available. 'local_only' will select a random local
