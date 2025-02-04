@@ -651,7 +651,9 @@ check_app_plugin(App, Options) ->
             ?LOG_DEBUG("can't create paths for app ~p (path: ~p)", [App, Path]),
             {error, plugin_not_found};
         Paths ->
+            [PatchDir | _] = code:get_path(),
             code:add_pathsa(Paths),
+            code:add_patha(PatchDir),
             load_application(App, Options)
     end.
 

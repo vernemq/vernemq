@@ -1,3 +1,5 @@
+- Bugfix: Fix load path for patch directory, so that activated plugins can be patched
+
 ## VerneMQ 2.1.0 (RC 2)
 
 - Bugfix: set correct state of init_sync flag when booting from disk
