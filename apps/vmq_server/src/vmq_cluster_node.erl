@@ -327,7 +327,7 @@ connect(#state{node = RemoteNode, reachable = false} = State) ->
     State#state{async_connect_pid = ConnectAsyncPid}.
 
 connect_async(ParentPid, RemoteNode) ->
-    ConnectOpts = vmq_config:get_env(outgoing_connect_opts),
+    ConnectOpts = vmq_config:get_env(outgoing_connect_options),
     % the outgoing_connect_params_module must implement the connect_params/1 function
     ConnectParamsMod = vmq_config:get_env(outgoing_connect_params_module),
     ConnectTimeout = vmq_config:get_env(outgoing_connect_timeout),
@@ -341,9 +341,7 @@ connect_async(ParentPid, RemoteNode) ->
                         Port,
                         lists:usort([
                             binary,
-                            {active, true},
-                            {keepalive, true},
-                            {send_timeout, 0}
+                            {active, true}
                             | ConnectOpts
                         ]),
                         ConnectTimeout
