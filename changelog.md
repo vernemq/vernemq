@@ -1,3 +1,4 @@
+- New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections
 - Bugfix: Fix load path for patch directory, so that activated plugins can be patched
 
 ## VerneMQ 2.1.0 (RC 2)
