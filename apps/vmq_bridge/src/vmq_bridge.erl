@@ -262,6 +262,18 @@ handle_info(
         end,
         Subscriptions
     ),
+    {noreply, State};
+handle_info(
+    Msg,
+    #state{
+        name = Name,
+        host = Host,
+        port = Port
+    } = State
+) ->
+    ?LOG_WARNING("Bridge ~s connected to ~s:~p received unexpected internal message ~p ~n", [
+        Name, Host, Port, Msg
+    ]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
