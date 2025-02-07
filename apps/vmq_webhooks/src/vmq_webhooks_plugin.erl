@@ -311,7 +311,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
         {clean_session, CleanSession},
-        Opts % this will have the form #{client_cert => Cert}
+        % Opts will have the form #{client_cert => Cert}
+        Opts
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
