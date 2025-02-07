@@ -311,7 +311,7 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
         {clean_session, CleanSession},
-        Opts
+        Opts % this will have the form #{client_cert => Cert}
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
@@ -1286,7 +1286,7 @@ encode_payload(_, Args, Opts) ->
                 ({client_id, V}) -> {client_id, V};
                 ({properties, V}) -> {properties, encode_props(V, Opts)};
                 ({payload, V}) -> {payload, b64encode(V, Opts)};
-                ({conn_opts, #{client_cert := C} = _V}) -> {client_cert, b64encode(C, Opts)};
+                (#{client_cert := C} = _V) -> {client_cert, b64encode(C, Opts)};
                 (V) -> V
             end,
             Args
