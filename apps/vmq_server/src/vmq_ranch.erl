@@ -136,12 +136,18 @@ peer_info_no_proxy(undefined, Socket, Transport, Opts) ->
     end;
 peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
     UseCN = proplists:get_value(use_identity_as_username, Opts, false),
+    ForwardConnOpts = proplists:get_value(forward_connection_opts, Opts, false),
+    Opts1 =
+        case ForwardConnOpts of
+            true -> [{conn_opts, #{client_cert => vmq_ssl:client_cert(Socket)}} | Opts];
+            _ -> Opts
+        end,
     case {Transport, UseCN} of
         {ranch_ssl, true} ->
             CN = vmq_ssl:socket_to_common_name(Socket),
-            {ok, {Peer, [{preauth, CN} | Opts]}};
+            {ok, {Peer, [{preauth, CN} | Opts1]}};
         _ ->
-            {ok, {Peer, Opts}}
+            {ok, {Peer, Opts1}}
     end.
 
 start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
