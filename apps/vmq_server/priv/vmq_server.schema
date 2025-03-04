@@ -1746,8 +1746,8 @@
                                                                              {datatype, flag},
                                                                              hidden
                                                                             ]}.
-%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, tlsv1.2 or tlsv1.3) to be
-%% used for either all configured SSL listeners or for a specific listener:
+%% @doc Configure one ore more TLS protocol version(s) (tlsv1, tlsv1.1, tlsv1.2 or tlsv1.3) 
+%% to be used for either all configured SSL listeners or for a specific listener:
 %%
 %%     - listener.ssl.tls_version
 %%     - listener.wss.tls_version
@@ -1756,24 +1756,22 @@
 %%
 %%     - listener.ssl.my_ssl_listener.tls_version
 %%     - listener.wss.my_wss_listener.tls_version
-%%
-%% TLSv1.3 requires OTP 23 or later.
 {mapping, "listener.ssl.tls_version", "vmq_server.listeners", [
-                                                               {default, 'tlsv1.2'},
-                                                               {datatype, atom},
-                                                               {commented, 'tlsv1.2'}
+                                                               {default, "tlsv1.2"},
+                                                               {datatype, string},
+                                                               {commented, "tlsv1.2"}
                                                               ]}.
 {mapping, "listener.ssl.$name.tls_version", "vmq_server.listeners", [
-                                                                     {datatype, atom},
+                                                                     {datatype, string},
                                                                      hidden
                                                                     ]}.
 {mapping, "listener.wss.tls_version", "vmq_server.listeners", [
-                                                               {default, 'tlsv1.2'},
-                                                               {datatype, atom},
+                                                               {default, "tlsv1.2"},
+                                                               {datatype, string},
                                                                hidden
                                                               ]}.
 {mapping, "listener.wss.$name.tls_version", "vmq_server.listeners", [
-                                                                     {datatype, atom},
+                                                                     {datatype, string},
                                                                      hidden
                                                                     ]}.
 {mapping, "listener.vmqs.tls_version", "vmq_server.listeners", [
