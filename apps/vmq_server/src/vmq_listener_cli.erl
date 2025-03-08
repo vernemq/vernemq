@@ -178,12 +178,11 @@ vmq_listener_start_cmd() ->
         {require_certificate, [{longname, "require_certificate"}]},
         {tls_version, [
             {longname, "tls_version"},
-            {typecast, fun
-                ("tlsv1") -> tlsv1;
-                ("tlsv1.1") -> 'tlsv1.1';
-                ("tlsv1.2") -> 'tlsv1.2';
-                ("tlsv1.3") -> 'tlsv1.3';
-                (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
+            {typecast, fun(A) ->
+                case vmq_schema:parse_tls_list(A) of
+                    {ok, L} -> L;
+                    {error, _} -> {error, {invalid_flag_value, {'tls-version', A}}}
+                end
             end}
         ]},
         {use_identity_as_username, [{longname, "use_identity_as_username"}]},
