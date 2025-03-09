@@ -409,10 +409,15 @@ default_session_opts(Opts) ->
             false -> [];
             {_, V} -> [{use_identity_as_username, V}]
         end,
+    MaybeSSLDefaults2 =
+        case lists:keyfind(forward_connection_opts, 1, Opts) of
+            false -> MaybeSSLDefaults;
+            {_, Val} -> [{forward_connection_opts, Val} | MaybeSSLDefaults]
+        end,
     MaybeProxyDefaults =
         case lists:keyfind(proxy_protocol_use_cn_as_username, 1, Opts) of
-            false -> MaybeSSLDefaults;
-            {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults]
+            false -> MaybeSSLDefaults2;
+            {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults2]
         end,
     MaybeProxyDefaults2 =
         case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
