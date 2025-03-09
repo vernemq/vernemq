@@ -13,7 +13,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(gen_mqtt_client).
+-module(gen_mqtt_v5_client).
 -behaviour(gen_fsm).
 -include("vmq_types.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -90,8 +90,8 @@
     subscribe/2,
     subscribe/3,
     unsubscribe/2,
-    publish/4,
-    publish/5,
+    publish/6,
+    %    publish/7,
     disconnect/1,
     call/2,
     cast/2,
@@ -116,7 +116,7 @@
     connecting/2
 ]).
 
--define(MQTT_PROTO_MAJOR, 3).
+-define(MQTT_PROTO_MAJOR, 5).
 
 -record(queue, {
     queue :: replayq:q(),
@@ -193,10 +193,10 @@ stats(Pid) ->
     end.
 
 publish(P, Topic, Payload, Qos) ->
-    publish(P, Topic, Payload, Qos, false).
+    publish(P, Topic, Payload, Qos, false, #{}).
 
-publish(P, Topic, Payload, Qos, Retain) ->
-    gen_fsm:send_event(P, {publish, {Topic, Payload, Qos, Retain, false}}).
+publish(P, Topic, Payload, Qos, Retain, Props) ->
+    gen_fsm:send_event(P, {publish, {Topic, Payload, Qos, Retain, false, Props}}).
 
 subscribe(P, [T | _] = Topics) when is_tuple(T) ->
     gen_fsm:send_event(P, {subscribe, Topics}).
@@ -304,6 +304,23 @@ waiting_for_connack({publish, PubReq}, State) ->
 waiting_for_connack(_Event, State) ->
     {next_state, waiting_for_connack, State}.
 
+convert_topics(Topics) ->
+    [convert_topic(T) || T <- Topics].
+
+convert_topic({Parts, QoS}) ->
+    Topic = iolist_to_binary(intersperse(Parts, <<"/">>)),
+    #mqtt5_subscribe_topic{
+        topic = Topic,
+        qos = QoS,
+        no_local = false,
+        rap = false,
+        retain_handling = send_retain
+    }.
+
+intersperse([], _) -> [];
+intersperse([X], _) -> [X];
+intersperse([X | Xs], Sep) -> [X, Sep | intersperse(Xs, Sep)].
+
 connected(
     {subscribe, Topics} = Msg,
     State = #state{
@@ -313,9 +330,12 @@ connected(
         info_fun = InfoFun
     }
 ) ->
-    Frame = #mqtt_subscribe{
+    ?LOG_INFO("Topics is ~p~n", [Topics]),
+    MQTTTopics = convert_topics(Topics),
+    Frame = #mqtt5_subscribe{
         message_id = MsgId,
-        topics = Topics
+        topics = MQTTTopics,
+        properties = #{}
     },
     NewInfoFun = call_info_fun({subscribe_out, MsgId}, InfoFun),
     send_frame(Transport, Sock, Frame),
@@ -338,7 +358,7 @@ connected(
         info_fun = InfoFun
     }
 ) ->
-    Frame = #mqtt_unsubscribe{
+    Frame = #mqtt5_unsubscribe{
         message_id = MsgId,
         topics = Topics
     },
@@ -552,7 +572,7 @@ handle_info(Info, StateName, State) ->
 
 process_bytes(Bytes, StateName, #state{parser = ParserState} = State) ->
     Data = <<ParserState/binary, Bytes/binary>>,
-    case vmq_parser:parse(Data) of
+    case vmq_parser_mqtt5:parse(Data) of
         {error, _Reason} ->
             {next_state, StateName, State#state{parser = <<>>}};
         more ->
@@ -563,9 +583,9 @@ process_bytes(Bytes, StateName, #state{parser = ParserState} = State) ->
             process_bytes(Rest, NextStateName, NewState#state{parser = <<>>})
     end.
 
-handle_frame(waiting_for_connack, #mqtt_connack{return_code = ReturnCode}, State0) ->
+handle_frame(waiting_for_connack, #mqtt5_connack{reason_code = ReasonCode}, State0) ->
     #state{client = ClientId, info_fun = InfoFun} = State0,
-    case ReturnCode of
+    case ReasonCode of
         ?CONNACK_ACCEPT ->
             NewInfoFun = call_info_fun({connack_in, ClientId}, InfoFun),
             State1 = resume_wacks_retry(State0),
@@ -584,13 +604,16 @@ handle_frame(waiting_for_connack, #mqtt_connack{return_code = ReturnCode}, State
         ?CONNACK_AUTH ->
             maybe_reconnect(on_connect_error, [not_authorized], State0)
     end;
-handle_frame(connected, #mqtt_suback{message_id = MsgId, qos_table = QoSTable}, State0) ->
+handle_frame(connected, #mqtt5_suback{message_id = MsgId}, State0) ->
     #state{info_fun = InfoFun} = State0,
     Key = {subscribe, MsgId},
     case cancel_retry_and_get(Key, State0) of
         {ok, {{subscribe, Topics}, State1}} ->
+            ?LOG_INFO("Topics ~p~n", [Topics]),
             NewInfoFun = call_info_fun({suback, MsgId}, InfoFun),
-            {TopicNames, _} = lists:unzip(Topics),
+            {TopicNames, QoSTable} = lists:unzip(Topics),
+            ?LOG_INFO("QoS Table ~p~n", [QoSTable]),
+%            QoSTable = lists:duplicate(length(TopicNames), 0),
             case length(TopicNames) == length(QoSTable) of
                 true ->
                     wrap_res(
@@ -610,7 +633,7 @@ handle_frame(connected, #mqtt_suback{message_id = MsgId, qos_table = QoSTable}, 
         {error, not_found} ->
             {next_state, connected, State0}
     end;
-handle_frame(connected, #mqtt_unsuback{message_id = MsgId}, State0) ->
+handle_frame(connected, #mqtt5_unsuback{message_id = MsgId}, State0) ->
     #state{info_fun = InfoFun} = State0,
     Key = {unsubscribe, MsgId},
     case cancel_retry_and_get(Key, State0) of
@@ -627,7 +650,7 @@ handle_frame(connected, #mqtt_unsuback{message_id = MsgId}, State0) ->
     end;
 handle_frame(
     connected,
-    #mqtt_puback{message_id = MessageId},
+    #mqtt5_puback{message_id = MessageId},
     #state{
         info_fun = InfoFun,
         o_queue = #queue{out_waiting = Waiting, msg_ack_map = AckMap, queue = QQ} = Q
@@ -637,7 +660,7 @@ handle_frame(
     Key = {publish, MessageId},
     ?LOG_DEBUG("Puback arrived: ~p~n", [Key]),
     case cancel_retry_and_get(Key, State0) of
-        {ok, {#mqtt_publish{}, State1}} ->
+        {ok, {#mqtt5_publish{}, State1}} ->
             NextAck = maps:get(MessageId, AckMap),
             NewWaiting = maybe_ack_msgs(QQ, NextAck, Waiting),
             NewQ = Q#queue{out_waiting = NewWaiting, size = replayq:count(QQ)},
@@ -650,12 +673,12 @@ handle_frame(
         {error, not_found} ->
             {next_state, connected, State0}
     end;
-handle_frame(connected, #mqtt_puback{message_id = MessageId}, State0) ->
+handle_frame(connected, #mqtt5_puback{message_id = MessageId}, State0) ->
     #state{info_fun = InfoFun} = State0,
     %% qos1 flow
     Key = {publish, MessageId},
     case cancel_retry_and_get(Key, State0) of
-        {ok, {#mqtt_publish{}, State1}} ->
+        {ok, {#mqtt5_publish{}, State1}} ->
             NewInfoFun = call_info_fun({puback_in, MessageId}, InfoFun),
             {next_state, connected, State1#state{info_fun = NewInfoFun}};
         {error, not_found} ->
@@ -663,7 +686,7 @@ handle_frame(connected, #mqtt_puback{message_id = MessageId}, State0) ->
     end;
 handle_frame(
     connected,
-    #mqtt_pubrec{message_id = MessageId},
+    #mqtt5_pubrec{message_id = MessageId},
     #state{
         transport = {Transport, _},
         sock = Socket,
@@ -685,7 +708,7 @@ handle_frame(
                 MessageId, NextAck, NewWaiting
             ]),
             NewKey = {pubrel, MessageId},
-            PubRelFrame = #mqtt_pubrel{message_id = MessageId},
+            PubRelFrame = #mqtt5_pubrel{message_id = MessageId},
             {NewPubrelQQ, NewPubrelWaiting} = queue_pubrel(PubRelFrame, PubRelQQ, PubRelWaiting),
             NewPubrelQ = PubRelQ#queue{
                 out_waiting = NewPubrelWaiting,
@@ -701,7 +724,7 @@ handle_frame(
         {error, not_found} ->
             {next_state, connected, State0}
     end;
-handle_frame(connected, #mqtt_pubrec{message_id = MessageId}, State0) ->
+handle_frame(connected, #mqtt5_pubrec{message_id = MessageId}, State0) ->
     #state{transport = {Transport, _}, sock = Socket, info_fun = InfoFun} = State0,
     %% qos2 flow
     Key = {publish, MessageId},
@@ -709,7 +732,7 @@ handle_frame(connected, #mqtt_pubrec{message_id = MessageId}, State0) ->
         {ok, {_Publish, State1}} ->
             NewInfoFun0 = call_info_fun({pubrec_in, MessageId}, InfoFun),
             NewKey = {pubrel, MessageId},
-            PubRelFrame = #mqtt_pubrel{message_id = MessageId},
+            PubRelFrame = #mqtt5_pubrel{message_id = MessageId, reason_code = ?M5_SUCCESS},
             send_frame(Transport, Socket, PubRelFrame),
             NewInfoFun1 = call_info_fun({pubrel_out, MessageId}, NewInfoFun0),
             {next_state, connected,
@@ -717,7 +740,7 @@ handle_frame(connected, #mqtt_pubrec{message_id = MessageId}, State0) ->
         {error, not_found} ->
             {next_state, connected, State0}
     end;
-handle_frame(connected, #mqtt_pubrel{message_id = MessageId}, State0) ->
+handle_frame(connected, #mqtt5_pubrel{message_id = MessageId}, State0) ->
     #state{transport = {Transport, _}, sock = Socket, info_fun = InfoFun} = State0,
     %% qos2 flow
     case get_remove_unacked_msg(MessageId, State0) of
@@ -727,7 +750,7 @@ handle_frame(connected, #mqtt_pubrel{message_id = MessageId}, State0) ->
                 connected, on_publish, [Topic, Payload, Opts], State1
             ),
             NewInfoFun1 = call_info_fun({pubcomp_out, MessageId}, NewInfoFun0),
-            PubCompFrame = #mqtt_pubcomp{message_id = MessageId},
+            PubCompFrame = #mqtt5_pubcomp{message_id = MessageId, reason_code = ?M5_SUCCESS},
             send_frame(Transport, Socket, PubCompFrame),
             {next_state, connected, State2#state{info_fun = NewInfoFun1}};
         error ->
@@ -735,7 +758,7 @@ handle_frame(connected, #mqtt_pubrel{message_id = MessageId}, State0) ->
     end;
 handle_frame(
     connected,
-    #mqtt_pubcomp{message_id = MessageId},
+    #mqtt5_pubcomp{message_id = MessageId},
     #state{
         info_fun = InfoFun,
         pubrel_queue = #queue{out_waiting = Waiting, msg_ack_map = AckMap, queue = QQ} = PubrelQ
@@ -745,7 +768,7 @@ handle_frame(
     Key = {pubrel, MessageId},
     ?LOG_DEBUG("Pubcomp arrived: ~p~n", [Key]),
     case cancel_retry_and_get(Key, State0) of
-        {ok, {#mqtt_pubrel{}, State1}} ->
+        {ok, {#mqtt5_pubrel{}, State1}} ->
             NextAck = maps:get(MessageId, AckMap, next),
             {NewQQ, NewWaiting} = maybe_ack_pubrel(QQ, NextAck, Waiting),
             NewQ = PubrelQ#queue{
@@ -762,12 +785,12 @@ handle_frame(
         {error, not_found} ->
             {next_state, connected, State0}
     end;
-handle_frame(connected, #mqtt_pubcomp{message_id = MessageId}, State0) ->
+handle_frame(connected, #mqtt5_pubcomp{message_id = MessageId}, State0) ->
     #state{info_fun = InfoFun} = State0,
     %% qos2 flow
     Key = {pubrel, MessageId},
     case cancel_retry_and_get(Key, State0) of
-        {ok, {#mqtt_pubrel{}, State1}} ->
+        {ok, {#mqtt5_pubrel{}, State1}} ->
             NewInfoFun = call_info_fun({pubcomp_in, MessageId}, InfoFun),
             {next_state, connected, State1#state{info_fun = NewInfoFun}};
         {error, not_found} ->
@@ -775,31 +798,38 @@ handle_frame(connected, #mqtt_pubcomp{message_id = MessageId}, State0) ->
     end;
 handle_frame(
     connected,
-    #mqtt_publish{
+    #mqtt5_publish{
         message_id = MessageId,
         topic = Topic,
         qos = QoS,
         payload = Payload,
         retain = Retain,
-        dup = Dup
+        dup = Dup,
+        properties = Properties
     },
     State
 ) ->
     ?LOG_INFO("Incoming Topic ~p~n", [Topic]),
+    ?LOG_INFO("Incoming Properties ~p~n", [Properties]),
+    ?LOG_INFO("Incoming User Properties ~p~n", [maps:get(p_user_property, Properties, [])]),
+
     #state{transport = {Transport, _}, sock = Socket, info_fun = InfoFun} = State,
     NewInfoFun = call_info_fun({publish_in, MessageId, Payload, QoS}, InfoFun),
     Opts = #{
         qos => QoS,
         retain => unflag(Retain),
-        dup => unflag(Dup)
+        dup => unflag(Dup),
+        user_property => maps:get(p_user_property, Properties, [])
     },
+    ?LOG_INFO("Incoming Opts s ~p~n", [Opts]),
+
     case QoS of
         0 ->
             wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{
                 info_fun = NewInfoFun
             });
         1 ->
-            PubAckFrame = #mqtt_puback{message_id = MessageId},
+            PubAckFrame = #mqtt5_puback{message_id = MessageId, reason_code = ?M5_SUCCESS},
             NewInfoFun1 = call_info_fun({puback_out, MessageId}, NewInfoFun),
             Res = wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{
                 info_fun = NewInfoFun1
@@ -807,7 +837,7 @@ handle_frame(
             send_frame(Transport, Socket, PubAckFrame),
             Res;
         2 ->
-            PubRecFrame = #mqtt_pubrec{message_id = MessageId},
+            PubRecFrame = #mqtt5_pubrec{message_id = MessageId, reason_code = ?M5_SUCCESS},
             NewInfoFun1 = call_info_fun({pubrec_out, MessageId}, NewInfoFun),
             send_frame(Transport, Socket, PubRecFrame),
             {next_state, connected,
@@ -817,9 +847,9 @@ handle_frame(
                     State#state{info_fun = NewInfoFun1}
                 )}
     end;
-handle_frame(connected, #mqtt_pingresp{}, State) ->
+handle_frame(connected, #mqtt5_pingresp{}, State) ->
     {next_state, connected, State};
-handle_frame(connected, #mqtt_disconnect{}, #state{transport = {Transport, _}} = State) ->
+handle_frame(connected, #mqtt5_disconnect{}, #state{transport = {Transport, _}} = State) ->
     Transport:close(State#state.sock),
     gen_fsm:send_event_after(5000, connect),
     wrap_res(connecting, on_disconnect, [], cleanup_session(State#state{sock = undefined})).
@@ -875,41 +905,35 @@ send_connect(
         password = Password,
         client = ClientId,
         clean_session = CleanSession,
-        last_will_topic = LWTopic,
-        last_will_msg = LWMsg,
-        last_will_qos = LWQoS,
+        %        last_will_topic = LWTopic,
+        %        last_will_msg = LWMsg,
+        %        last_will_qos = LWQoS,
         proto_version = ProtoVer,
         keepalive_interval = Int
     }
 ) ->
-    Frame = #mqtt_connect{
-        proto_ver = ProtoVer,
+    Frame = #mqtt5_connect{
+        proto_ver = 5,
         username = Username,
         password = Password,
-        clean_session = CleanSession,
-        keep_alive = Int div 1000,
-        client_id = list_to_binary(ClientId),
-        will_retain = (LWTopic /= undefined) and (LWMsg /= undefined),
-        will_qos =
-            case (LWTopic /= undefined) and (LWMsg /= undefined) of
-                true when is_integer(LWQoS) -> LWQoS;
-                _ -> 0
-            end,
-        will_topic = LWTopic,
-        will_msg = LWMsg
+        clean_start = CleanSession,
+        keep_alive = Int,
+        client_id = ClientId,
+        lwt = undefined,
+        properties = #{p_session_expiry_interval => 120}
     },
     send_frame(Transport, Sock, Frame),
     State.
 
-send_publish({Topic, Payload, QoS, Retain, Dup}, #state{msgid = MsgId} = State) ->
-    send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State#state{msgid = '++'(MsgId)});
-send_publish({MsgId, Topic, Payload, QoS, Retain, _}, State) ->
+send_publish({Topic, Payload, QoS, Retain, Dup, Prop}, #state{msgid = MsgId} = State) ->
+    send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, Prop, State#state{msgid = '++'(MsgId)});
+send_publish({MsgId, Topic, Payload, QoS, Retain, _, Prop}, State) ->
     %% called in case of retry
-    send_publish(MsgId, Topic, Payload, QoS, Retain, true, State).
+    send_publish(MsgId, Topic, Payload, QoS, Retain, true, Prop, State).
 
-send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
+send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, Prop, State) ->
     #state{transport = {Transport, _}, sock = Sock, info_fun = InfoFun} = State,
-    Frame = #mqtt_publish{
+    Frame = #mqtt5_publish{
         message_id =
             if
                 QoS == 0 ->
@@ -921,7 +945,9 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
         qos = QoS,
         retain = Retain,
         dup = Dup,
-        payload = Payload
+        payload = Payload,
+        properties = Prop
+        %%      properties = #{p_user_property => [{<<"key">>, <<"val">>}]}
     },
     NewInfoFun = call_info_fun({publish_out, MsgId, QoS}, InfoFun),
     send_frame(Transport, Sock, Frame),
@@ -930,17 +956,17 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
             State#state{info_fun = NewInfoFun};
         _ ->
             Key = {publish, MsgId},
-            retry(Key, Frame#mqtt_publish{dup = true}, State#state{info_fun = NewInfoFun})
+            retry(Key, Frame#mqtt5_publish{dup = true}, State#state{info_fun = NewInfoFun})
     end.
 
 send_disconnect(Transport, Sock) ->
-    send_frame(Transport, Sock, #mqtt_disconnect{}).
+    send_frame(Transport, Sock, #mqtt5_disconnect{}).
 
 send_ping(Transport, Sock) ->
-    send_frame(Transport, Sock, #mqtt_pingreq{}).
+    send_frame(Transport, Sock, #mqtt5_pingreq{}).
 
 send_frame(Transport, Sock, Frame) ->
-    case Transport:send(Sock, vmq_parser:serialise(Frame)) of
+    case Transport:send(Sock, vmq_parser_mqtt5:serialise(Frame)) of
         ok ->
             ok;
         {error, _} ->
@@ -1082,7 +1108,7 @@ publish_from_pubrel_queue(#queue{size = Size, queue = QQ, batch_size = BatchSize
 foreach_pop_pubrel(
     Queue, Count, Map, #state{transport = {Transport, _}, sock = Socket} = State
 ) when Count > 0 ->
-    {NewQ, AckRef, [#mqtt_pubrel{message_id = MessageId} = PubRelFrame]} = replayq:pop(Queue, #{
+    {NewQ, AckRef, [#mqtt5_pubrel{message_id = MessageId} = PubRelFrame]} = replayq:pop(Queue, #{
         count_limit => 1
     }),
     ?LOG_DEBUG("Pubrel AckRef: ~p | Element: ~p | MSGID: ~p~n", [AckRef, PubRelFrame, MessageId]),
@@ -1101,10 +1127,10 @@ handle_retry(Key, #state{transport = {Transport, _}, sock = Sock, waiting_acks =
     case maps:find(Key, WAcks) of
         error ->
             State;
-        {ok, {_Ref, #mqtt_publish{} = Frame}} ->
-            send_frame(Transport, Sock, Frame#mqtt_publish{dup = true}),
+        {ok, {_Ref, #mqtt5_publish{} = Frame}} ->
+            send_frame(Transport, Sock, Frame#mqtt5_publish{dup = true}),
             retry(Key, Frame, State);
-        {ok, {_Ref, #mqtt_pubrel{} = Frame}} ->
+        {ok, {_Ref, #mqtt5_pubrel{} = Frame}} ->
             send_frame(Transport, Sock, Frame),
             retry(Key, Frame, State);
         {ok, {_Ref, Msg}} ->

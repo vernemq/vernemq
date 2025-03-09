@@ -1022,8 +1022,10 @@ direct_plugin_exports(LogName, Opts) ->
             %% - reg_view
             %% - shared subscription policy
             %% - user_proeprties
+            ?LOG_INFO("SEND Opts ~p~n", [Opts_]),
 
             UserProperties = maps:get(user_property, Opts_, undefined),
+            ?LOG_INFO("SEND USER PROPERTIES ~p~n", [UserProperties]),
             Properties =
                 case UserProperties of
                     [] ->
@@ -1033,6 +1035,7 @@ direct_plugin_exports(LogName, Opts) ->
                     _ ->
                         #{}
                 end,
+            ?LOG_INFO("SEND USER PROPERTIES 2 ~p~n", [Properties]),
 
             Msg = #vmq_msg{
                 routing_key = Topic,

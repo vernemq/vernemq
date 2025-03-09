@@ -228,13 +228,13 @@
 
 %% @doc Set the MQTT protocol version to be used by the bridge.
 {mapping, "vmq_bridge.tcp.$name.mqtt_version", "vmq_bridge.config", [
-                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {datatype, {enum, ['3', '4', '5']}},
                                                                      {default, '3'},
                                                                      {include_default, "br0"},
                                                                      {commented, on}
                                                                     ]}.
 {mapping, "vmq_bridge.ssl.$name.mqtt_version", "vmq_bridge.config", [
-                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {datatype, {enum, ['3', '4', '5']}},
                                                                      {default, '3'},
                                                                      hidden
                                                                     ]}.
