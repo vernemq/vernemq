@@ -73,8 +73,8 @@ prefixes_test(Cfg) ->
       mqtt_version => mqtt_version(Cfg),
       inet_version => Inet,
       qos => 0,
-      topics => [{"bridge-in", in, 0, "local-in-prefix", "remote-in-prefix"},
-                 {"bridge-out", out, 0, "local-out-prefix", "remote-out-prefix"}]
+      topics => [{"bridge-in", in, 0, false, "local-in-prefix", "remote-in-prefix"},
+                 {"bridge-out", out, 0, false, "local-out-prefix", "remote-out-prefix"}]
      }),
     BridgePid = get_bridge_pid(Cfg),
     %% Start the 'broker' and let the bridge connect
@@ -108,7 +108,7 @@ remote_reconnect_qos1_test(Cfg) ->
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
       qos => 1,
-      topics => [{"bridge/#", both, 1, "", ""}]
+      topics => [{"bridge/#", both, 1, false, "", ""}]
      }),
 
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
@@ -147,7 +147,7 @@ remote_reconnect_qos2_test(Cfg) ->
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
       qos => 2,
-      topics => [{"bridge/#", both, 2, "", ""}]
+      topics => [{"bridge/#", both, 2, false, "", ""}]
      }),
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
                                             {proto_ver, mqtt_version(Cfg)}]),
@@ -199,7 +199,7 @@ bridge_reconnect_qos1_test(Cfg) ->
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
       qos => 1,
-      topics => [{"bridge/#", both, 1, "", ""}]
+      topics => [{"bridge/#", both, 1, false, "", ""}]
      }),
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
                                                  {proto_ver, mqtt_version(Cfg)}]),
@@ -241,7 +241,7 @@ bridge_reconnect_qos2_test(Cfg) ->
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
       qos => 2,
-      topics => [{"bridge/#", both, 2, "", ""}]
+      topics => [{"bridge/#", both, 2, false, "", ""}]
      }),
     Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
                                             {proto_ver, mqtt_version(Cfg)}]),
@@ -400,7 +400,7 @@ start_bridge_plugin(Opts) ->
     MqttVersion = maps:get(mqtt_version, Opts),
     QoS = maps:get(qos, Opts),
     Max = maps:get(max_outgoing_buffered_messages, Opts, 100),
-    Topics = maps:get(topics, Opts, [{"bridge/#", both, QoS, "", ""}]),
+    Topics = maps:get(topics, Opts, [{"bridge/#", both, QoS, false, "", ""}]),
     Inet = maps:get(inet_version, Opts, inet),
     Localhost = case Inet of
                   inet6 -> inet:ntoa({0,0,0,0,0,0,0,1});
