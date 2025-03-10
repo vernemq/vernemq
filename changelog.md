@@ -1,3 +1,4 @@
+- vmq_bridge: Bridge can forward retained messages (#2391, #1420, #1691)
 - Plugins: Plugins can subscribe to topics with additional subinfo allowing a more MQTTv5-like experience (#2390)
 
 ## VerneMQ 2.1.0 (RC 3)

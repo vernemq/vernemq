@@ -285,7 +285,7 @@ code_change(_OldVsn, State, _Extra) ->
 bridge_subscribe(
     remote = Type,
     Pid,
-    [{Topic, in, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, in, QoS, _FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
@@ -315,14 +315,19 @@ bridge_subscribe(
 bridge_subscribe(
     local = Type,
     Pid,
-    [{Topic, out, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, out, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-            {ok, _} = SubscribeFun(LocalTopic),
+            LocalTopic0 =
+                case FwdRetain of
+                    true -> {LocalTopic, #{rap => true}};
+                    _ -> LocalTopic
+                end,
+            {ok, _} = SubscribeFun(LocalTopic0),
             bridge_subscribe(
                 Type,
                 Pid,
@@ -345,7 +350,7 @@ bridge_subscribe(
 bridge_subscribe(
     Type,
     Pid,
-    [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, both, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
@@ -369,7 +374,12 @@ bridge_subscribe(
                     );
                 local ->
                     LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-                    {ok, _} = SubscribeFun(LocalTopic),
+                    LocalTopic0 =
+                        case FwdRetain of
+                            true -> {LocalTopic, #{rap => true}};
+                            _ -> LocalTopic
+                        end,
+                    {ok, _} = SubscribeFun(LocalTopic0),
                     bridge_subscribe(
                         Type,
                         Pid,
