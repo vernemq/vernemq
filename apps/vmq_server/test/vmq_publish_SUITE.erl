@@ -78,7 +78,8 @@ groups() ->
          message_size_exceeded_close,
          shared_subscription_offline,
          shared_subscription_online_first,
-         direct_plugin_exports_test
+         direct_plugin_exports_test,
+         direct_plugin_exports_test_subinfo
         ],
     [
      {mqttv3, [shuffle], [
@@ -1165,6 +1166,49 @@ max_packet_size(Config) ->
     disable_on_subscribe(),
     disable_on_message_drop(),
     ok.
+
+direct_plugin_exports_test_subinfo(Cfg) ->
+    Topic = vmq_cth:utopic(Cfg),
+    WTopic = re:split(list_to_binary(Topic), <<"/">>),
+    {RegFun0, PubFun3, {SubFun1, UnsubFun1}}
+        = vmq_reg:direct_plugin_exports(?FUNCTION_NAME),
+    ok = RegFun0(),
+    {ok, [0]} = SubFun1({WTopic, #{rap => true}}),
+    %% this client-id generation is taken from
+    %% `vmq_reg:direct_plugin_exports/1`. It would be better if that
+    %% function would return the generated client-id.
+    ClientId = fun(T) ->
+                       list_to_binary(
+                         base64:encode_to_string(
+                           integer_to_binary(
+                             erlang:phash2(T)
+                            )
+                          ))
+               end,
+    TestSub =
+        fun(T, MustBePresent) ->
+                Subscribers = vmq_reg_trie:fold({"", ClientId(self())},
+                                                T, fun(E,_From,Acc) -> [E|Acc] end, []),
+                IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
+                MustBePresent =:= IsPresent
+        end,
+    vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
+    {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{retain => true}),
+    receive
+        {deliver, WTopic, <<"msg1">>, 0, true, false, _Info} -> ok;
+        Other -> throw({received_unexpected_msg, Other})
+    after
+        1000 ->
+            throw(didnt_receive_expected_msg_from_direct_plugin_exports)
+    end,
+    ok = UnsubFun1(WTopic),
+    vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, false) end, 100, 10),
+    {ok, {0, 0}} = PubFun3(WTopic, <<"msg2">>, #{}),
+    receive
+        M -> throw({received_unexpected_msg_from_direct_plugin_exports, M})
+    after
+        100 -> ok
+    end.
 
 direct_plugin_exports_test(Cfg) ->
     Topic = vmq_cth:utopic(Cfg),

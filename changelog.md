@@ -1,3 +1,5 @@
+- Plugins: Plugins can subscribe to topics with additional subinfo allowing a more MQTTv5-like experience (#2390)
+
 ## VerneMQ 2.1.0 (RC 3)
 
 - New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections
