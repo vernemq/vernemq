@@ -15,6 +15,8 @@
 
 -module(vmq_ssl).
 -include_lib("public_key/include/public_key.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -export([
     socket_to_common_name/1,
     cert_to_common_name/1,
@@ -91,7 +93,12 @@ opts(Opts) ->
     opts(cert, Opts) ++
         vmq_ssl_psk:opts(Opts) ++
         [
-            {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []), Opts)},
+            {ciphers,
+                ciphersuite_transform(
+                    proplists:get_value(tls_version, Opts, ['tlsv1.2']),
+                    proplists:get_value(ciphers, Opts, []),
+                    Opts
+                )},
             {eccs, proplists:get_value(eccs, Opts, ssl:eccs())},
             {fail_if_no_peer_cert,
                 proplists:get_value(
@@ -109,7 +116,7 @@ opts(Opts) ->
                 end},
             {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
             {depth, proplists:get_value(depth, Opts, 1)},
-            {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
+            {versions, proplists:get_value(tls_version, Opts, ['tlsv1.2'])}
             | []
             %% TODO: support for flexible partial chain functions
             % case support_partial_chain() of
@@ -122,9 +129,20 @@ opts(Opts) ->
             % end
         ].
 
-ciphersuite_transform([], Opts) ->
-    ciphers() ++ vmq_ssl_psk:ciphers(Opts);
-ciphersuite_transform(CiphersString, _) when is_list(CiphersString) ->
+ciphersuite_transform(L, [], Opts) ->
+    TLSV13 = lists:member('tlsv1.3', L),
+    TLS = lists:member('tlsv1.2', L) or lists:member('tlsv1.1', L) or lists:member('tlsv1', L),
+
+    case TLSV13 of
+        true -> ciphers1_3();
+        false -> []
+    end ++
+        case TLS of
+            true -> ciphers();
+            false -> []
+        end ++
+        vmq_ssl_psk:ciphers(Opts);
+ciphersuite_transform(_, CiphersString, _) when is_list(CiphersString) ->
     CiphersString.
 
 -spec verify_ssl_peer(
@@ -166,6 +184,14 @@ check_user_state(UserState, Cert) ->
                     {fail, {bad_cert, cert_revoked}}
             end
     end.
+
+ciphers1_3() ->
+    [
+        "TLS_AES_256_GCM_SHA384",
+        "TLS_AES_128_GCM_SHA256",
+        "TLS_AES_128_CCM_SHA256",
+        "TLS_AES_128_CCM_8_SHA256"
+    ].
 
 ciphers() ->
     [
