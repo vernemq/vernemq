@@ -11,6 +11,7 @@
 -export([connect_no_auth_test/1,
          connect_no_auth_wrong_ca_test/1,
          connect_cert_auth_test/1,
+         connect_cert_auth_test_tlsv12/1,
          connect_cert_auth_without_test/1,
          connect_cert_auth_expired_test/1,
          connect_cert_auth_revoked_test/1,
@@ -198,6 +199,7 @@ all_cert_auth() ->
 
 all_cert_auth_tlsv1_3() ->
     [connect_cert_auth_test,
+     connect_cert_auth_test_tlsv12,
      connect_cert_auth_without_test,
      connect_cert_auth_expired_test].
 
@@ -307,6 +309,15 @@ connect_cert_auth_test(_) ->
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
+
+connect_cert_auth_test_tlsv12(_) ->
+    {error, {tls_alert, {protocol_version, _}}} = ssl:connect("localhost", 1888,
+                              [binary, {active, false}, {packet, raw},
+                               {versions, ['tlsv1.2']},
+                               {verify, verify_peer},
+                               {cacerts, load_cacerts()},
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]).
 
 connect_cert_auth_without_test(_) ->
     assert_error_or_closed([{error,{tls_alert,"handshake failure"}},

@@ -13,9 +13,11 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(vmq_schema).
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     translate_listeners/1,
+    parse_tls_list/1,
     string_to_secs/1,
     parse_list_to_term/1
 ]).
@@ -59,6 +61,13 @@ translate_listeners(Conf) ->
     IntVal = fun
         (_, I, _) when is_integer(I) -> I;
         (_, undefined, Def) -> Def
+    end,
+    SSLVersionsListVal = fun
+        (_, SSLVersions, _) when is_list(SSLVersions) -> validate_sslversion(SSLVersions);
+        (_, undefined, undefined) ->
+            undefined;
+        (_, undefined, Def) ->
+            validate_sslversion(Def)
     end,
     %% Either "", meaning all known named curves are allowed]
     %% or a list like "[secp256r1,sect239k1,sect233k1]"
@@ -289,7 +298,9 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLRequireCerts} = lists:unzip(
         extract("listener.ssl", "require_certificate", BoolVal, Conf)
     ),
-    {SSLIPs, SSLVersions} = lists:unzip(extract("listener.ssl", "tls_version", AtomVal, Conf)),
+    {SSLIPs, SSLVersions} = lists:unzip(
+        extract("listener.ssl", "tls_version", SSLVersionsListVal, Conf)
+    ),
     {SSLIPs, SSLUseIdents} = lists:unzip(
         extract("listener.ssl", "use_identity_as_username", BoolVal, Conf)
     ),
@@ -317,7 +328,7 @@ translate_listeners(Conf) ->
         extract("listener.wss", "require_certificate", BoolVal, Conf)
     ),
     {WS_SSLIPs, WS_SSLVersions} = lists:unzip(
-        extract("listener.wss", "tls_version", AtomVal, Conf)
+        extract("listener.wss", "tls_version", SSLVersionsListVal, Conf)
     ),
     {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(
         extract("listener.wss", "use_identity_as_username", BoolVal, Conf)
@@ -650,6 +661,10 @@ parse_addr(StrA) ->
             end
     end.
 
+validate_sslversion(Versions) ->
+    {ok, ParsedList} = parse_tls_list(Versions),
+    ParsedList.
+
 validate_eccs("") ->
     ssl:eccs();
 validate_eccs(undefined) ->
@@ -684,6 +699,20 @@ string_to_secs(S) ->
         {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
         _ -> error
     end.
+
+parse_tls_list(Val) when is_list(Val) ->
+    Values = string:tokens(Val, ","),
+    try
+        {ok, [convert_tls(V) || V <- Values]}
+    catch
+        throw:invalid_value -> {error, invalid_value}
+    end.
+
+convert_tls("tlsv1") -> 'tls_v1';
+convert_tls("tlsv1.1") -> 'tlsv1.1';
+convert_tls("tlsv1.2") -> 'tlsv1.2';
+convert_tls("tlsv1.3") -> 'tlsv1.3';
+convert_tls(_) -> throw(invalid_value).
 
 parse_list_to_term(Val) ->
     {ok, T, _} =
