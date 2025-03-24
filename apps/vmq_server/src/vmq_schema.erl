@@ -64,10 +64,8 @@ translate_listeners(Conf) ->
     end,
     SSLVersionsListVal = fun
         (_, SSLVersions, _) when is_list(SSLVersions) -> validate_sslversion(SSLVersions);
-        (_, undefined, undefined) ->
-            undefined;
-        (_, undefined, Def) ->
-            validate_sslversion(Def)
+        (_, undefined, undefined) -> undefined;
+        (_, undefined, Def) -> validate_sslversion(Def)
     end,
     %% Either "", meaning all known named curves are allowed]
     %% or a list like "[secp256r1,sect239k1,sect233k1]"
