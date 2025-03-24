@@ -454,21 +454,34 @@
                                                     {0, Rest2}
                                             end
                                     end,
+                                    {Retain, Rest5} =
+                                    case Rest3 of
+                                        [] ->
+                                            {false, []};
+                                        [MaybeRetain|Rest6] ->
+                                            case lists:member(MaybeRetain, ["retain"]) of
+                                                true ->
+                                                    {true, Rest6};
+                                                false ->
+                                                    {false, Rest3}
+                                            end
+                                    end,
+
                                     Empty = fun("$empty") ->
                                                     "";
                                                (V) -> V
                                             end,
-                                    case Rest3 of
+                                    case Rest5 of
                                         [] ->
-                                            {Pattern, Direction, QoS, "", ""};
+                                            {Pattern, Direction, QoS, Retain, "", ""};
                                         [LocalPrefix, RemotePrefix] ->
-                                            {Pattern, Direction, QoS,
+                                            {Pattern, Direction, QoS, Retain,
                                              Empty(LocalPrefix), Empty(RemotePrefix)};
                                         _ ->
-                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] retain] local-prefix remote-prefix]'")
                                     end;
                                 [] ->
-                                    {Pattern, out, 0, "", ""}
+                                    {Pattern, out, 0, false, "", ""}
                             end;
                         (_, _) ->
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")

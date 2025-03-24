@@ -1,4 +1,5 @@
-- vmq_bridge: New configuration option 'mountpoint' that allows restrict a bridge to a specific mountpoint
+- vmq_bridge: New configuration option 'mountpoint' that allows restricting a bridge to a specific mountpoint
+- vmq_bridge: Bridge can forward retained messages (#2391, #1420, #1691)
 - New configuration: Allow multiple TLS versions per SSL and WSS listener
 - Plugins: Plugins can subscribe to topics with additional subinfo allowing a more MQTTv5-like experience (#2390)
 

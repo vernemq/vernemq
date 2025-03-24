@@ -227,12 +227,12 @@ handle_info(
     %% we have a matching subscription
     lists:foreach(
         fun
-            ({{in, T}, {LocalPrefix, RemotePrefix}}) ->
+            ({{in, T}, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
                 case match(Topic, T) of
                     true ->
                         % ignore if we're ready or not.
                         PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{
-                            qos => QoS, retain => Retain
+                            qos => QoS, retain => Retain and FwdRetain
                         });
                     false ->
                         ok
@@ -250,7 +250,7 @@ handle_info(
     %% forward matching, locally published messages to the remote broker.
     lists:foreach(
         fun
-            ({{out, T}, QoS, {LocalPrefix, RemotePrefix}}) ->
+            ({{out, T}, QoS, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
                 case match(Topic, T) of
                     true ->
                         ok = gen_mqtt_client:publish(
@@ -258,7 +258,7 @@ handle_info(
                             swap_prefix(LocalPrefix, RemotePrefix, Topic),
                             Payload,
                             QoS,
-                            IsRetained
+                            IsRetained and FwdRetain
                         );
                     false ->
                         ok
@@ -291,7 +291,7 @@ code_change(_OldVsn, State, _Extra) ->
 bridge_subscribe(
     remote = Type,
     Pid,
-    [{Topic, in, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, in, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
@@ -305,7 +305,7 @@ bridge_subscribe(
                 Rest,
                 SubscribeFun,
                 [
-                    {{in, RemoteTopic}, {
+                    {{in, RemoteTopic}, FwdRetain, {
                         validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                     }}
                     | Acc
@@ -321,21 +321,26 @@ bridge_subscribe(
 bridge_subscribe(
     local = Type,
     Pid,
-    [{Topic, out, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, out, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-            {ok, _} = SubscribeFun(LocalTopic),
+            LocalTopic0 =
+                case FwdRetain of
+                    true -> {LocalTopic, #{rap => true}};
+                    _ -> LocalTopic
+                end,
+            {ok, _} = SubscribeFun(LocalTopic0),
             bridge_subscribe(
                 Type,
                 Pid,
                 Rest,
                 SubscribeFun,
                 [
-                    {{out, LocalTopic}, QoS, {
+                    {{out, LocalTopic}, QoS, FwdRetain, {
                         validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                     }}
                     | Acc
@@ -351,7 +356,7 @@ bridge_subscribe(
 bridge_subscribe(
     Type,
     Pid,
-    [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    [{Topic, both, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
@@ -367,7 +372,7 @@ bridge_subscribe(
                         Rest,
                         SubscribeFun,
                         [
-                            {{in, RemoteTopic}, {
+                            {{in, RemoteTopic}, FwdRetain, {
                                 validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                             }}
                             | Acc
@@ -375,14 +380,19 @@ bridge_subscribe(
                     );
                 local ->
                     LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-                    {ok, _} = SubscribeFun(LocalTopic),
+                    LocalTopic0 =
+                        case FwdRetain of
+                            true -> {LocalTopic, #{rap => true}};
+                            _ -> LocalTopic
+                        end,
+                    {ok, _} = SubscribeFun(LocalTopic0),
                     bridge_subscribe(
                         Type,
                         Pid,
                         Rest,
                         SubscribeFun,
                         [
-                            {{out, LocalTopic}, QoS, {
+                            {{out, LocalTopic}, QoS, FwdRetain, {
                                 validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                             }}
                             | Acc
