@@ -14,38 +14,108 @@
     read/2,
     delete/1,
     delete/2,
-    find/1
+    find/1,
+    nr_of_offline_messages/0
 ]).
 
+-define(OFFLINE_MESSAGES, offline_messages).
+
 start() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    load_redis_functions(),
+    Ret.
+
+load_redis_functions() ->
+    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
+
+    {ok, PopOfflineMessageScript} = file:read_file(LuaDir ++ "/pop_offline_message.lua"),
+    {ok, WriteOfflineMessageScript} = file:read_file(LuaDir ++ "/write_offline_message.lua"),
+    {ok, DeleteSubsOfflineMessagesScript} = file:read_file(
+        LuaDir ++ "/delete_subs_offline_messages.lua"
+    ),
+
+    {ok, <<"pop_offline_message">>} = vmq_redis:query(
+        vmq_message_store_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", PopOfflineMessageScript],
+        ?FUNCTION_LOAD,
+        ?POP_OFFLINE_MESSAGE
+    ),
+    {ok, <<"write_offline_message">>} = vmq_redis:query(
+        vmq_message_store_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", WriteOfflineMessageScript],
+        ?FUNCTION_LOAD,
+        ?WRITE_OFFLINE_MESSAGE
+    ),
+    {ok, <<"delete_subs_offline_messages">>} = vmq_redis:query(
+        vmq_message_store_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", DeleteSubsOfflineMessagesScript],
+        ?FUNCTION_LOAD,
+        ?DELETE_SUBS_OFFLINE_MESSAGES
+    ).
 
 write(SubscriberId, Msg) ->
-    vmq_redis:query(
-        vmq_message_store_redis_client,
-        ["RPUSH", term_to_binary(SubscriberId), term_to_binary(Msg)],
-        ?RPUSH,
-        ?MSG_STORE_WRITE
-    ).
+    case
+        vmq_redis:query(
+            vmq_message_store_redis_client,
+            [
+                ?FCALL,
+                ?WRITE_OFFLINE_MESSAGE,
+                1,
+                term_to_binary(SubscriberId),
+                term_to_binary(Msg)
+            ],
+            ?FCALL,
+            ?WRITE_OFFLINE_MESSAGE
+        )
+    of
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} ->
+            {error, not_supported}
+    end.
 
 read(_SubscriberId, _MsgRef) ->
     {error, not_supported}.
 
 delete(SubscriberId) ->
-    vmq_redis:query(
-        vmq_message_store_redis_client,
-        ["DEL", term_to_binary(SubscriberId)],
-        ?DEL,
-        ?MSG_STORE_DELETE
-    ).
+    case
+        vmq_redis:query(
+            vmq_message_store_redis_client,
+            [
+                ?FCALL,
+                ?DELETE_SUBS_OFFLINE_MESSAGES,
+                1,
+                term_to_binary(SubscriberId)
+            ],
+            ?FCALL,
+            ?DELETE_SUBS_OFFLINE_MESSAGES
+        )
+    of
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} ->
+            {error, not_supported}
+    end.
 
 delete(SubscriberId, _MsgRef) ->
-    vmq_redis:query(
-        vmq_message_store_redis_client,
-        ["LPOP", term_to_binary(SubscriberId), 1],
-        ?LPOP,
-        ?MSG_STORE_DELETE
-    ).
+    case
+        vmq_redis:query(
+            vmq_message_store_redis_client,
+            [
+                ?FCALL,
+                ?POP_OFFLINE_MESSAGE,
+                1,
+                term_to_binary(SubscriberId)
+            ],
+            ?FCALL,
+            ?POP_OFFLINE_MESSAGE
+        )
+    of
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} ->
+            {error, not_supported}
+    end.
 
 find(SubscriberId) ->
     case
@@ -71,6 +141,12 @@ find(SubscriberId) ->
             Res
     end.
 
+nr_of_offline_messages() ->
+    case ets:lookup(?OFFLINE_MESSAGES, count) of
+        [] -> 0;
+        [{count, Count}] -> Count
+    end.
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
@@ -81,6 +157,8 @@ find(SubscriberId) ->
             {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker, [atom()]}
         ]}}.
 init([]) ->
+    ets:new(?OFFLINE_MESSAGES, [named_table, public, {write_concurrency, true}]),
+
     StoreCfgs = application:get_env(vmq_server, message_store, [
         {redis, [
             {connect_options, "[{sentinel, [{endpoints, [{\"localhost\", 26379}]}]},{database,2}]"}

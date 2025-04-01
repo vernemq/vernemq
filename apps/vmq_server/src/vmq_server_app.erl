@@ -25,12 +25,11 @@
 
 -spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
-    {ok, _pid} = vmq_message_store:start(),
-
     case vmq_server_sup:start_link() of
         {error, _} = E ->
             E;
         R ->
+            {ok, _pid} = vmq_message_store:start(),
             %% we'll wait for some millis, this
             %% enables the vmq_plugin mechanism to be prepared...
             %% vmq_plugin_mgr waits for the 'vmq_server_sup' process

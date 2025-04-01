@@ -80,6 +80,9 @@
 -define(REAP_SUBSCRIBERS, reap_subscribers).
 -define(SCARD, scard).
 -define(ENSURE_NO_LOCAL_CLIENT, ensure_no_local_client).
+-define(WRITE_OFFLINE_MESSAGE, write_offline_message).
+-define(POP_OFFLINE_MESSAGE, pop_offline_message).
+-define(DELETE_SUBS_OFFLINE_MESSAGES, delete_subs_offline_messages).
 
 -define(PRODUCER, "producer").
 -define(CONSUMER, "consumer").
