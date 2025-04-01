@@ -190,9 +190,14 @@ handle_info(
             lists:foreach(
                 fun([MP, ClientId]) ->
                     SubscriberId = {binary_to_list(MP), ClientId},
-                    {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId, false),
-                    ExpireAfter = Duration + rand:uniform(Duration + 1),
-                    vmq_queue:update_session_expiry(QPid, ExpireAfter)
+                    {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId, false),
+                    case QueuePresent of
+                        true ->
+                            ok;
+                        false ->
+                            ExpireAfter = Duration + rand:uniform(Duration + 1),
+                            vmq_queue:update_session_expiry(QPid, ExpireAfter)
+                    end
                 end,
                 ClientList
             ),
