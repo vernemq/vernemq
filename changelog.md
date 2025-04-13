@@ -1,3 +1,7 @@
+
+- vmq_swc: Add a separate initial sync round for empty joining nodes (experimental)
+- Bugfix: Make vmq_systree wait for reg tables
+
 ## VerneMQ 2.1.0 (RC 3)
 
 - New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections

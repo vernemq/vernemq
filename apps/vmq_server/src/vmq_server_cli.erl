@@ -59,6 +59,8 @@ register_cli() ->
     register_cli_usage(),
     vmq_server_start_cmd(),
     vmq_server_status_cmd(),
+    vmq_server_sync_status_cmd(),
+    vmq_server_flag_as_init_synced_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
@@ -85,6 +87,10 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "status"], status_usage()),
+    clique:register_usage(["vmq-admin", "node", "swc_sync_status"], sync_status_usage()),
+    clique:register_usage(
+        ["vmq-admin", "node", "flag_as_init_synced"], flag_as_init_synced_usage()
+    ),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
     clique:register_usage(["vmq-admin", "node", "history"], history_usage()),
@@ -125,6 +131,23 @@ vmq_server_status_cmd() ->
         {ok, Status} = vmq_info:node_status(),
         Table = [[{'Status', Key}, {'Value', Value}] || {Key, Value} <- Status],
         [clique_status:table(Table)]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_sync_status_cmd() ->
+    Cmd = ["vmq-admin", "node", "swc_sync_status"],
+    Callback = fun(_, _, _) ->
+        Status = maps:to_list(vmq_swc_group_coordinator:sync_state()),
+        Table = [[{'SWC Partition', Key}, {'InitSynced', Value}] || {Key, Value} <- Status],
+        [clique_status:table(Table)]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_flag_as_init_synced_cmd() ->
+    Cmd = ["vmq-admin", "node", "flag_as_init_synced"],
+    Callback = fun(_, _, _) ->
+        ok = vmq_swc_group_coordinator:flag_as_init_synced(),
+        [clique_status:text("Done")]
     end,
     clique:register_command(Cmd, [], [], Callback).
 
@@ -692,6 +715,21 @@ status_usage() ->
     [
         "vmq-admin node status\n\n",
         "  Prints status information about the node\n"
+    ].
+
+sync_status_usage() ->
+    [
+        "vmq-admin node swc_sync_status\n\n",
+        "  Boolean to show whether the SWC partition have been init synced or not.\n"
+        "  Note that a non-clustered node will show 'false' until an initial cluster round.\n"
+    ].
+
+flag_as_init_synced_usage() ->
+    [
+        "vmq-admin node flag_as_init_synced\n\n",
+        "  Actively flag an empty or non-empty node as init_synced.\n"
+        "  This will avoid any special init sync method, and just do normal sync between nodes after joining.\n"
+        "  This command is only relevant for clusters synced with vmq_swc.\n"
     ].
 
 stop_usage() ->
