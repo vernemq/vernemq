@@ -280,7 +280,7 @@ mark_for_gc(#dkm{latest = LT, gc_candidates = GCT}, Key) ->
     ok.
 
 -spec prune(dotkeymap(), watermark(), [db_op()], nodeclock()) -> [db_op()].
-prune(#dkm{} = DKM, Watermark, DbOps, NodeClock) ->
+prune(#dkm{} = DKM, Watermark, DbOps, _NodeClock) ->
     lists:foldl(
         fun(Id, Acc) ->
             Min = swc_watermark:min(Watermark, Id),

@@ -1,5 +1,5 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% Copyright 2018-2025 Octavo Labs/VerneMQ (https://vernemq.com/)
 %% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -99,7 +99,7 @@ prepare(
         {state_timeout, Timeout, remote_watermark}
     ]};
 prepare(cast, {remote_watermark, {error, Reason}}, #state{group = Group, peer = Peer} = State) ->
-    %% Failed to get remote node clock
+    %% Failed to get remote watermark
     ?LOG_WARNING("Replica ~p: AE exchange with ~p couldn't request remote watermark due to ~p", [
         Group, Peer, Reason
     ]),
@@ -112,69 +112,125 @@ prepare(cast, {remote_watermark, Watermark}, #state{group = Group, peer = Peer} 
         {next_event, internal, start}
     ]}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Initial Synchronisation of Keys/Values
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 initial_sync_new(
     internal,
     init_sync,
     #state{
         config = Config,
         peer = RemotePeer,
-        batch_size = BatchSize,
-        missing_dots = MissingDots
+        batch_size = BatchSize
     } = State
 ) ->
-    ?LOG_DEBUG("initial_sync new:init_sync RemotePeer ~p~n", [RemotePeer]),
-    {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
+    ?LOG_DEBUG("initial_sync new:init_sync from RemotePeer ~p~n", [RemotePeer]),
     as_event(
         fun() ->
-            MissingObjects = vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots),
-            {ok, MissingObjects}
+            R = vmq_swc_store:remote_sync_missing_init(Config, RemotePeer, BatchSize, first),
+            case R of
+                {first, []} -> {sync_finished, no_keys};
+                {last, N, ObjsA} -> {last, N, ObjsA};
+                {NextKey, Objs} -> {NextKey, Objs}
+            end
         end
     ),
-    {next_state, initial_sync_new, State#state{missing_dots = Rest}, [
+    {next_state, initial_sync_new, State#state{start_ts = erlang:monotonic_time(millisecond)}, [
         {state_timeout, State#state.timeout, init_sync}
     ]};
 initial_sync_new(
     cast,
-    {ok, MissingObjects},
+    {sync_finished, Remaining},
+    #state{
+        obj_cnt = ObjCnt
+    } = State
+) ->
+    case Remaining of
+        no_keys -> teardown_initial_no_jump(State);
+        _ -> teardown_initial(State#state{obj_cnt = ObjCnt + Remaining})
+    end;
+initial_sync_new(
+    cast,
+    {last, N, RemainingObjs},
     #state{
         config = Config,
         peer = RemotePeer,
         remote_clock = RemoteClock,
         remote_watermark = RemoteWatermark,
-        obj_cnt = ObjCnt
+        obj_cnt = ObjCount
+    } =
+        State
+) ->
+    as_event(fun() ->
+        vmq_swc_store:sync_repair_init(
+            Config,
+            RemainingObjs,
+            RemotePeer,
+            swc_node:base(RemoteClock),
+            {true, RemoteWatermark}
+        ),
+        {sync_finished, 0}
+    end),
+    {next_state, initial_sync_new, State#state{obj_cnt = ObjCount + N}, [
+        {state_timeout, State#state.timeout, init_sync}
+    ]};
+initial_sync_new(
+    cast,
+    {continue, NextKey1},
+
+    #state{config = Config, peer = RemotePeer, batch_size = BatchSize} =
+        State
+) ->
+    as_event(
+        fun() ->
+            R = vmq_swc_store:remote_sync_missing_init(
+                Config, RemotePeer, BatchSize, NextKey1
+            ),
+            case R of
+                {last, N, ObjsA} -> {last, N, ObjsA};
+                {NextKey2, Objs} -> {NextKey2, Objs}
+            end
+        end
+    ),
+    {next_state, initial_sync_new, State, [
+        {state_timeout, State#state.timeout, init_sync}
+    ]};
+initial_sync_new(
+    cast,
+    {NextKey, Objs},
+    #state{
+        config = Config,
+        peer = RemotePeer,
+        remote_clock = RemoteClock,
+        batch_size = BatchSize,
+        obj_cnt = LOCount
     } = State
 ) ->
-    case State#state.missing_dots of
-        [] ->
-            vmq_swc_store:sync_repair(
-                Config,
-                MissingObjects,
-                RemotePeer,
-                swc_node:base(RemoteClock),
-                {true, RemoteWatermark}
-            ),
-            teardown_initial(State#state{obj_cnt = ObjCnt + length(MissingObjects)});
-        _ ->
-            vmq_swc_store:sync_repair(
-                Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), false
-            ),
-            {next_state, initial_sync_new, State#state{obj_cnt = ObjCnt + length(MissingObjects)}, [
-                {next_event, internal, init_sync}
-            ]}
-    end;
+    as_event(fun() ->
+        vmq_swc_store:sync_repair_init(
+            Config, Objs, RemotePeer, swc_node:base(RemoteClock), false
+        ),
+        {continue, NextKey}
+    end),
+    {next_state, initial_sync_new, State#state{obj_cnt = LOCount + BatchSize}, [
+        {state_timeout, State#state.timeout, init_sync}
+    ]};
 initial_sync_new(cast, Msg, #state{group = Group, peer = Peer} = State) ->
     ?LOG_ERROR(
-        "Replica ~p: AE exchange with ~p received unknown message during local sync repair: ~p", [
+        "Replica ~p: AE exchange with ~p received unknown message during local init sync repair: ~p",
+        [
             Group, Peer, Msg
         ]
     ),
-    teardown(State);
-initial_sync_new(state_timeout, sync_repair, #state{group = Group, peer = Peer} = State) ->
+    teardown_initial(State);
+initial_sync_new(state_timeout, init_sync, #state{group = Group, peer = Peer} = State) ->
     ?LOG_WARNING(
-        "Replica ~p: AE exchange with ~p couldn't sync repair local store due to timeout", [
+        "Replica ~p: AE exchange with ~p couldn't sync repair (init) local store due to timeout", [
             Group, Peer
         ]
     ),
+    % The next exchange FSM will try init sync again.
     teardown(State).
 
 update_local(
@@ -185,21 +241,20 @@ update_local(
     } = State
 ) ->
     % calculate the dots missing on this node but existing on remote node
-    MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
     Init = vmq_swc_store:get_init_sync(Config),
     GlobalInit = persistent_term:get({vmq_swc_group_coordinator, init_sync}, 0),
-
     case Init of
         false when GlobalInit == 0 ->
             {next_state, initial_sync_new,
                 State#state{
-                    missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
+                    start_ts = erlang:monotonic_time(millisecond)
                 },
                 [
                     {next_event, internal, init_sync}
                 ]};
         true when GlobalInit == 0 ->
             vmq_swc_group_coordinator:group_initialized(Group, true),
+            MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
             {next_state, local_sync_repair,
                 State#state{
                     missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
@@ -208,6 +263,7 @@ update_local(
                     {next_event, internal, start}
                 ]};
         true when GlobalInit == 1 ->
+            MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
             {next_state, local_sync_repair,
                 State#state{
                     missing_dots = MissingDots, start_ts = erlang:monotonic_time(millisecond)
@@ -315,6 +371,26 @@ teardown_initial(
         false ->
             ?LOG_DEBUG("Replica ~p: initial sync with ~p, nothing to synchronize", [Group, Peer])
     end,
+    set_init_sync(Config, true),
+    ok = vmq_swc_store:reset_iterator_by_groupname(Group),
+    {stop, normal, State}.
+
+teardown_initial_no_jump(
+    #state{
+        group = Group,
+        config = Config,
+        peer = Peer,
+        obj_cnt = ObjCnt,
+        start_ts = Start
+    } = State
+) ->
+    End = erlang:monotonic_time(millisecond),
+    SyncTime = End - Start,
+    ?LOG_INFO(
+        "Replica ~p: AE initial sync (no jump) with ~p synced ~p objects in ~p milliseconds", [
+            Group, Peer, ObjCnt, SyncTime
+        ]
+    ),
     set_init_sync(Config, true),
     ok = vmq_swc_store:reset_iterator_by_groupname(Group),
     {stop, normal, State}.

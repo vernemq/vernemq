@@ -26,6 +26,7 @@
     write/3,
     read/4,
     fold/5,
+    fold/6,
     fold_with_iterator/7,
     get_ref/1
 ]).
@@ -70,6 +71,10 @@ read(#swc_config{db = DBName}, Type, Key, _Opts) ->
 -spec fold(config(), type(), foldfun(), any(), first | db_key()) -> any().
 fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey) ->
     gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey}, infinity).
+
+-spec fold(config(), type(), foldfun(), any(), first | db_key(), integer()) -> any().
+fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N) ->
+    gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey, N}, infinity).
 
 fold_with_iterator(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N, Itr) ->
     gen_server:call(DBName, {fold_with_iterator, Type, FoldFun, Acc, FirstKey, N, Itr}, infinity).
@@ -144,7 +149,7 @@ handle_call({fold, Type, FoldFun, Acc, FirstKey0}, From, State) ->
         end
     ),
     {noreply, State};
-handle_call({fold, Type, FoldFun, Acc, FirstKey0, N}, From, State) ->
+handle_call({fold, Type, FoldFun, Acc, FirstKey0, _N}, From, State) ->
     spawn_link(
         fun() ->
             {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
@@ -169,7 +174,7 @@ handle_call({fold, Type, FoldFun, Acc, FirstKey0, N}, From, State) ->
         end
     ),
     {noreply, State};
-handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, N, Itr}, From, State) ->
+handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, _N, Itr}, From, State) ->
     spawn_link(
         fun() ->
             FirstKey1 =

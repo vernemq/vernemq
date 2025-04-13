@@ -1,5 +1,5 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% Copyright 2018-2025 Octavo Labs/VerneMQ (https://vernemq.com/)
 %% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 -export([
     start_link/0,
     group_initialized/2,
-    sync_state/0
+    sync_state/0,
+    flag_as_init_synced/0
 ]).
 
 %% gen_server callbacks
@@ -48,10 +49,13 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 group_initialized(Group, Bool) ->
-    gen_server:call(?MODULE, {change_init, Group, Bool}).
+    gen_server:cast(?MODULE, {change_init, Group, Bool}).
 
 sync_state() ->
     gen_server:call(?MODULE, get_sync_state).
+
+flag_as_init_synced() ->
+    gen_server:call(?MODULE, flag_as_init_synced).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -64,11 +68,25 @@ init([]) ->
 
 handle_call(get_sync_state, _From, #state{sync_state = SyncState} = State) ->
     {reply, SyncState, State};
-handle_call({change_init, Group, Bool}, _From, #state{sync_state = SyncState} = State) ->
+handle_call(flag_as_init_synced, _From, _State) ->
+    persistent_term:put({?MODULE, init_sync}, 1),
+    {_, SWCGroups} = persistent_term:get({vmq_swc_plugin, swc}),
+    [vmq_swc_store:set_init_sync_by_groupname(Group, true) || Group <- SWCGroups],
+    NewState = #state{sync_state = maps:from_list([{G, true} || G <- SWCGroups])},
+    [
+        vmq_swc_db:put(
+            swc_config(Group),
+            default,
+            <<"ISY">>,
+            term_to_binary(true)
+        )
+     || Group <- SWCGroups
+    ],
+    {reply, ok, NewState}.
+handle_cast({change_init, Group, Bool}, #state{sync_state = SyncState} = State) ->
     M = maps:update(Group, Bool, SyncState),
     check_sync_state(M),
-    {reply, ok, State#state{sync_state = M}}.
-
+    {noreply, State#state{sync_state = M}};
 handle_cast(_Info, State) ->
     {noreply, State}.
 
@@ -103,3 +121,26 @@ enable_broadcast(L) ->
         ok,
         L
     ).
+
+swc_config(Group) ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    SWC_ID = {node(), Actor},
+    SwcGroupStr = atom_to_list(Group),
+    DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
+    DkmName = list_to_atom("vmq_swc_dkm_" ++ SwcGroupStr),
+    StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
+    CacheName = list_to_atom("vmq_swc_store_r_o_w_" ++ SwcGroupStr),
+    BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
+    MembershipName = list_to_atom("vmq_swc_group_membership_" ++ SwcGroupStr),
+    #swc_config{
+        peer = SWC_ID,
+        group = Group,
+        db = DBName,
+        dkm = DkmName,
+        dkm_backend = vmq_swc_dkm_leveldb,
+        db_backend = vmq_swc_db_leveldb,
+        store = StoreName,
+        r_o_w_cache = CacheName,
+        batcher = BatcherName,
+        membership = MembershipName
+    }.
