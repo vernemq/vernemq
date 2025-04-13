@@ -81,20 +81,28 @@ process_cert_files(FileNames) ->
     ).
 
 process_cert_files_and_check(FileNames, SecondsIn) ->
-    lists:map(
-        fun(FileName) ->
-            {ok, CertData} = decode_cert(FileName),
-            A1 = transform_cert_data_exp(FileName, CertData),
-            V1 = proplists:get_value('SecExp', A1),
-            VDT =
-                (V1 < erlang:list_to_integer(SecondsIn)) or
-                    (proplists:get_value('SecToVal', A1) > 0),
-            case VDT of
-                true -> A1;
-                _ -> []
+    lists:filter(
+        fun(L) ->
+            case L of
+                [] -> false;
+                _ -> true
             end
         end,
-        FileNames
+        lists:map(
+            fun(FileName) ->
+                {ok, CertData} = decode_cert(FileName),
+                A1 = transform_cert_data_exp(FileName, CertData),
+                V1 = proplists:get_value('SecExp', A1),
+                VDT =
+                    (V1 < erlang:list_to_integer(SecondsIn)) or
+                        (proplists:get_value('SecToVal', A1) > 0),
+                case VDT of
+                    true -> A1;
+                    _ -> []
+                end
+            end,
+            FileNames
+        )
     ).
 
 transform_cert_data_exp(FileName, CertData) ->
@@ -153,7 +161,7 @@ vmq_mgmt_tls_check_cmd() ->
             extract_cert_file(vmq_ranch_config:listeners(with_tls), []), VS
         ),
         case NodeTable of
-            [[]] -> [clique_status:text("All fine")];
+            [] -> [clique_status:text("All fine")];
             _ -> [clique_status:table(NodeTable)]
         end
     end,
