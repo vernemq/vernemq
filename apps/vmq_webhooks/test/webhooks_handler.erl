@@ -96,7 +96,6 @@ process_cache_hook(<<"auth_on_subscribe_m5">>, #{username := SenderPid}) ->
     Pid ! cache_auth_on_subscribe_ok,
     {200, #{result => <<"ok">>}}.
 
-%% callbacks for each hook
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
                    client_id := <<"undefined_creds">>,
