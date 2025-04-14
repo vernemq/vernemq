@@ -1021,8 +1021,7 @@ direct_plugin_exports(LogName, Opts) ->
             %% - trade-consistency flag
             %% - reg_view
             %% - shared subscription policy
-            %% - user_proeprties
-            ?LOG_INFO("SEND Opts ~p~n", [Opts_]),
+            %% - user_properties
 
             UserProperties = maps:get(user_property, Opts_, undefined),
             ?LOG_INFO("SEND USER PROPERTIES ~p~n", [UserProperties]),
@@ -1057,6 +1056,12 @@ direct_plugin_exports(LogName, Opts) ->
                 MaybeWaitTillReady(),
                 CallingPid = self(),
                 subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, 0}]);
+            %% accepts a tuple {Topic, SubInfo} where subinfo is a map e.g.
+            %% #{rap => True} to allow a more MQTTv5 like experience
+            ({[W | _] = Topic, SubInfo}) when is_binary(W) ->
+                MaybeWaitTillReady(),
+                CallingPid = self(),
+                subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, {0, SubInfo}}]);
             (_) ->
                 {error, invalid_topic}
         end,

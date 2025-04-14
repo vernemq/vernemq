@@ -45,6 +45,21 @@
                                                        hidden
                                                       ]}. 
 
+%% @doc Set the mountpoint for this bridge connection. If not defined, this 
+%% defaults to the default mountpoint.
+
+{mapping, "vmq_bridge.tcp.$name.mountpoint", "vmq_bridge.config", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              {include_default, "br0"},
+                                                              {commented, ""}
+                                                             ]}. 
+{mapping, "vmq_bridge.ssl.$name.mountpoint", "vmq_bridge.config", [
+                                                       {default, ""},
+                                                       {datatype, string},
+                                                       hidden
+                                                      ]}. 
+
 %% @doc Set the number of seconds after which the bridge should send a ping if 
 %% no other traffic has occurred.
 {mapping, "vmq_bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
@@ -439,27 +454,40 @@
                                                     {0, Rest2}
                                             end
                                     end,
+                                    {Retain, Rest5} =
+                                    case Rest3 of
+                                        [] ->
+                                            {false, []};
+                                        [MaybeRetain|Rest6] ->
+                                            case lists:member(MaybeRetain, ["retain"]) of
+                                                true ->
+                                                    {true, Rest6};
+                                                false ->
+                                                    {false, Rest3}
+                                            end
+                                    end,
+
                                     Empty = fun("$empty") ->
                                                     "";
                                                (V) -> V
                                             end,
-                                    case Rest3 of
+                                    case Rest5 of
                                         [] ->
-                                            {Pattern, Direction, QoS, "", ""};
+                                            {Pattern, Direction, QoS, Retain, "", ""};
                                         [LocalPrefix, RemotePrefix] ->
-                                            {Pattern, Direction, QoS,
+                                            {Pattern, Direction, QoS, Retain,
                                              Empty(LocalPrefix), Empty(RemotePrefix)};
                                         _ ->
-                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] retain] local-prefix remote-prefix]'")
                                     end;
                                 [] ->
-                                    {Pattern, out, 0, "", ""}
+                                    {Pattern, out, 0, false, "", ""}
                             end;
                         (_, _) ->
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
-         Mappings = ["cleansession", "client_id", "keepalive_interval", "segment_size", "outgoing_batch_size",
+         Mappings = ["cleansession", "client_id", "mountpoint", "keepalive_interval", "segment_size", "outgoing_batch_size",
                     "persistent_queue", "queue_dir",
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages", "pubrel_queue_ratio", "mqtt_version", "inet_version"],
@@ -512,6 +540,7 @@
 
          {TCPIPs, TCPCleanSessions} = lists:unzip(F("vmq_bridge.tcp", "cleansession", BoolVal)),
          {TCPIPs, TCPClientIds} = lists:unzip(F("vmq_bridge.tcp", "client_id", ClientIdVal)),
+         {TCPIPs, TCPMountPoint} = lists:unzip(F("vmq_bridge.tcp", "mountpoint", StringVal)),
          {TCPIPs, TCPKeepAlive} = lists:unzip(F("vmq_bridge.tcp", "keepalive_interval", IntVal)),
          {TCPIPs, TCPPersistentQueue} = lists:unzip(F("vmq_bridge.tcp", "persistent_queue", BoolVal)),
          {TCPIPs, TCPQueueDir} = lists:unzip(F("vmq_bridge.tcp", "queue_dir", StringVal)),
@@ -529,6 +558,7 @@
 
          {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
          {SSLIPs, SSLClientIds} = lists:unzip(F("vmq_bridge.ssl", "client_id", ClientIdVal)),
+         {SSLIPs, SSLMountPoint} = lists:unzip(F("vmq_bridge.ssl", "mountpoint", StringVal)),
          {SSLIPs, SSLKeepAlive} = lists:unzip(F("vmq_bridge.ssl", "keepalive_interval", IntVal)),
          {SSLIPs, SSLPersistentQueue} = lists:unzip(F("vmq_bridge.ssl", "persistent_queue", BoolVal)),
          {SSLIPs, SSLQueueDir} = lists:unzip(F("vmq_bridge.ssl", "queue_dir", StringVal)),
@@ -559,6 +589,7 @@
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
+                                       TCPMountPoint,
                                        TCPKeepAlive,
                                        TCPSegmentSize,
                                        TCPPersistentQueue,
@@ -575,7 +606,8 @@
                                        TCPInets])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
-                                       SSLClientIds, 
+                                       SSLClientIds,
+                                       SSLMountPoint, 
                                        SSLKeepAlive, 
                                        SSLSegmentSize,
                                        SSLPersistentQueue,
