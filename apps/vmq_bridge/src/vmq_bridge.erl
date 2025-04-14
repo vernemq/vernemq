@@ -259,6 +259,30 @@ handle_info(
     ),
     {noreply, State};
 handle_info(
+    {deliver_remote, Topic, Payload, #{qos := QoS, retain := Retain}},
+    #state{publish_fun = PublishFun, subs_remote = Subscriptions} = State
+) ->
+    %% publish an incoming message from the remote broker locally if
+    %% we have a matching subscription
+    lists:foreach(
+        fun
+            ({{in, T}, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
+                case match(Topic, T) of
+                    true ->
+                        % ignore if we're ready or not.
+                        PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{
+                            qos => QoS, retain => Retain and FwdRetain
+                        });
+                    false ->
+                        ok
+                end;
+            (_) ->
+                ok
+        end,
+        Subscriptions
+    ),
+    {noreply, State};
+handle_info(
     {deliver, Topic, Payload, _QoS, IsRetained, _IsDup, Info},
     #state{subs_local = Subscriptions, client_version = ClientVersion, client_pid = ClientPid} =
         State
@@ -277,7 +301,7 @@ handle_info(
                                     swap_prefix(LocalPrefix, RemotePrefix, Topic),
                                     Payload,
                                     QoS,
-                                    IsRetained
+                                    IsRetained and FwdRetain
                                 );
                             mqttV5 ->
                                 ok = gen_mqtt_v5_client:publish(
@@ -285,7 +309,7 @@ handle_info(
                                     swap_prefix(LocalPrefix, RemotePrefix, Topic),
                                     Payload,
                                     QoS,
-                                    IsRetained,
+                                    IsRetained and FwdRetain,
                                     Props
                                 )
                         end;

@@ -90,6 +90,7 @@
     subscribe/2,
     subscribe/3,
     unsubscribe/2,
+    publish/4,
     publish/6,
     %    publish/7,
     disconnect/1,
@@ -908,7 +909,6 @@ send_connect(
         %        last_will_topic = LWTopic,
         %        last_will_msg = LWMsg,
         %        last_will_qos = LWQoS,
-        proto_version = ProtoVer,
         keepalive_interval = Int
     }
 ) ->
