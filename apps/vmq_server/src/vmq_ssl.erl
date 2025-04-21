@@ -20,8 +20,20 @@
 -export([
     socket_to_common_name/1,
     cert_to_common_name/1,
+    client_cert/1,
     opts/1
 ]).
+-export_type([client_cert/0]).
+
+-type client_cert() :: #'OTPCertificate'{}.
+
+client_cert(Socket) ->
+    case ssl:peercert(Socket) of
+        {error, no_peercert} ->
+            undefined;
+        {ok, Cert} ->
+            Cert
+    end.
 
 socket_to_common_name(Socket) ->
     case ssl:peercert(Socket) of

@@ -52,6 +52,7 @@
         undefined
         | username()
         | {preauth, string() | undefined},
+    conn_opts :: map(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     retry_queue = queue:new() :: queue:queue(),
@@ -115,7 +116,7 @@ init(
         allowed_protocol_versions,
         Opts
     ),
-    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 5000),
     set_maxlifetime_timer(MaxLifetime),
     PreAuthUser =
@@ -124,6 +125,7 @@ init(
             {_, undefined} -> undefined;
             {_, PreAuth} -> {preauth, PreAuth}
         end,
+    ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -167,6 +169,7 @@ init(
         max_inflight_messages = MaxInflightMsgs,
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
+        conn_opts = ConnOpts,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -706,7 +709,9 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                                 SubscriberId,
                                 State1#state.username
                             ]),
-                            State2 = State1#state{queue_pid = QPid, next_msg_id = MsgId},
+                            State2 = State1#state{
+                                queue_pid = QPid, next_msg_id = MsgId, conn_opts = undefined
+                            },
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
                             ?LOG_WARNING(
@@ -828,9 +833,15 @@ auth_on_register(Password, State) ->
         peer = Peer,
         cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        conn_opts = ConnOpts
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean],
+    BasicHookArgs = [Peer, SubscriberId, User, Password, Clean],
+    HookArgs =
+        case ConnOpts of
+            M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
+            _ -> BasicHookArgs
+        end,
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};

@@ -84,13 +84,18 @@ init(Req, Opts) ->
             FsmState =
                 case Type of
                     mqttwss ->
+                        Cert = cowboy_req:cert(Req),
+                        Opts1 =
+                            case proplists:get_value(forward_connection_opts, Opts, false) of
+                                true -> [{conn_opts, #{client_cert => Cert}} | Opts];
+                                false -> Opts
+                            end,
                         case proplists:get_value(use_identity_as_username, Opts, false) of
                             false ->
-                                FsmMod:init(Peer, Opts);
+                                FsmMod:init(Peer, Opts1);
                             true ->
-                                Cert = cowboy_req:cert(Req),
                                 FsmMod:init(Peer, [
-                                    {preauth, vmq_ssl:cert_to_common_name(Cert)} | Opts
+                                    {preauth, vmq_ssl:cert_to_common_name(Cert)} | Opts1
                                 ])
                         end;
                     %mqttws
