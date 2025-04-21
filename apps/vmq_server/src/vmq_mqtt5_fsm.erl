@@ -67,6 +67,7 @@
         undefined
         | username()
         | {preauth, string() | undefined},
+    conn_opts :: map(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     clean_start = false :: flag(),
@@ -152,6 +153,7 @@ init(
             {_, undefined} -> undefined;
             {_, PreAuth} -> {preauth, PreAuth}
         end,
+    ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -209,6 +211,7 @@ init(
         shared_subscription_policy = SharedSubPolicy,
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
+        conn_opts = ConnOpts,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -1086,7 +1089,10 @@ check_user(
                         F,
                         maps:merge(OutProps, OutProps0),
                         QueueOpts,
-                        NewState#state{session_expiry_interval = SessionExpiryInterval}
+                        % reset conn_opts to undefined after the auth-n plugin has used them
+                        NewState#state{
+                            session_expiry_interval = SessionExpiryInterval, conn_opts = undefined
+                        }
                     );
                 {error, no_matching_hook_found} ->
                     ?LOG_ERROR(
@@ -1350,9 +1356,15 @@ auth_on_register(Password, Props, State) ->
         peer = Peer,
         cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        conn_opts = ConnOpts
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
+    BasicHookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
+    HookArgs =
+        case ConnOpts of
+            M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
+            _ -> BasicHookArgs
+        end,
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
             {ok, queue_opts([], Props, State), #{}, State};

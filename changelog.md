@@ -1,9 +1,29 @@
+## VerneMQ 2.1.0
+
 - vmq_swc: Add a separate initial sync round for empty joining nodes (experimental)
 - Bugfix: Make vmq_systree wait for reg tables
 - vmq_bridge: New configuration option 'mountpoint' that allows restricting a bridge to a specific mountpoint
 - vmq_bridge: Bridge can forward retained messages (#2391, #1420, #1691)
 - New configuration: Allow multiple TLS versions per SSL and WSS listener
 - Plugins: Plugins can subscribe to topics with additional subinfo allowing a more MQTTv5-like experience (#2390)
+- New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections
+- Bugfix: Fix load path for patch directory, so that activated plugins can be patched
+- Bugfix: set correct state of init_sync flag when booting from disk
+- Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
+- Bugfix: Configuration parsing for domain sockets (#2372)
+- Dependency: Update Cuttlefish to 3.4.0
+- Retain Cache/Server: Add setting (expire_retain_cache) for automatic removal of expired retained messages (#2373)
+- vmq_diversity (PostGreSQL): Add method parameter to validate_result_client_side (#2361)
+- vmq_diversity: change mongodb-erlang dep to fork supporting MongoDB 6 (#2358)
+- Add NULL check in ensure_utf8 (#2356)
+- Enhancement: tighten max_packet_size checks in parsers (#2352)
+- Enhancement: Do not load non-persistent subscriptions into routing tables at boot (#2351)
+- Remove vmq_pulse (deprecated remote diagnostics plugin) (#2329)
+- vmq_diversity: set SSL to 'off' as a default in MySQL2 plugin (#2340)
+- vmq_diversity: extend SSL options for MongoDB (#2324)
+- Initial support for compile with OTP-27 (#2293)
+- Add fold fun to delete expired retained messages (#2325)
+- New feature: admin cmd 'vmq-admin session unsubscribe" (#2333)
 
 
 ## VerneMQ 2.1.0 (RC 3)

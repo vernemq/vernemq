@@ -19,3 +19,4 @@
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
+-define(OPTS, {conn_opts, #{client_cert => <<"client cert">>}}).

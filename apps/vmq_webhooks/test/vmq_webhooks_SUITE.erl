@@ -86,6 +86,7 @@ http() ->
 
 
      auth_on_register_test,
+     auth_on_register_opts_test,
      auth_on_publish_test,
      auth_on_publish_no_payload_test,
      auth_on_subscribe_test,
@@ -282,6 +283,12 @@ auth_on_register_test(_) ->
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {ok, [{username, <<"changed_username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true]),
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
+auth_on_register_opts_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                        [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, ?OPTS]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_publish_test(_) ->
