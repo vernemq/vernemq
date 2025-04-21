@@ -614,7 +614,7 @@ handle_frame(connected, #mqtt5_suback{message_id = MsgId}, State0) ->
             NewInfoFun = call_info_fun({suback, MsgId}, InfoFun),
             {TopicNames, QoSTable} = lists:unzip(Topics),
             ?LOG_INFO("QoS Table ~p~n", [QoSTable]),
-%            QoSTable = lists:duplicate(length(TopicNames), 0),
+            %            QoSTable = lists:duplicate(length(TopicNames), 0),
             case length(TopicNames) == length(QoSTable) of
                 true ->
                     wrap_res(
