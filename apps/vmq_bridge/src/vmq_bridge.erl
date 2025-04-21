@@ -247,7 +247,9 @@ handle_info(
                     true ->
                         % ignore if we're ready or not.
                         PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{
-                            qos => QoS, retain => Retain and FwdRetain, user_property => UserProperties
+                            qos => QoS,
+                            retain => Retain and FwdRetain,
+                            user_property => UserProperties
                         });
                     false ->
                         ok
@@ -499,8 +501,8 @@ start_client(Type, Host, Port, Opts) ->
     ClientOpts = client_opts(Type, Host, Port, Opts),
     MQTTVersion = proplists:get_value(proto_version, ClientOpts, 99),
     case MQTTVersion of
-         5 -> start_client_v5(Type, Host, Port, Opts);
-        _  -> start_client_v3(Type, Host, Port, Opts)
+        5 -> start_client_v5(Type, Host, Port, Opts);
+        _ -> start_client_v3(Type, Host, Port, Opts)
     end.
 
 validate_prefix(undefined) ->
