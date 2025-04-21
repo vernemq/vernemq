@@ -56,9 +56,23 @@ put_many(Config, PutOps) ->
 
 -spec put_many(config(), list(db_op()), opts()) -> ok.
 put_many(#swc_config{db_backend = Backend, dkm_backend = DkmBackend} = Config, PutOps, Opts) ->
-    {DkmOps, ObjOps} = lists:partition(fun({X, _, _}) -> X == dkm end, PutOps),
-    vmq_swc_metrics:timed_measurement({?METRIC, write}, DkmBackend, write, [Config, DkmOps, Opts]),
-    vmq_swc_metrics:timed_measurement({?METRIC, write}, Backend, write, [Config, ObjOps, Opts]).
+    {DkmOps, ObjOps} = partition_ops(PutOps),
+    case DkmOps of
+        [] ->
+            ignore;
+        _ ->
+            vmq_swc_metrics:timed_measurement({?METRIC, write}, DkmBackend, write, [
+                Config, DkmOps, Opts
+            ])
+    end,
+    case ObjOps of
+        [] ->
+            ok;
+        _ ->
+            vmq_swc_metrics:timed_measurement({?METRIC, write}, Backend, write, [
+                Config, ObjOps, Opts
+            ])
+    end.
 
 -spec get(config(), type(), db_key()) -> {ok, db_value()} | not_found.
 get(Config, Type, Key) ->
@@ -112,3 +126,12 @@ fold_with_iterator(
     vmq_swc_metrics:timed_measurement({?METRIC, scan}, Backend, fold, [
         Config, Type, FoldFun, Acc, StartKey, UpTo, Itr
     ]).
+
+partition_ops(List) ->
+    partition_ops(List, [], []).
+partition_ops([], AList, BList) ->
+    {AList, BList};
+partition_ops([{dkm, M, V} | T], AList, BList) ->
+    partition_ops(T, [{dkm, M, V} | AList], BList);
+partition_ops([{Other, M, V} | T], AList, BList) ->
+    partition_ops(T, AList, [{Other, M, V} | BList]).

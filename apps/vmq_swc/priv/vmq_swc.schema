@@ -56,6 +56,13 @@
                                              {datatype, flag},
                                              hidden
                                             ]}.
+%% @doc Sync timeout for the SWC Exchange FSMs.
+%% Value in milliseconds. Default: 60000
+{mapping, "vmq_swc.sync_timeout", "vmq_swc.sync_timeout", [
+                                             {default, 60000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
 %% @doc Enable SWC broadcast. Default: on
 {mapping, "vmq_swc.enable_broadcast", "vmq_swc.enable_broadcast", [
                                              {default, on},

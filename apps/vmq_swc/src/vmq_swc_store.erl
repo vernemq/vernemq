@@ -36,7 +36,12 @@
     remote_sync_missing/3,
     rpc_sync_missing/3,
 
+    remote_sync_missing_init/4,
+    rpc_sync_missing_init/4,
+
     sync_repair/5,
+    sync_repair_init/5,
+
     node_clock/1,
     remote_node_clock/2,
     rpc_node_clock/1,
@@ -47,11 +52,14 @@
 
     update_watermark/3,
     jump_old_clocks/2,
+    sanitize_old_local_entries/1,
+    sanitize_old_local_entries_by_storename/1,
     do_gc/2,
     set_group_members/2,
     % testing
     node_clock_by_storename/1,
     get_nodeclock/1,
+    get_dkm_by_storename/1,
     % testing
     watermark_by_storename/1,
     rpc_broadcast/3,
@@ -187,6 +195,25 @@ remote_sync_missing(
 rpc_sync_missing(OriginPeer, Dots, #swc_config{store = StoreName}) ->
     gen_server:call(StoreName, {sync_missing, OriginPeer, Dots}, infinity).
 
+-spec remote_sync_missing_init(config(), peer(), integer(), db_key() | 'first') ->
+    {'first', list()}
+    | {'last', integer(), [object()]}
+    | {db_key(), object()}.
+remote_sync_missing_init(
+    #swc_config{group = SwcGroup, transport = TMod, peer = {OriginPeer, _Actor}},
+    RemotePeer,
+    BatchSize,
+    FirstKey
+) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing_init, [OriginPeer, BatchSize, FirstKey]).
+
+-spec rpc_sync_missing_init(peer(), integer(), db_key() | 'first', config()) ->
+    {'first', list()}
+    | {'last', integer(), [object()]}
+    | {db_key(), object()}.
+rpc_sync_missing_init(OriginPeer, BatchSize, FirstKey, #swc_config{store = StoreName}) ->
+    gen_server:call(StoreName, {sync_missing_init, OriginPeer, BatchSize, FirstKey}, infinity).
+
 -spec sync_repair(
     config(), [{db_key(), object()}], peer(), nodeclock(), false | {true, watermark()}
 ) -> ok.
@@ -201,6 +228,19 @@ sync_repair(
         StoreName,
         {sync_repair, LocalNodeId, RemotePeer, RemoteClock, MissingObjects, LastBatch},
         infinity
+    ).
+
+sync_repair_init(
+    #swc_config{store = StoreName, peer = LocalNodeId},
+    MissingObjects,
+    RemotePeer,
+    RemoteClock,
+    LastBatch
+) ->
+    gen_server:call(
+        StoreName,
+        {sync_repair_init, LocalNodeId, RemotePeer, RemoteClock, MissingObjects, LastBatch},
+        30000
     ).
 
 -spec node_clock(config()) -> nodeclock().
@@ -262,13 +302,19 @@ set_broadcast(#swc_config{store = StoreName}, IsBroadcastEnabled) when
 set_group_members(#swc_config{store = StoreName}, Members) ->
     gen_server:cast(StoreName, {set_group_members, Members}).
 
-jump_old_clocks(#swc_config{store = StoreName} = Config, RemoteClock) ->
+jump_old_clocks(#swc_config{store = StoreName} = _Config, RemoteClock) ->
     gen_server:cast(StoreName, {jump_old_clocks, RemoteClock}).
 
-init_and_reset_dkm(#swc_config{store = StoreName} = Config) ->
+sanitize_old_local_entries(#swc_config{store = StoreName} = _Config) ->
+    gen_server:cast(StoreName, sanitize_old_local_entries).
+
+sanitize_old_local_entries_by_storename(StoreName) ->
+    gen_server:cast(StoreName, sanitize_old_local_entries).
+
+init_and_reset_dkm(#swc_config{store = StoreName} = _Config) ->
     gen_server:cast(StoreName, init_dkm).
 
-get_init_sync(#swc_config{store = StoreName} = Config) ->
+get_init_sync(#swc_config{store = StoreName} = _Config) ->
     gen_server:call(StoreName, get_init_sync).
 
 set_init_sync_by_groupname(Group, InitSync) when is_boolean(InitSync) ->
@@ -285,6 +331,9 @@ set_broadcast_by_groupname(Group, IsBroadcastEnabled) when
 reset_iterator_by_groupname(Group) ->
     StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
     gen_server:call(StoreName, reset_itr).
+
+get_dkm_by_storename(StoreName) ->
+    gen_server:call(StoreName, get_dkm).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% GEN_SERVER Callbacks
@@ -329,6 +378,7 @@ init([
             not_found -> false;
             {ok, Res} -> binary_to_term(Res)
         end,
+    vmq_swc_group_coordinator:group_initialized(Group, Init1),
     IsBroadcastEnabled =
         case Init1 of
             false -> false;
@@ -442,7 +492,7 @@ handle_call(
             ok
     end,
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
-    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
+    db_write(Config, [UpdateNodeClock_DBOp | DbOps]),
     r_o_w_cache_clear(Config),
     {reply, ok, cache_node_clock(State1)};
 handle_call(
@@ -453,7 +503,6 @@ handle_call(
     {reply, ok, State0#state{subscriptions = Subs1}};
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
     {Peer, _Actor} = Id,
-    %   ?LOG_INFO("Local ID in lock request: ~p~n", [Id]),
     case node(OwnerPid) == Peer of
         true when SyncLock == undefined ->
             MRef = monitor(process, OwnerPid),
@@ -494,9 +543,52 @@ handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config = Config} = S
         end
     ),
     {noreply, State0};
+handle_call(
+    {sync_missing_init, OriginPeer, BatchSize, FirstKey},
+    From,
+    #state{
+        config = Config
+    } = State0
+) ->
+    TS1 = erlang:monotonic_time(millisecond),
+    ?LOG_DEBUG("Sync missing Init requested from ~p~n", [OriginPeer]),
+    BatchSizePlus = BatchSize + 1,
+    spawn_link(
+        fun() ->
+            Result =
+                case
+                    vmq_swc_db:fold(
+                        Config,
+                        ?DB_OBJ,
+                        fun(SKey, Obj, {Acc, N}) ->
+                            case N of
+                                BatchSizePlus -> stop;
+                                _ -> {[{SKey, binary_to_term(Obj)} | Acc], N + 1}
+                            end
+                        end,
+
+                        {[], 0},
+                        FirstKey
+                    )
+                of
+                    {[], 0} ->
+                        {first, []};
+                    {ObjsA, N} when is_integer(N) -> {last, N, ObjsA};
+                    [{NextKey, _} | Objs] ->
+                        TS2 = erlang:monotonic_time(millisecond),
+                        ?LOG_DEBUG("Init Sync Batch TimeDiff ~p ~n", [TS2 - TS1]),
+                        {NextKey, Objs}
+                end,
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State0};
+handle_call(get_dkm, _From, #state{dotkeymap = DKM} = State) ->
+    {reply, DKM, State};
 handle_call(get_node_clock, _From, #state{nodeclock = NodeClock} = State) ->
     {reply, NodeClock, State};
-handle_call({set_node_clock, NodeClock}, _From, State) ->
+handle_call({set_node_clock, NodeClock}, _From, #state{config = Config} = State) ->
+    vmq_swc_db:put(Config, ?DB_DEFAULT, <<"BVV">>, term_to_binary(NodeClock)),
     {reply, ok, State#state{nodeclock = NodeClock}};
 handle_call(get_watermark, _From, #state{watermark = Watermark} = State) ->
     {reply, Watermark, State};
@@ -545,6 +637,41 @@ handle_call(
                 incremental_gc(State1#state{watermark = Watermark, nodeclock = NodeClock0})
         end,
     {reply, ok, cache_node_clock(State2)};
+handle_call(
+    {sync_repair_init, _OriginPeer, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch},
+    _From,
+    #state{config = Config, dotkeymap = _DKM} = State0
+) ->
+    ?LOG_DEBUG("Initial SYNC REPAIR running from RemotePeer ~p~n", [RemotePeer]),
+    RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
+    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
+
+    State2 =
+        case LastBatch of
+            false ->
+                UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
+                db_write(Config, [UpdateNodeClock_DBop | DbOps]),
+                State1;
+            {true, RemoteWatermark} ->
+                NodeClock0 = sync_clocks(
+                    {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
+                ),
+                Watermark = update_watermark_after_sync(
+                    State1#state.watermark,
+                    RemoteWatermark,
+                    State1#state.id,
+                    {RemotePeer, RemoteActor},
+                    NodeClock0,
+                    RemoteNodeClock
+                ),
+                UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
+                UpdateWatermark_DBop = update_watermark_db_op(Watermark),
+                db_write(
+                    Config, [UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps]
+                ),
+                incremental_gc(State1#state{watermark = Watermark, nodeclock = NodeClock0})
+        end,
+    {reply, ok, cache_node_clock(State2)};
 handle_call(nodeclock, _, #state{nodeclock = NodeClock} = State) ->
     {reply, NodeClock, State};
 handle_call(do_gc, _, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
@@ -575,11 +702,10 @@ handle_cast(
     Peers1 = proplists:get_keys(Peers),
     case lists:member(FromPeer, Peers1) of
         true ->
-            GlobalSync = persistent_term:get({vmq_swc_group_coordinator, init_sync}, 0),
             case InitSync of
                 false ->
                     {noreply, State0};
-                true when GlobalSync == 1 ->
+                true ->
                     {DbOps, #state{nodeclock = NodeClock} = State1} =
                         lists:foldl(
                             fun(Object, Acc) ->
@@ -589,21 +715,20 @@ handle_cast(
                             Objects
                         ),
                     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
-                    db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-                    {noreply, cache_node_clock(State1)};
-                _ ->
-                    {noreply, State0}
+                    db_write(Config, [UpdateNodeClock_DBOp | DbOps]),
+                    {noreply, cache_node_clock(State1)}
             end;
         false ->
             % drop broadcast
             ?LOG_DEBUG("Dropping SWC broadcast from Peer ~p~n", [FromPeer]),
             {noreply, State0}
     end;
-handle_cast({jump_old_clocks, RemoteClock}, #state{peers = Peers, nodeclock = LocalClock} = State) ->
+handle_cast(
+    {jump_old_clocks, RemoteClock},
+    #state{config = Config, peers = Peers, nodeclock = LocalClock} = State
+) ->
     RemoteIds = swc_node:ids(RemoteClock),
     OldIds = RemoteIds -- Peers,
-    % update the counters for the old ids from the remote
-    % fold over the LocalClock
     BasedRemoteClock = swc_node:base(RemoteClock),
     NewLocalClock = lists:foldl(
         fun(Id, Acc) ->
@@ -613,6 +738,32 @@ handle_cast({jump_old_clocks, RemoteClock}, #state{peers = Peers, nodeclock = Lo
         LocalClock,
         OldIds
     ),
+    vmq_swc_db:put(Config, ?DB_DEFAULT, <<"BVV">>, term_to_binary(NewLocalClock)),
+    State1 = State#state{nodeclock = NewLocalClock},
+    {noreply, State1};
+handle_cast(
+    sanitize_old_local_entries,
+    #state{config = Config, peers = Peers, nodeclock = LocalClock} = State
+) ->
+    Ids = swc_node:ids(LocalClock),
+    OldIds = Ids -- Peers,
+    % update the counters for the old ids from the remote
+    % fold over the LocalClock
+    NewLocalClock = lists:foldl(
+        fun(Id, Acc) ->
+            Entry = swc_node:get(Id, LocalClock),
+            case Entry of
+                {0, N} when is_integer(N) ->
+                    swc_node:store_entry(Id, {1, 0}, Acc);
+                _ ->
+                    swc_node:store_entry(Id, Entry, Acc)
+            end
+        end,
+        LocalClock,
+        OldIds
+    ),
+    % update on disk, for the case when we have no events triggering on-disk DB update ops
+    vmq_swc_db:put(Config, ?DB_DEFAULT, <<"BVV">>, term_to_binary(NewLocalClock)),
     State1 = State#state{nodeclock = NewLocalClock},
     {noreply, State1};
 handle_cast(init_dkm, #state{config = Config} = State) ->
@@ -818,7 +969,9 @@ sync_clocks(RemoteID, RemoteNodeClock0, NodeClock) ->
     swc_node:merge(NodeClock, RemoteNodeClock2).
 
 fill_strip_save_batch(
-    MissingObjects, RemoteNodeClock, #state{config = Config, nodeclock = NodeClock0} = State0
+    MissingObjects,
+    RemoteNodeClock,
+    #state{config = #swc_config{store = _StoreName} = Config, nodeclock = NodeClock0} = State0
 ) ->
     {NodeClock1, RealMissing} =
         lists:foldl(
@@ -1075,14 +1228,8 @@ update_watermark_db_op(Watermark) ->
 get_nodeclock(Config) ->
     case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>) of
         {ok, BNodeClock} ->
-            % if we find a nodeclock on disk, we trying to ensure unique swc_id
-            % {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
-            % {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
-            % {ok, Merged} = riak_dt_orswot:update({update, [
-            %                                                {add, node()}]}, Actor, LocalState),
-            % _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
             NodeClock = binary_to_term(BNodeClock),
-            io:format("Loaded NodeClock fromDisk ~p~n", [NodeClock]),
+            ?LOG_DEBUG("Loaded NodeClock fromDisk ~p~n", [NodeClock]),
             NodeClock;
         not_found ->
             NodeClock0 = swc_node:new(),
@@ -1097,6 +1244,8 @@ get_watermark(Config) ->
     end.
 
 -spec db_write(config(), list(db_op())) -> ok.
+db_write(_Config, []) ->
+    ok;
 db_write(Config, DbOps) ->
     vmq_swc_db:put_many(Config, DbOps).
 

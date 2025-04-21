@@ -1,5 +1,7 @@
 ## VerneMQ 2.1.0
 
+- vmq_swc: Add a separate initial sync round for empty joining nodes (experimental)
+- Bugfix: Make vmq_systree wait for reg tables
 - vmq_bridge: New configuration option 'mountpoint' that allows restricting a bridge to a specific mountpoint
 - vmq_bridge: Bridge can forward retained messages (#2391, #1420, #1691)
 - New configuration: Allow multiple TLS versions per SSL and WSS listener
@@ -22,6 +24,7 @@
 - Initial support for compile with OTP-27 (#2293)
 - Add fold fun to delete expired retained messages (#2325)
 - New feature: admin cmd 'vmq-admin session unsubscribe" (#2333)
+
 
 ## VerneMQ 2.1.0 (RC 3)
 
