@@ -384,7 +384,6 @@ pluggable_metric_defs() ->
     Defs.
 
 pluggable_metrics() ->
-    Timeout = application:get_env(vmq_server, init_metrics_timeout, 10000),
     lists:foldl(
         fun({App, _Name, _Version}, Acc) ->
             case application:get_env(App, vmq_metrics_mfa, undefined) of
@@ -414,7 +413,7 @@ pluggable_metrics() ->
             end
         end,
         {[], []},
-        application:which_applications(Timeout)
+        application:which_applications()
     ).
 
 %%--------------------------------------------------------------------
