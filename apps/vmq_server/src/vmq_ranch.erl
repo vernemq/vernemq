@@ -163,7 +163,6 @@ start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
     }).
 
 mask_socket(ranch_tcp, Socket) -> Socket;
-mask_socket(vmq_ranch_proxy_protocol, Socket) -> vmq_ranch_proxy_protocol:get_csocket(Socket);
 mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
 
 loop(State) ->

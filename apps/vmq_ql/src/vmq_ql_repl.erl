@@ -28,10 +28,10 @@
 start() ->
     case init:get_plain_arguments() of
         ["-vmql_eval" | As] ->
-            user:start(),
+            user_drv:start(#{initial_shell => noshell}),
             run_string(As);
         [S | As] ->
-            user:start(),
+            user_drv:start(#{initial_shell => noshell}),
             run_file([S | As]);
         [] ->
             user_drv:start(['tty_sl -c -e', {vmq_ql_repl, repl_start, []}])
