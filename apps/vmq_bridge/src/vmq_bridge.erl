@@ -521,11 +521,30 @@ validate_prefix(Prefix) ->
 add_prefix(undefined, Topic) -> Topic;
 add_prefix(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
 
-remove_prefix(undefined, Topic) -> Topic;
-remove_prefix([], Topic) -> Topic;
-remove_prefix([H | Prefix], [H | Topic]) -> remove_prefix(Prefix, Topic);
-remove_prefix([Prefix], Topic) -> remove_prefix(Prefix, Topic);
-remove_prefix(Prefix, [Prefix | Rest]) -> Rest.
+% Helper function to correctly remove prefixes
+remove_prefix_recursive_helper([], RemainingTopicSegments, _OriginalTopicSegments) ->
+    % Prefix successfully removed, return the rest
+    RemainingTopicSegments;
+remove_prefix_recursive_helper(_NonEmptyPrefix, [], OriginalTopicSegments) ->
+    % Topic is shorter than prefix, or became empty, so prefix doesn't fully match
+    OriginalTopicSegments;
+remove_prefix_recursive_helper([PrefixH | PrefixT], [TopicH | TopicT], OriginalTopicSegments) ->
+    if
+        % Compare segments
+        PrefixH =:= TopicH ->
+            remove_prefix_recursive_helper(PrefixT, TopicT, OriginalTopicSegments);
+        % Mismatch
+        true ->
+            OriginalTopicSegments
+    end.
+
+remove_prefix(undefined, Topic) ->
+    Topic;
+remove_prefix([], Topic) ->
+    Topic;
+% For list-of-segments prefixes, delegate to a robust recursive helper
+remove_prefix(PrefixSegments, TopicSegments) when is_list(PrefixSegments), is_list(TopicSegments) ->
+    remove_prefix_recursive_helper(PrefixSegments, TopicSegments, TopicSegments).
 
 swap_prefix(OldPrefix, NewPrefix, Topic) ->
     add_prefix(NewPrefix, remove_prefix(OldPrefix, Topic)).
