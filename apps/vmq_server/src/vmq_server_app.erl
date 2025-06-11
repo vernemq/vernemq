@@ -42,6 +42,7 @@ start(_StartType, _StartArgs) ->
             vmq_server_cli:init_registry(),
             start_user_plugins(),
             vmq_config:configure_node(),
+            maybe_start_syslog(),
             R
     end.
 
@@ -103,4 +104,10 @@ maybe_update_nodetool() ->
             end;
         error ->
             ignore
+    end.
+
+maybe_start_syslog() ->
+    case application:get_env(syslog, logger, []) of
+        [] -> ignore;
+        _ -> application:start(syslog)
     end.

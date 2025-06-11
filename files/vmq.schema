@@ -189,10 +189,15 @@
 
 
 %% @doc When set to 'on', enables log output to syslog.
-{mapping, "log.syslog", "kernel.logger", [
+{mapping, "log.syslog", "syslog.logger", [
                                            {default, off},
                                            {datatype, flag}
                                           ]}.
+%% @doc The minimal level for syslog.
+{mapping, "log.syslog.level", "syslog.logger", [{default, all},
+                                                  {datatype, {enum, [all, debug, info, warning, error]}},
+                                                   hidden
+                                                 ]}.
 
 %% @doc The minimal level for all loggers. Should stay "all".
 {mapping, "log.level", "kernel.logger_level", [{default, all},
@@ -251,7 +256,6 @@
     ConsoleLoggerFile = {handler, consolefile, logger_std_h, #{config => #{file => ConsoleLogFile, max_no_bytes => ConsoleLogRotationSize, max_no_files => ConsoleLogRotationKeep, compress_on_rotate => ConsoleLogRotationCompress}, filters => [{consolefile, {fun logger_filters:progress/2, stop}}], formatter => {ConsoleFileFormatter, #{single_line => true,  template => Template}}, level => ConsoleLogLevel}},
     CrashLoggerFile   = {handler, crash,       logger_std_h, #{config => #{file => CrashLogFile,   max_no_bytes => CrashLogRotationSize,   max_no_files => CrashLogRotationKeep,   compress_on_rotate => CrashLogRotationCompress},   filters => [{crash, {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => error}},
     SaslLoggerFile    = {handler, sasl,        logger_std_h, #{config => #{file => SaslLogFile,    max_no_bytes => SaslLogRotationSize,    max_no_files => SaslLogRotationKeep,    compress_on_rotate => SaslLogRotationCompress},    filters => [{sasl,  {fun logger_filters:domain/2, {stop, not_equal, [otp, sasl]}}}], formatter => {logger_formatter, #{single_line => true, template => Template}}, level => info}},
-    SyslogLogger      = {handler, syslog,      syslog_logger_h, #{}},
 
     ConsoleHandlers = case cuttlefish:conf_get("log.console", Conf) of
                                off -> [];
@@ -260,11 +264,6 @@
                                both -> [ConsoleLogger, ConsoleLoggerFile];
                                _ -> []
                        end,
-
-    SyslogLoggerHandler = case cuttlefish:conf_get("log.syslog", Conf) of
-                      false -> [];
-                         _  -> [SyslogLogger]
-                      end,
 
     FileLoggerErrHandler = case cuttlefish:conf_get("log.error", Conf) of
                       false -> [];
@@ -281,10 +280,24 @@
                              _  -> [SaslLoggerFile]
                       end,
 
-    FileLoggerErrHandler ++ ConsoleHandlers ++ CrashLoggerFileHandler ++ SaslLoggerFileHandler ++ SyslogLoggerHandler
+    FileLoggerErrHandler ++ ConsoleHandlers ++ CrashLoggerFileHandler ++ SaslLoggerFileHandler
  end
 }.
 
+{translation,
+ "syslog.logger",
+ fun(Conf) ->
+    SyslogLogLevel = cuttlefish:conf_get("log.syslog.level", Conf),
+
+    SyslogLogger      = {handler, syslog,      syslog_logger_h, #{config => #{}, level => SyslogLogLevel}},
+    SyslogLoggerHandler = case cuttlefish:conf_get("log.syslog", Conf) of
+                      false -> [];
+                         _  -> [SyslogLogger]
+                      end,
+
+SyslogLoggerHandler
+ end
+}.
 
 %% @doc Whether to enable Erlang's built-in error logger.
 {mapping, "sasl", "kernel.logger_sasl_compatible", [
