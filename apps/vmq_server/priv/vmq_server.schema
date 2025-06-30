@@ -1784,12 +1784,12 @@
                                                                      hidden
                                                                     ]}.
 {mapping, "listener.https.tls_version", "vmq_server.listeners", [
-                                                                 {default, 'tlsv1.2'},
-                                                                 {datatype, atom},
-                                                                 {commented, 'tlsv1.2'}
+                                                                 {default, "tlsv1.2"},
+                                                                 {datatype, string},
+                                                                 {commented, "tlsv1.2"}
                                                                 ]}.
 {mapping, "listener.https.$name.tls_version", "vmq_server.listeners", [
-                                                                     {datatype, atom},
+                                                                     {datatype, string},
                                                                      hidden
                                                                     ]}.
 %% @doc If 'listener.ssl.require_certificate' is enabled, you may enable
