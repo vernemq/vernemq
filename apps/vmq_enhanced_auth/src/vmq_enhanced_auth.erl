@@ -42,6 +42,7 @@
 -import(vmq_topic, [words/1, match/2]).
 
 -include_lib("vmq_server/src/vmq_server.hrl").
+-include_lib("vmq_enhanced_auth/src/vmq_enhanced_auth.hrl").
 
 -define(TABLES, [
     vmq_enhanced_auth_acl_read_pattern,
@@ -173,7 +174,7 @@ auth_on_register(
     %%      - {mountpoint, NewMountPoint::string}
     %%      - {clean_session, NewCleanSession::boolean}
     %% 4. return {error, invalid_credentials} -> CONNACK_CREDENTIALS is sent
-    %% 5. return {error, whatever} -> CONNACK_AUTH is sent
+    %% 5. return {error, Error} -> CONNACK_AUTH is sent
 
     %% we return 'ok'
     D = is_auth_on_register_disabled(),
@@ -185,7 +186,9 @@ auth_on_register(
             if
                 Result =:= ok -> check_rid(Claims, UserName);
                 %else block
-                true -> {error, invalid_signature}
+                true ->
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
+                    {error, ?INVALID_SIGNATURE}
             end
     end.
 
@@ -595,10 +598,13 @@ check_rid(Claims, UserName) ->
             if
                 Value =:= UserName -> ok;
                 %else block
-                true -> error
+                true -> 
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}),
+                    {error, ?USERNAME_RID_MISMATCH}
             end;
         error ->
-            error
+            vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?MISSING_RID}),
+            {error, ?MISSING_RID}
     end.
 
 -ifdef(TEST).

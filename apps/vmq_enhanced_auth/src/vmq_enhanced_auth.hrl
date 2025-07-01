@@ -1,0 +1,4 @@
+-define(REGISTER_AUTH_ERROR, register_auth_error).
+-define(INVALID_SIGNATURE, invalid_signature).
+-define(USERNAME_RID_MISMATCH, username_rid_mismatch).
+-define(MISSING_RID, missing_rid).
