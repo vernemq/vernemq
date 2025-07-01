@@ -570,8 +570,10 @@ start_plugin(App) ->
                     %% start/1 function
                     case lists:member({start, 0}, apply(App, module_info, [exports])) of
                         true ->
+                            ?LOG_DEBUG("Starting Plugin ~p via custom start function ~n", [App]),
                             apply(App, start, []);
                         false ->
+                            ?LOG_DEBUG("Starting Plugin ~p via application interface ~n", [App]),
                             {ok, _} = application:ensure_all_started(App)
                     end;
                 false ->

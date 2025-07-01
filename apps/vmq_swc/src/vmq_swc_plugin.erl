@@ -45,6 +45,7 @@
 plugin_start() ->
     SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
     ok = persistent_term:put(?INFO_KEY, {?NR_OF_GROUPS, SWCGroups}),
+    _ = application:ensure_all_started(vmq_swc),
     _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
@@ -56,6 +57,7 @@ plugin_stop() ->
 % for tests
 plugin_start(SWCGroups) ->
     ok = persistent_term:put(?INFO_KEY, {length(SWCGroups), SWCGroups}),
+    _ = application:ensure_all_started(vmq_swc),
     _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 

@@ -67,14 +67,7 @@ init([SwcGroup, Opts]) ->
     SWC_ID = {node(), Actor},
     %   list_to_atom(TS ++ atom_to_list(node())),
 
-    DbBackend =
-        case
-            proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb))
-        of
-            rocksdb -> vmq_swc_db_rocksdb;
-            leveled -> vmq_swc_db_leveled;
-            leveldb -> vmq_swc_db_leveldb
-        end,
+    DbBackend = vmq_swc_db_leveldb,
     DkmBackend = vmq_swc_dkm_leveldb,
 
     DbOpts = proplists:get_value(db_opts, Opts, []),

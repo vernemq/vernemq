@@ -854,18 +854,18 @@
 %% - listener.ws.default = 127.0.0.1:800
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
-                                                                {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                                {commented, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
                                                                 {datatype, [ip, domain_socket]}
                                                                 ]}.
 
 {mapping, "listener.ws.$name", "vmq_server.listeners", [
-                                                                  {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
                                                                   {datatype, ip},
                                                                   hidden
                                                                  ]}.
 
 {mapping, "listener.wss.$name", "vmq_server.listeners", [
-                                                                  {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
                                                                   {datatype, ip},
                                                                   hidden
                                                                  ]}.
@@ -1784,12 +1784,12 @@
                                                                      hidden
                                                                     ]}.
 {mapping, "listener.https.tls_version", "vmq_server.listeners", [
-                                                                 {default, 'tlsv1.2'},
-                                                                 {datatype, atom},
-                                                                 {commented, 'tlsv1.2'}
+                                                                 {default, "tlsv1.2"},
+                                                                 {datatype, string},
+                                                                 {commented, "tlsv1.2"}
                                                                 ]}.
 {mapping, "listener.https.$name.tls_version", "vmq_server.listeners", [
-                                                                     {datatype, atom},
+                                                                     {datatype, string},
                                                                      hidden
                                                                     ]}.
 %% @doc If 'listener.ssl.require_certificate' is enabled, you may enable

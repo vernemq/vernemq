@@ -384,7 +384,7 @@ translate_listeners(Conf) ->
         extract("listener.https", "require_certificate", BoolVal, Conf)
     ),
     {HTTP_SSLIPs, HTTP_SSLVersions} = lists:unzip(
-        extract("listener.https", "tls_version", AtomVal, Conf)
+        extract("listener.https", "tls_version", SSLVersionsListVal, Conf)
     ),
 
     TCP = lists:zip(

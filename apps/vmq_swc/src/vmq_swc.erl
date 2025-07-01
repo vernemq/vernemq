@@ -42,7 +42,6 @@ stop(SwcGroup) when is_atom(SwcGroup) ->
     supervisor:terminate_child(vmq_swc_sup, StoreSup).
 
 start(SwcGroup) when is_atom(SwcGroup) ->
-    _ = application:ensure_all_started(vmq_swc),
     supervisor:start_child(
         vmq_swc_sup,
         #{

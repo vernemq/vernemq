@@ -235,6 +235,8 @@ jobs:
           ./_build/default/rel/vernemq/bin/vernemq config generate -l debug
           # Allow anonymous connections
           echo "allow_anonymous = on" >> _build/default/rel/vernemq/etc/vernemq.conf
+          # Configure MQTT Listener
+          echo "listener.tcp.test = 127.0.0.1:1883" >> _build/default/rel/vernemq/etc/vernemq.conf
           ./_build/default/rel/vernemq/bin/vernemq start
           # Wait for port to come up
           timeout 300 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 1883
