@@ -37,4 +37,7 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [?CHILD(vmq_enhanced_auth_reloader, worker)]}}.
+    {ok,
+        {{one_for_one, 5, 10}, [
+            ?CHILD(vmq_enhanced_auth_reloader, worker), ?CHILD(vmq_enhanced_auth_metrics, worker)
+        ]}}.

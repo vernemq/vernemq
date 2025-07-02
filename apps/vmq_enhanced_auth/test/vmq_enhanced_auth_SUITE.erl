@@ -1,5 +1,7 @@
 -module(vmq_enhanced_auth_SUITE).
 
+-include_lib("vmq_enhanced_auth/src/vmq_enhanced_auth.hrl").
+
 %% API
 -export([
   init_per_suite/1,
@@ -28,6 +30,7 @@ all() ->
 
 init_per_suite(_Config) ->
   cover:start(),
+  vmq_enhanced_auth_metrics:start_link(),
   _Config.
 
 end_per_suite(_Config) ->
@@ -55,7 +58,7 @@ auth_on_register_rid_absent_test(_) ->
 
   %When rid is not present in claims
   Password = jwerl:sign([{norid, <<"username">>}], hs256, <<"test-key">>),
-  error = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, "username", Password, false),
+  {error, ?MISSING_RID} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, "username", Password, false),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -65,7 +68,7 @@ auth_on_register_rid_different_test(_) ->
 
   %When rid in claims is different from username
   Password = jwerl:sign([{rid, <<"different_username">>}], hs256, <<"test-key">>),
-  error = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
+  {error, ?USERNAME_RID_MISMATCH} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -74,7 +77,7 @@ auth_on_register_unparsable_token_test(_) ->
   ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
 
   %When password is not jwt from username
-  {error, invalid_signature} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, <<"Password">>, false),
+  {error, ?INVALID_SIGNATURE} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, <<"Password">>, false),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
