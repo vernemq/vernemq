@@ -1,3 +1,11 @@
+## VerneMQ 2.1.1
+
+- Bugfix syslog boot and add log.syslog.level setting #2413
+- Enhancement: vmq_server: don't add local MQTT and WS default listeners
+- vmq_swc: minor adaptation of plugin start
+- vmq_server: Remove some minor unused functions and modules
+- vmq_server: Fix HTTPS internal config type, fixing a regression in 2.1.0
+
 ## VerneMQ 2.1.0
 
 - vmq_swc: Add a separate initial sync round for empty joining nodes (experimental)
