@@ -1144,11 +1144,18 @@ encode_payload(Hook, Args, Opts) when
                 ({topics, Topics}) ->
                     {topics,
                         lists:map(
-                            fun([T, Q]) ->
-                                [
-                                    {topic, T},
-                                    {qos, Q}
-                                ]
+                            fun
+                                ([T, {QoS, Qopts}]) ->
+                                    [
+                                        {topic, T},
+                                        {qos, QoS},
+                                        {options, Qopts}
+                                    ];
+                                ([T, Q]) ->
+                                    [
+                                        {topic, T},
+                                        {qos, Q}
+                                    ]
                             end,
                             Topics
                         )};
