@@ -33,7 +33,9 @@
     start_node/3,
     partition_cluster/2,
     heal_cluster/2,
-    ensure_cluster/1
+    ensure_cluster/1,
+    start_peer/2, 
+    stop_peer/2
     ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -104,15 +106,10 @@ wait_until_connected(Node1, Node2) ->
 
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
-    %% have the slave nodes monitor the runner node, so they can't outlive it
-    NodeConfig = [
-        {monitor_master, true},
-        {erl_flags, "-smp"} %% smp for the eleveldb god
-    ],
     VmqServerPrivDir = code:priv_dir(vmq_server),
-    ct:log("Starting node ~p with Opts = ~p", [Name, NodeConfig]),
-    case ct_slave:start(Name, NodeConfig) of
-        {ok, Node} ->
+    ct:log("Starting node ~p", [Name]),
+    case start_peer(Name, CodePath) of
+        {ok, Peer, Node} ->
             true = rpc:block_call(Node, code, set_path, [CodePath]),
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
@@ -159,12 +156,102 @@ start_node(Name, Config, Case) ->
                                 _ -> false
                             end
                     end, 60, 500),
-            Node;
-        {error, already_started, Node} ->
-            ct_slave:stop(Name),
-            wait_until_offline(Node),
-            start_node(Name, Config, Case)
+            {ok, Peer, Node};
+        Other ->
+            Other
     end.
+
+-if(?OTP_RELEASE >= 25).
+
+start_peer(NodeName, CodePath) ->
+    Opts =
+        #{name => NodeName,
+          wait_boot => infinity,
+          args => ["-kernel", "prevent_overlapping_partitions", "false", "-pz" | CodePath]},
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    {ok, Peer, Node} = peer:start(Opts),
+    {ok, Peer, Node}.
+
+stop_peer(Peer, Node) ->
+    try
+        %% Close Redis client connections
+        case rpc:call(Node, erlang, whereis, [eredis]) of
+            {badrpc, nodedown} ->
+                %% Node is already down, no need to stop Redis
+                ct:pal("Node ~p is already down, skipping Redis client stop", [Node]),
+                ok;
+            undefined ->
+                ok;
+            RedisPid when is_pid(RedisPid) ->
+                ct:pal("Stopping Redis client on node ~p", [Node]),
+                rpc:call(Node, eredis, stop, [])
+        end,
+
+        %% Stop the peer node
+        peer:stop(Peer)
+    catch
+        exit:{noproc, {gen_server, call, _}} ->
+            %% Ignore the error if the peer is already stopped
+            ct:pal("Peer ~p is already stopped, ignoring...", [Peer]),
+            ok;
+        exit:Reason:Stacktrace ->
+            ct:pal("Unexpected error stopping peer ~p: ~p~nStacktrace: ~p",
+                   [Peer, Reason, Stacktrace]),
+            ok
+    end.
+
+- else .
+
+start_peer(NodeName, CodePath) ->
+    PathFlag =
+        "-pz "
+        ++ lists:concat(
+               lists:join(" ", CodePath)),
+    %% smp for the eleveldb god
+    Opts =
+        [{monitor_master, true},
+         {boot_timeout, 30},
+         {init_timeout, 30},
+         {startup_timeout, 30},
+         {erl_flags, PathFlag},
+         {startup_functions, [{code, add_pathz, [CodePath]}]}],
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    case ct_slave:start(NodeName, Opts) of
+        {ok, Node} ->
+            {ok, Node, Node};
+        {error, already_started, Node} ->
+            ct:pal("Error starting node ~w, reason already_started, will retry", [Node]),
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        {error, started_not_connected, Node} ->
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        Other ->
+            Other
+    end.
+
+stop_peer(Node, _) ->
+    try
+        %% Close Redis client connections
+        case rpc:call(Node, erlang, whereis, [eredis]) of
+            undefined ->
+                ok;
+            RedisPid when is_pid(RedisPid) ->
+                ct:pal("Stopping Redis client on node ~p", [Node]),
+                rpc:call(Node, eredis, stop, [])
+        end
+    catch
+        exit:_:_Stacktrace ->
+            ok
+    end,
+
+    %% Stop the node
+    ct_slave:stop(Node),
+    ok.
+
+-endif.    
 
 partition_cluster(ANodes, BNodes) ->
     pmap(fun({Node1, Node2}) ->
@@ -186,7 +273,7 @@ heal_cluster(ANodes, BNodes) ->
 
 ensure_cluster(Config) ->
     Nodes = proplists:get_value(nodes, Config),
-    {NodeNames, _} = lists:unzip(Nodes),
+    {_, NodeNames, _} = lists:unzip3(Nodes),
     Expected = lists:sort(NodeNames),
     ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
     [?assertEqual({Node, Expected}, {Node,

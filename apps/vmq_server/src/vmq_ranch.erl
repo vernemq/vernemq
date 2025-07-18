@@ -17,7 +17,7 @@
 -behaviour(ranch_protocol).
 
 %% API.
--export([start_link/4]).
+-export([start_link/4, start_link/3]).
 
 -export([
     init/4,
@@ -43,6 +43,10 @@
 
 %% API.
 start_link(Ref, _Socket, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
+    {ok, Pid}.
+
+start_link(Ref, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
     {ok, Pid}.
 
@@ -195,7 +199,7 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _}, fsm_mod = FsmMod} = State) ->
+handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = FsmMod} = State) ->
     #st{
         fsm_state = FsmState0,
         socket = Socket,
@@ -257,11 +261,11 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _}, fsm_mod = FsmMod
             ),
             {exit, Reason, State}
     end;
-handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _}, fsm_mod = FsmMod} = State) ->
+handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod = FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
     _ = FsmMod:msg_in({disconnect, ?TCP_CLOSED}, State#st.fsm_state),
     {exit, normal, State};
-handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr}} = State) ->
+handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
 handle_message(
@@ -284,7 +288,7 @@ handle_message({set_sock_opts, Opts}, #st{socket = S} = State) ->
     setopts(S, Opts),
     State;
 handle_message(restart_work, #st{throttled = true} = State) ->
-    #st{proto_tag = {Proto, _, _}, socket = Socket} = State,
+    #st{proto_tag = {Proto, _, _, _}, socket = Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled = false});
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state = FsmState0, fsm_mod = FsmMod} = State) ->
     %% TODO: this should probably not be a normal disconnect...
@@ -319,7 +323,7 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
         0 ->
             State#st{pending = []};
         NrOfBytes ->
-            case port_cmd(Socket, Pending) of
+            case tcp_send(Socket, Pending) of
                 ok ->
                     _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
                     State#st{pending = []};
@@ -346,16 +350,16 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
 %% Also note that the port has bounded buffers and port_command blocks
 %% when these are full. So the fact that we process the result
 %% asynchronously does not impact flow control.
-port_cmd(Socket, Data) ->
+tcp_send(Socket, Data) ->
     try
-        port_cmd_(Socket, Data),
+        tcp_send_(Socket, Data),
         ok
     catch
         error:Error ->
             {error, Error}
     end.
 
-port_cmd_({ssl, Socket}, Data) ->
+tcp_send_({ssl, Socket}, Data) ->
     case ssl:send(Socket, Data) of
         ok ->
             self() ! {inet_reply, Socket, ok},
@@ -363,8 +367,16 @@ port_cmd_({ssl, Socket}, Data) ->
         {error, Reason} ->
             erlang:error(Reason)
     end;
-port_cmd_(Socket, Data) ->
+tcp_send_(Socket, Data) ->
+    do_tcp_send(Socket, Data).
+
+-if(?OTP_RELEASE >= 26).
+do_tcp_send(Socket, Data) ->
+    gen_tcp:send(Socket, Data).
+-else.
+do_tcp_send(Socket, Data) ->
     erlang:port_command(Socket, Data).
+-endif.
 
 system_continue(_, _, State) ->
     loop(State).

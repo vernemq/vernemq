@@ -23,12 +23,12 @@ register_config() ->
             "vmq_events_sidecar.backlog_size"
         ],
     [
-        clique:register_config([Key], fun register_config_callback/3)
+        clique:register_config([Key], fun register_config_callback/2)
      || Key <- ConfigKeys
     ],
     ok = clique:register_config_whitelist(ConfigKeys).
 
-register_config_callback(_, _, _) ->
+register_config_callback(_, _) ->
     ok.
 
 status_cmd() ->

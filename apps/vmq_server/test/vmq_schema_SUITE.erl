@@ -151,7 +151,7 @@ ssl_certs_opts_override_test(_Config) ->
                         Base;
                     _ ->
                         [{["listener", LType, "mountpoint"], "mpval"},
-                         {["listener", LType, "mylistener", "mountpoint"], "overriden"}
+                         {["listener", LType, "mylistener", "mountpoint"], "overridden"}
                          | Base]
                 end
 
@@ -169,7 +169,7 @@ ssl_certs_opts_override_test(_Config) ->
                 case IntName of
                     https -> skip;
                     _ ->
-                        "overriden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                        "overridden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
                 end
         end,
 
@@ -177,8 +177,8 @@ ssl_certs_opts_override_test(_Config) ->
       fun({ConfName, IntName} = L) ->
               try
                   TestFun(ConfFun(ConfName), IntName)
-              catch C:E ->
-                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+              catch C:E:Stack ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, Stack}]),
                       throw(E)
               end
       end,
@@ -248,12 +248,14 @@ allowed_protocol_versions_inheritance_test(_Config) ->
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 allowed_eccs_test(_Config) ->
+    [_ | Allowed_ECCS] = lists:usort(ssl:eccs()),
+    ECC_List = string:join([atom_to_list(A) || A <- Allowed_ECCS], ", "),
     Conf = [
-            {["listener","ssl","default", "eccs"], "sect163r1,sect163r2,secp160k1,secp160r1"},
+            {["listener","ssl","default", "eccs"], ECC_List},
             {["listener","ssl","default"],"127.0.0.1:8884"}
             | global_substitutions()
            ],
-    ExpectedECCs = lists:usort([sect163r1,sect163r2,secp160k1,secp160r1]),
+    ExpectedECCs = Allowed_ECCS,
     ExpectedECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
 
 default_eccs_test(_Config) ->
@@ -266,9 +268,11 @@ default_eccs_test(_Config) ->
     KnownECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
 
 invalid_eccs_test(_Config) ->
+    Allowed_ECCS_and_wrong = lists:usort(ssl:eccs() ++ [wrong]),
+    ECC_List = string:join([atom_to_list(A) || A <- Allowed_ECCS_and_wrong], ", "),
     Conf = [
             %% tcp/ssl/mqtt
-            {["listener","ssl","default","eccs"], "[sect163r1,sect163r2,wrong,secp160r1]"},
+            {["listener","ssl","default","eccs"], ECC_List},
             {["listener","ssl","default"],"127.0.0.1:8884"}
             | global_substitutions()
            ],
@@ -303,7 +307,7 @@ allowed_protocol_versions_override_test(_Config) ->
     [4] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 
--define(stacktrace, try throw(foo) catch foo -> erlang:get_stacktrace() end).
+-define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
 expect(Conf, Setting) ->
     Schema = cuttlefish_schema:files([code:priv_dir(vmq_server) ++ "/vmq_server.schema"]),

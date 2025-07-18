@@ -13,6 +13,9 @@
     partition_cluster/2,
     heal_cluster/2
     ]).
+
+-export([stop_peer/2]).
+
 get_cluster_members(Node) ->
     Config = rpc:call(Node, vmq_swc, config, [test]),
     rpc:call(Node, vmq_swc_group_membership, get_members, [Config]).
@@ -79,14 +82,8 @@ wait_until_connected(Node1, Node2) ->
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     %% have the slave nodes monitor the runner node, so they can't outlive it
-    NodeConfig = [
-            {monitor_master, true},
-            {erl_flags, "-smp"},
-            {startup_functions, [
-                    {code, set_path, [CodePath]}
-                    ]}],
-    case ct_slave:start(Name, NodeConfig) of
-        {ok, Node} ->
+    case start_peer(Name, CodePath) of
+        {ok, Peer, Node} ->
 
             DbBackend = proplists:get_value(db_backend, Config),
             PrivDir = proplists:get_value(priv_dir, Config),
@@ -120,10 +117,9 @@ start_node(Name, Config, Case) ->
                                 _ -> false
                             end
                     end, 60, 500),
-            Node;
-        {error, _Reason, Node} ->
-            wait_until_offline(Node),
-            start_node(Name, Config, Case)
+        {ok, Peer, Node};
+        Other ->
+            Other
     end.
 
 partition_cluster(ANodes, BNodes) ->
@@ -143,3 +139,54 @@ heal_cluster(ANodes, BNodes) ->
         end,
          [{Node1, Node2} || Node1 <- ANodes, Node2 <- BNodes]),
     ok.
+
+-if(?OTP_RELEASE >= 25).
+start_peer(NodeName, CodePath) ->
+    Opts =
+        #{name => NodeName,
+          wait_boot => infinity,
+          args => ["-kernel", "prevent_overlapping_partitions", "false", "-pz" | CodePath]},
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    {ok, Peer, Node} = peer:start(Opts),
+    {ok, Peer, Node}.
+
+stop_peer(Peer, _Node) ->
+    %% peer:stop/1 is not idempotent
+    try
+        peer:stop(Peer)
+    catch exit:_:_Stacktrace ->
+        ok
+    end.
+- else .
+
+start_peer(NodeName, CodePath) ->
+    PathFlag = "-pz " ++ lists:concat(lists:join(" ", CodePath)),
+    %% smp for the eleveldb god
+    Opts =
+        [{monitor_master, true},
+         {boot_timeout, 30},
+         {init_timeout, 30},
+         {startup_timeout, 30},
+         {erl_flags, PathFlag},
+         {startup_functions, [{code, add_pathz, [CodePath]}]}],
+    ct:log("Starting node ~p with Opts = ~p", [NodeName, Opts]),
+    case ct_slave:start(NodeName, Opts) of
+        {ok, Node} ->
+            {ok, Node, Node};
+        {error, already_started, Node} ->
+            ct:pal("Error starting node ~w, reason already_started, will retry", [Node]),
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        {error, started_not_connected, Node} ->
+            ct_slave:stop(NodeName),
+            wait_until_offline(Node),
+            start_peer(NodeName, CodePath);
+        Other ->
+            Other
+    end.
+
+stop_peer(Node, _) ->
+    ct_slave:stop(Node),
+    ok.
+-endif.

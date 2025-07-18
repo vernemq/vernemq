@@ -3,9 +3,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("kernel/include/inet.hrl").
 
 -define(SWC_GROUP, test).
 -define(STORE_NAME, list_to_atom("vmq_swc_store_" ++ atom_to_list(?SWC_GROUP))).
@@ -56,16 +54,19 @@ init_per_testcase(Case, Config) ->
     init_per_testcase_(Case, Config, [electra, katana, flail, gargoyle]).
 
 init_per_testcase_(Case, Config, Nodenames) ->
-    Nodes = vmq_swc_test_utils:pmap(fun(N) ->
-                    vmq_swc_test_utils:start_node(N, Config, Case)
+    PeerNodes = vmq_swc_test_utils:pmap(fun(N) ->
+                    {ok, Peer, Node} = vmq_swc_test_utils:start_node(N, Config, Case),
+                    {Peer, Node}
             end, Nodenames),
+    {_Peers, Nodes} = lists:unzip(PeerNodes),
     {ok, _} = ct_cover:add_nodes(Nodes),
-    [{nodes, Nodes}|Config].
+    [{nodes, Nodes}, {peer_nodes, PeerNodes}|Config].
 
 end_per_testcase(basic_store_test, _Config) ->
     application:stop(vmq_swc);
-end_per_testcase(_, _Config) ->
-    vmq_swc_test_utils:pmap(fun(Node) ->ct_slave:stop(Node) end, [electra, katana, flail, gargoyle]),
+end_per_testcase(_, Config) ->
+    PeerNodes = proplists:get_value(peer_nodes, Config),
+    vmq_swc_test_utils:pmap(fun({Peer, Node}) -> vmq_swc_test_utils:stop_peer(Peer, Node) end, PeerNodes),
     ok.
 
 all() ->

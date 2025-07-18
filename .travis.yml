@@ -24,6 +24,10 @@ otp_release:
   - 22.2
   - 22.3
   - 23.0
+  - 24.0
+  - 25.0
+  - 26.0
+  - 27.0
 cache:
   directories:
     - plts

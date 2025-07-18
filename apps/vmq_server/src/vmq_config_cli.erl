@@ -65,7 +65,7 @@ register_config_() ->
             "cache_shared_subscriptions_locally"
         ],
     _ = [
-        clique:register_config([Key], fun register_config_callback/3)
+        clique:register_config([Key], fun register_config_callback/2)
      || Key <- ConfigKeys
     ],
     ok = clique:register_config_whitelist(ConfigKeys).
@@ -76,20 +76,8 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "config", "show"], show_usage()),
     clique:register_usage(["vmq-admin", "config", "reset"], reset_usage()).
 
--spec register_config_callback([string(), ...], _, [{all, _} | {node, atom()}]) -> any().
-register_config_callback([StrKey], _, [{all, _}]) ->
-    %% the callback is called, after the application environment is set
-    Key = list_to_existing_atom(StrKey),
-    {ok, Val} = application:get_env(vmq_server, Key),
-    vmq_config:set_global_env(vmq_server, Key, Val, false),
-    vmq_config:configure_nodes();
-register_config_callback([StrKey], _, [{node, Node}]) ->
-    %% the callback is called, after the application environment is set
-    Key = list_to_existing_atom(StrKey),
-    {ok, Val} = application:get_env(vmq_server, Key),
-    vmq_config:set_env(Node, vmq_server, Key, Val, false),
-    vmq_config:configure_node(Node);
-register_config_callback([StrKey], _, []) ->
+-spec register_config_callback([string(), ...], string()) -> any().
+register_config_callback([StrKey], _) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
     {ok, Val} = application:get_env(vmq_server, Key),

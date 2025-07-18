@@ -56,16 +56,6 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-listener_sup_sup(Addr, Port) ->
-    AAddr = addr(Addr),
-    Ref = listener_name(AAddr, Port),
-    case lists:keyfind({ranch_listener_sup, Ref}, 1, supervisor:which_children(ranch_sup)) of
-        false ->
-            {error, not_found};
-        {_, ListenerSupSupPid, supervisor, _} when is_pid(ListenerSupSupPid) ->
-            {ok, ListenerSupSupPid}
-    end.
-
 stop_all_mqtt_listeners(KillSessions) ->
     lists:foreach(
         fun
@@ -83,49 +73,27 @@ stop_listener(Addr, Port) ->
 stop_listener(Addr, Port, KillSessions) when is_list(Port) ->
     stop_listener(Addr, list_to_integer(Port), KillSessions);
 stop_listener(Addr, Port, KillSessions) ->
-    case listener_sup_sup(Addr, Port) of
-        {ok, Pid} when KillSessions ->
-            supervisor:terminate_child(Pid, ranch_conns_sup),
-            supervisor:terminate_child(Pid, ranch_acceptors_sup);
-        {ok, Pid} ->
-            supervisor:terminate_child(Pid, ranch_acceptors_sup);
-        E ->
-            E
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    case ranch_server:get_listener_sup(Ref) of
+        Pid when KillSessions, is_pid(Pid) ->
+            ranch:stop_listener(Ref);
+        Pid when is_pid(Pid) ->
+            ranch:suspend_listener(Ref)
     end.
 
 restart_listener(Addr, Port) ->
-    case listener_sup_sup(Addr, Port) of
-        {ok, Pid} ->
-            case
-                {
-                    supervisor:restart_child(Pid, ranch_conns_sup),
-                    supervisor:restart_child(Pid, ranch_acceptors_sup)
-                }
-            of
-                {{ok, _}, {ok, _}} ->
-                    ok;
-                {{error, running}, {ok, _}} ->
-                    ok;
-                {{error, R1}, {error, R2}} ->
-                    {error, {R1, R2}}
-            end;
-        E ->
-            E
-    end.
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    ranch:resume_listener(Ref).
 
 delete_listener(Addr, Port) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
     delete_listener(Ref).
 
-delete_listener(ListenerRef) ->
-    case supervisor:terminate_child(ranch_sup, {ranch_listener_sup, ListenerRef}) of
-        {error, _} ->
-            ok;
-        ok ->
-            _ = supervisor:delete_child(ranch_sup, {ranch_listener_sup, ListenerRef}),
-            ranch_server:cleanup_listener_opts(ListenerRef)
-    end.
+delete_listener(Ref) ->
+    ranch:stop_listener(Ref).
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
     TCPOpts = vmq_config:get_env(tcp_listen_options),

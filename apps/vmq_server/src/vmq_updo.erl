@@ -13,6 +13,9 @@
 %% limitations under the License.
 
 -module(vmq_updo).
+-if(?OTP_RELEASE >= 27).
+-compile(nowarn_deprecated_function).
+-endif.
 -include_lib("sasl/src/systools.hrl").
 
 -export([

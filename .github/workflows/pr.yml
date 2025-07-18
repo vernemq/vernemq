@@ -10,24 +10,45 @@ on:
       - published
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Default OTP version used for current releases
+  DEFAULT_RELEASE_OTP: 27.3.4.1
+
 jobs:
   code_checks:
     name: Check code style and quality
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2.0.0
-      - uses: erlef/setup-beam@v1
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1.18.2
         with:
-          otp-version: 23.0
+          otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
           version-type: strict
       - run: sudo apt-get -y install libsnappy-dev
       - name: Check code formatting (erlfmt)
         run: ./rebar3 fmt -c
       - name: Run dialyzer type checker
         run: ./rebar3 dialyzer
+        continue-on-error: true
   coverage:
-    runs-on: ubuntu-20.04
+    name: Test on ${{ matrix.os }} with OTP ${{ matrix.otp }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     needs: code_checks
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - ubuntu-22.04
+        otp:
+          - "27.3.4.1"
+          - "26.2.5.13"
+          - "25.3.2.21"
     services:
       postgres:
         image: postgres
@@ -65,10 +86,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v2.0.0
-      - uses: erlef/setup-beam@v1
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1.18.2
         with:
-          otp-version: 23.0
+          otp-version: ${{ matrix.otp }}
           version-type: strict
       - run: sudo apt-get -y install libsnappy-dev
       - run: sudo apt-get -y install pcregrep

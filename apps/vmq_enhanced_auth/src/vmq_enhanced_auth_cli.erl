@@ -25,10 +25,10 @@ register() ->
             "vmq_enhanced_auth.secret_key"
         ],
     [
-        clique:register_config([Key], fun register_config_callback/3)
+        clique:register_config([Key], fun register_config_callback/2)
      || Key <- ConfigKeys
     ],
     ok = clique:register_config_whitelist(ConfigKeys).
 
-register_config_callback(_, _, _) ->
+register_config_callback(_, _) ->
     vmq_enhanced_auth_reloader:change_config_now().

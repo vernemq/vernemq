@@ -709,9 +709,8 @@ simple_acl(_) ->
         ),
         ?_assertEqual(
             [
-                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
-                %ACL with Label
                 [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>]}, 1, <<"simple_read">>}],
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
                 [
                     {
                         {<<"test_user">>, [<<"a">>, <<"b">>, <<"c">>, <<"#">>]},
@@ -720,13 +719,12 @@ simple_acl(_) ->
                     }
                 ]
             ],
-            ets:match(vmq_enhanced_auth_acl_read_user, '$1')
+            lists:usort(ets:match(vmq_enhanced_auth_acl_read_user, '$1'))
         ),
         ?_assertEqual(
             [
-                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
-                %ACL with Label
                 [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>]}, 1, <<"simple_write">>}],
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
                 [
                     {
                         {<<"test_user">>, [<<"a">>, <<"b">>, <<"c">>, <<"#">>]},
@@ -735,7 +733,7 @@ simple_acl(_) ->
                     }
                 ]
             ],
-            ets:match(vmq_enhanced_auth_acl_write_user, '$1')
+            lists:usort(ets:match(vmq_enhanced_auth_acl_write_user, '$1'))
         ),
         ?_assertEqual(
             [
@@ -929,29 +927,47 @@ simple_acl(_) ->
         %% ACL with Labels
         ?_assertEqual(
             [
-                [{[<<"example_pattern">>, {<<"c">>, <<":">>, 3}], 1, <<>>}],
-                [{[<<"example">>, {<<"c">>, <<":">>, 3}], 1, <<"token_read">>}],
-                [{[<<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
-                [{[<<"a">>, <<"b label">>], 1, <<>>}],
-                [{[<<"a">>, <<"b">>, {<<"u">>, <<":">>, 2}, <<"c">>], 1, <<"token_read_u2">>}],
                 [{[<<"a">>, <<"b">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<"token_write">>}],
+                [{[<<"a">>, <<"b">>, {<<"u">>, <<":">>, 2}, <<"c">>], 1, <<"token_read_u2">>}],
+                [{[<<"a">>, <<"b label">>], 1, <<>>}],
+                [{[<<"example">>, {<<"c">>, <<":">>, 3}], 1, <<"token_read">>}],
+                [{[<<"example_pattern">>, {<<"c">>, <<":">>, 3}], 1, <<>>}],
+                [{[<<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
                 [{[<<"p">>, <<"q">>, {<<"u">>, <<":">>, 2}, <<"r">>], 1, <<>>}]
             ],
-            ets:match(vmq_enhanced_auth_acl_read_token, '$1')
+            lists:usort(ets:match(vmq_enhanced_auth_acl_read_token, '$1'))
         ),
         ?_assertEqual(
             [
-                [{[<<"write-topic">>, <<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
+                [{[<<"a">>, <<"b">>], 1, <<"a">>}],
                 [
                     {
-                        [<<"write-topic">>, <<"a">>, <<"b">>, {<<"c">>, <<":">>, 3}, <<"+">>],
+                        [
+                            <<"write-topic">>,
+                            <<"a">>,
+                            <<"b">>,
+                            {<<"c">>, <<":">>, 3},
+                            <<"+">>
+                        ],
                         1,
                         <<"token_write_c3">>
                     }
                 ],
-                [{[<<"a">>, <<"b">>], 1, <<"a">>}]
+                [
+                    {
+                        [
+                            <<"write-topic">>,
+                            <<"p">>,
+                            <<"q">>,
+                            {<<"c">>, <<":">>, 3},
+                            <<"+">>
+                        ],
+                        1,
+                        <<>>
+                    }
+                ]
             ],
-            ets:match(vmq_enhanced_auth_acl_write_token, '$1')
+            lists:usort(ets:match(vmq_enhanced_auth_acl_write_token, '$1'))
         ),
         ?_assertEqual(
             {<<"a/b ">>, <<"ab_topic">>},

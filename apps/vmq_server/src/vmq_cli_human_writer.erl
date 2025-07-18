@@ -17,7 +17,7 @@
     output = "" :: iolist()
 }).
 
--spec write(status()) -> {iolist(), iolist()}.
+-spec write(clique_status:status()) -> {iolist(), iolist()}.
 write(Status) ->
     Ctx = clique_status:parse(Status, fun write_status/2, #context{}),
     {Ctx#context.output, []}.
@@ -35,6 +35,9 @@ write_status({list, Data}, Ctx = #context{output = Output}) ->
     Ctx#context{output = Output ++ write_list(Data)};
 write_status({list, Title, Data}, Ctx = #context{output = Output}) ->
     Ctx#context{output = Output ++ write_list(Title, Data)};
+%% to capture "vmq-admin set" commands
+write_status({text, [Text, _, _]}, Ctx = #context{output = Output}) ->
+    Ctx#context{output = Output ++ Text ++ "\n"};
 write_status({text, Text}, Ctx = #context{output = Output}) ->
     Ctx#context{output = Output ++ Text ++ "\n"};
 write_status({table, Rows}, Ctx = #context{output = Output}) ->

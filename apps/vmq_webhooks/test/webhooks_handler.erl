@@ -15,7 +15,7 @@ start_endpoint() ->
                  [{'_', [{"/", ?MODULE, []},
                          {"/cache", ?MODULE, []},
                          {"/cache1s", ?MODULE, []}]}]),
-    {ok, _} = cowboy:start_clear(http, [{port, 34567}, {num_acceptors, 1}],
+    {ok, _} = cowboy:start_clear(http, [{port, 34567}],
                                  #{env => #{dispatch => Dispatch}}).
 
 stop_endpoint() ->
