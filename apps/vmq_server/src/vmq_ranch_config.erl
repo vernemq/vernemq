@@ -59,10 +59,10 @@ start_link() ->
 stop_all_mqtt_listeners(KillSessions) ->
     lists:foreach(
         fun
-            ({mqtt, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqtts, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttws, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttwss, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtt, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtts, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttws, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttwss, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
             (_) -> ignore
         end,
         listeners()
@@ -135,51 +135,38 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
     end.
 
 listeners() ->
-    lists:foldl(
-        fun
-            ({ranch_server, _, _, _}, Acc) ->
-                Acc;
-            ({{ranch_listener_sup, {Ip, Port}}, Status, supervisor, _}, Acc) ->
-                {ok, {Type, Opts}} = get_listener_config(Ip, Port),
-                MountPoint = proplists:get_value(mountpoint, Opts, ""),
-                MaxConnections = proplists:get_value(
-                    max_connections,
-                    Opts,
-                    vmq_config:get_env(max_connections)
-                ),
-                Status1 =
-                    case Status of
-                        restarting ->
-                            restarting;
-                        undefined ->
-                            stopped;
-                        Pid when is_pid(Pid) ->
-                            case
-                                lists:keyfind(
-                                    ranch_acceptors_sup, 1, supervisor:which_children(Pid)
-                                )
-                            of
-                                false ->
-                                    not_found;
-                                {_, restarting, supervisor, _} ->
-                                    restarting;
-                                {_, undefined, supervisor, _} ->
-                                    stopped;
-                                {_, AcceptorPid, supervisor, _} when is_pid(AcceptorPid) ->
-                                    running
-                            end
-                    end,
-                StrIp = inet:ntoa(Ip),
-                StrPort = integer_to_list(Port),
-                ProxyProtocol = proplists:get_value(
-                    proxy_protocol,
-                    Opts,
-                    false
-                ),
-                [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections, ProxyProtocol} | Acc]
+    maps:fold(
+        fun({Ip, Port}, ConfigMap, Acc) ->
+            {ok, {Type, Opts}} = get_listener_config(Ip, Port),
+            MountPoint = proplists:get_value(mountpoint, Opts, ""),
+            MaxConnections = proplists:get_value(
+                max_connections,
+                Opts,
+                vmq_config:get_env(max_connections)
+            ),
+            ActiveConnections = maps:get(active_connections, ConfigMap),
+            % the highest number of connections seen
+            AllConnections = maps:get(all_connections, ConfigMap),
+            Status = maps:get(status, ConfigMap),
+            StrIp =
+                case Ip of
+                    {local, FS} -> {local, FS};
+                    _ -> inet:ntoa(Ip)
+                end,
+            StrPort = integer_to_list(Port),
+            ProxyProtocol = proplists:get_value(
+                proxy_protocol,
+                Opts,
+                false
+            ),
+            [
+                {Type, StrIp, StrPort, Status, MountPoint, MaxConnections, ProxyProtocol,
+                    ActiveConnections, AllConnections}
+                | Acc
+            ]
         end,
         [],
-        supervisor:which_children(ranch_sup)
+        ranch:info()
     ).
 
 get_listener_config(Addr, Port) ->

@@ -71,7 +71,7 @@ cluster_status() ->
 -spec listeners_status() -> ok | {error, Reason :: string()}.
 listeners_status() ->
     NotRunningListeners = lists:filtermap(
-        fun({Type, _, _, Status, _, _, _}) ->
+        fun({Type, _, _, Status, _, _, _, _, _}) ->
             case Status of
                 running ->
                     false;
