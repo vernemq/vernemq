@@ -134,7 +134,7 @@ local function validate_result_client_side(results, reg, method)
          return true
       end
    end
-   return false
+   return next
 end
 
 local function validate_result_server_side(results, reg)
@@ -156,7 +156,7 @@ local function validate_result_server_side(results, reg)
       cache_result(reg, targetRow)
       return true
    end
-   return false
+   return next
 end
 
 function auth_on_register_common(db_library, reg)
@@ -181,7 +181,7 @@ function auth_on_register_common(db_library, reg)
             -- only supported in cockroachdb
             server_hash = "sha256($4:::TEXT)"
          else
-            return false
+            return next
          end
          pwd = obf.decrypt(reg.password)
          local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
@@ -194,6 +194,6 @@ function auth_on_register_common(db_library, reg)
          return validate_result_server_side(results, reg)
       end
    else
-      return false
+      return next
    end
 end
