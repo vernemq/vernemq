@@ -971,7 +971,9 @@ auth_on_publish(
                 SessCtrl
             );
         {error, Re} ->
-            ?LOG_ERROR("can't auth publish ~p due to ~p", [HookArgs, Re]),
+            ?LOG_ERROR("can't auth publish for client ~p (user ~p) on topic ~p due to ~p", [
+                SubscriberId, User, Topic, Re
+            ]),
             {error, not_allowed}
     end.
 
