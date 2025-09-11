@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get install -y libsnappy-dev
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Cache PLTs
         id: cache-plts
         uses: actions/cache@v4
@@ -103,7 +103,7 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get -qq install libsnappy-dev pcregrep
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Erlang/OTP
         uses: erlef/setup-beam@v1.20.4
         with:
@@ -189,7 +189,7 @@ jobs:
           brew install coreutils snappy erlang@$majorversion openssl mosquitto pcre
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Erlang/OTP
