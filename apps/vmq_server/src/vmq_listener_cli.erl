@@ -408,6 +408,13 @@ vmq_listener_show_cmd() ->
                             PSKFile, AllowedProtocolVersions, AllowAnonymousOverride},
                         Acc
                     ) ->
+                        % Table fix: For WS, ActiveConns = AllConns; no historic max.
+                        ActiveConns1 =
+                            case Type of
+                                mqttws -> AllConns;
+                                mqttwss -> AllConns;
+                                _ -> ActiveConns
+                            end,
                         [
                             [
                                 {type, Type},
@@ -416,7 +423,7 @@ vmq_listener_show_cmd() ->
                                 {port, Port},
                                 {mountpoint, MP},
                                 {max_conns, MaxConns},
-                                {active_conns, ActiveConns},
+                                {active_conns, ActiveConns1},
                                 {all_conns, AllConns}
                             ] ++
                                 case IsTLS of
