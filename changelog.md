@@ -1,3 +1,5 @@
+- Enhancement: Don't log msg payload in pubauth errors.
+
 ## VerneMQ 2.1.1
 
 - Bugfix syslog boot and add log.syslog.level setting #2413
