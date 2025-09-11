@@ -36,10 +36,10 @@ active_mqtt_connections() ->
                 {MQTT + Active, WS};
             ({mqtts, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
                 {MQTT + Active, WS};
-            ({mqttws, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
-                {MQTT, WS + Active};
-            ({mqttwss, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
-                {MQTT, WS + Active};
+            ({mqttws, _, _, _, _, _, _, All}, {MQTT, WS}) ->
+                {MQTT, WS + All};
+            ({mqttwss, _, _, _, _, _, _, All}, {MQTT, WS}) ->
+                {MQTT, WS + All};
             (_, Sum) ->
                 Sum
         end,
