@@ -10,6 +10,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# just test jobs..
+
 env:
   # Default OTP version used for current releases
   DEFAULT_RELEASE_OTP: 26.2
