@@ -16,6 +16,8 @@
 %% X-Forwarded-For expects a list, as in X-Forwarded-For: <client>, <proxy1>, <proxy2>.
 %% proxy2 is checked against the configured list of trusted proxies. The trust relationship between proxy2
 %% and proxy1 has to be ensured by proxy2.
+%% Note that for internal checking we take proxy2 to be the IP of the last proxy, not from its given value
+%% in the XFF header.
 %%
 %% Not supported at the moment (maybe later):
 %% - x-forwarded-client-cert, for CNAME support
@@ -30,7 +32,7 @@
 new_peer(Req, TrustedList) ->
     XFF = header(Req),
     {IP, Port} = cowboy_req:peer(Req),
-    {ok} = check_xff_proxy(XFF, IP, TrustedList),
+    {ok} = check_xff_proxy(IP, TrustedList),
     {ok, IP0} = inet:parse_address(extract_xff_origin(XFF)),
     {ok, {IP0, Port}}.
 
@@ -43,18 +45,17 @@ header(Req) ->
 xff_header_to_list(XFFHeader) when is_binary(XFFHeader) ->
     binary:split(XFFHeader, [<<",">>], [global]).
 
-% Check if the last proxy is a known one, and that it is the same as (current) peer.
-check_xff_proxy(XFFEntries, IP, TrustedList) when is_list(XFFEntries) ->
-    LastProxy = binary_to_list(lists:last(XFFEntries)),
-    {ok, IPLastProxy} = inet:parse_address(LastProxy),
-    case IPLastProxy == IP andalso check_trusted_list(LastProxy, TrustedList) of
+% Check if the contacting proxy is a known one, ie. whether the (current) peer is in TrustedList.
+% Note on adapted behaviour: We now do not expect the (last) proxy to add itself to the XFF
+check_xff_proxy(IP, TrustedList) ->
+    case check_trusted_list(IP, TrustedList) of
         true -> {ok};
         _ -> {error, xff_proxy_addr_not_accepted}
     end.
 
 check_trusted_list(LastProxy, TrustedList) ->
     List = string:tokens(TrustedList, ";"),
-    case lists:member(LastProxy, List) of
+    case lists:member(inet:ntoa(LastProxy), List) of
         true ->
             true;
         _ ->
