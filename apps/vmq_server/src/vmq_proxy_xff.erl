@@ -16,7 +16,7 @@
 %% X-Forwarded-For expects a list, as in X-Forwarded-For: <client>, <proxy1>, <proxy2>.
 %% proxy2 is checked against the configured list of trusted proxies. The trust relationship between proxy2
 %% and proxy1 has to be ensured by proxy2.
-%% Note that for internal checking we take proxy2 to be the IP of the last proxy, not from its given value 
+%% Note that for internal checking we take proxy2 to be the IP of the last proxy, not from its given value
 %% in the XFF header.
 %%
 %% Not supported at the moment (maybe later):
@@ -55,7 +55,7 @@ check_xff_proxy(IP, TrustedList) ->
 
 check_trusted_list(LastProxy, TrustedList) ->
     List = string:tokens(TrustedList, ";"),
-    case lists:member(LastProxy, List) of
+    case lists:member(inet:ntoa(LastProxy), List) of
         true ->
             true;
         _ ->
