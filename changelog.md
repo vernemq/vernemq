@@ -1,3 +1,5 @@
+- Logging: Rejected/failed Subscribes are now logged as errors with SubscribedId and Peer info
+- Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info
 
