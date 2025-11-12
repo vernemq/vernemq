@@ -693,11 +693,17 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
             Frame = #mqtt5_suback{message_id = MessageId, reason_codes = QoSs, properties = #{}},
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [serialise_frame(Frame)]};
-        {error, _Reason} ->
-            %% can't subscribe due to overload or netsplit,
-            %% Subscribe uses QoS 1 so the client will retry
+        {error, Reason} ->
+            %% can't subscribe due to overload or netsplit, or no plugin available
+            %% we still want to send out a generic not_authorized SUBACK
+            QoSs = [rcn2rc(?NOT_AUTHORIZED) || _ <- Topics],
+            Frame = #mqtt5_suback{message_id = MessageId, reason_codes = QoSs, properties = #{}},
+            ?LOG_ERROR(
+                "can't authorize SUBSCRIBE from v5 client ~p from ~s due to ~p",
+                [SubscriberId, peertoa(State#state.peer), Reason]
+            ),
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_ERROR),
-            {State, []}
+            {State, [serialise_frame(Frame)]}
     end;
 connected(#mqtt5_unsubscribe{message_id = MessageId, topics = Topics, properties = Props0}, State) ->
     #state{

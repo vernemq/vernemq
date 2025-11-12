@@ -462,15 +462,24 @@ connected(
             {State, [Frame]};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
+            ?LOG_ERROR(
+                "can't authorize SUBSCRIBE from v3 client ~p from ~s due to not_authorized",
+                [SubscriberId, peertoa(State#state.peer)]
+            ),
             QoSs = [not_allowed || _ <- Topics],
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
-        {error, _Reason} ->
+        {error, Reason} ->
             %% can't subscribe due to overload or netsplit,
-            %% Subscribe uses QoS 1 so the client will retry
+            ?LOG_ERROR(
+                "can't authorize SUBSCRIBE from v3 client ~p from ~s due to ~p",
+                [SubscriberId, peertoa(State#state.peer), Reason]
+            ),
+            QoSs = [not_allowed || _ <- Topics],
+            Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_error_subscribe(),
-            {State, []}
+            {State, [Frame]}
     end;
 connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
     #state{
