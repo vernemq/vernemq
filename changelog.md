@@ -1,11 +1,12 @@
 ## VerneMQ 2.1.2
 
+- HTTP status page: Full-page container for improved status page view - especially helpful on wider monitors.
 - XFF/WebSockets: Adapt the XFF trusted proxy validation to check against proxy IP, not last peer in XFF header.
 - vmq_reg_trie: Move from genserver2 to genserver for improved memory management.
-- Logging: Rejected/failed Subscribes are now logged as errors with SubscriberId and Peer info
-- Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause
+- Logging: Rejected/failed Subscribes are now logged as errors with SubscriberId and Peer info.
+- Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
-- Bugfix: active connections count for WS in metrics and listener info
+- Bugfix: active connections count for WS in metrics and listener info.
 
 
 ## VerneMQ 2.1.1
