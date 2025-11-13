@@ -1,5 +1,8 @@
-- vmq_reg_trie': Move from genserver2 to genserver for improved memory management.
-- Logging: Rejected/failed Subscribes are now logged as errors with SubscribedId and Peer info
+## VerneMQ 2.1.2
+
+- XFF/WebSockets: Adapt the XFF trusted proxy validation to check against proxy IP, not last peer in XFF header.
+- vmq_reg_trie: Move from genserver2 to genserver for improved memory management.
+- Logging: Rejected/failed Subscribes are now logged as errors with SubscriberId and Peer info
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info
