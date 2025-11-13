@@ -20,7 +20,7 @@
 
 -dialyzer(no_undefined_callbacks).
 
--behaviour(gen_server2).
+-behaviour(gen_server).
 -behaviour(vmq_reg_view).
 
 %% API
@@ -63,10 +63,10 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init_subscriptions() ->
-    gen_server2:call(?MODULE, init_subs, 60000).
+    gen_server:call(?MODULE, init_subs, 60000).
 
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->

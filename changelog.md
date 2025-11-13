@@ -1,3 +1,4 @@
+- vmq_reg_trie': Move from genserver2 to genserver for improved memory management.
 - Logging: Rejected/failed Subscribes are now logged as errors with SubscribedId and Peer info
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause
 - Enhancement: Don't log msg payload in pubauth errors.
@@ -114,7 +115,6 @@
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
 - New feature: Add configuration option disconnect_on_unauthorized_publish_v3 to force disconnect on unauthorized publish even for MQTT clients before v3.1.1
 - New feature: Add persistent message queueing functionality to `vmq_bridge` Plugin, using [ReplayQ](https://github.com/emqx/replayq)
-
 
 ## VerneMQ 1.13.0
 
