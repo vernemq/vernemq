@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -55,10 +56,15 @@ init([]) ->
         id => vmq_swc_peer_service_events,
         start => {vmq_swc_peer_service_events, start_link, []}
     },
+    GroupCoordinator = #{
+        id => vmq_swc_group_coordinator,
+        start => {vmq_swc_group_coordinator, start_link, []}
+    },
 
     _State = vmq_swc_peer_service_manager:init(),
 
-    {ok, {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker]}}.
+    {ok,
+        {{one_for_one, 1000, 3600}, [GroupCoordinator, MetricsWorker, GossipWorker, EventsWorker]}}.
 
 %%====================================================================
 %% Internal functions

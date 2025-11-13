@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -41,7 +42,6 @@ stop(SwcGroup) when is_atom(SwcGroup) ->
     supervisor:terminate_child(vmq_swc_sup, StoreSup).
 
 start(SwcGroup) when is_atom(SwcGroup) ->
-    _ = application:ensure_all_started(vmq_swc),
     supervisor:start_child(
         vmq_swc_sup,
         #{

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -27,10 +28,10 @@
 start() ->
     case init:get_plain_arguments() of
         ["-vmql_eval" | As] ->
-            user:start(),
+            user_drv:start(#{initial_shell => noshell}),
             run_string(As);
         [S | As] ->
-            user:start(),
+            user_drv:start(#{initial_shell => noshell}),
             run_file([S | As]);
         [] ->
             user_drv:start(['tty_sl -c -e', {vmq_ql_repl, repl_start, []}])

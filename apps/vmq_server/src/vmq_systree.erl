@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 %%
 -module(vmq_systree).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -133,58 +135,69 @@ handle_info(timeout, true) ->
                 sg_policy = vmq_config:get_env(shared_subscription_policy, prefer_local)
             },
             CAPPublish = true,
-            lists:foreach(
-                fun
-                    ({#metric_def{type = histogram, name = Metric}, {Count, Sum, Buckets}}) ->
-                        SMetric = atom_to_list(Metric),
-                        CountTmp = {"_count", Count},
-                        SumTmp = {"_sum", Sum},
-                        Tmp = maps:fold(
-                            fun(Bucket, BucketValue, Acc) ->
-                                [
-                                    {
-                                        case Bucket of
-                                            infinity -> "_bucket_inf";
-                                            _ -> "_bucket_" ++ val(Bucket)
-                                        end,
-                                        BucketValue
-                                    }
-                                    | Acc
-                                ]
-                            end,
-                            [CountTmp, SumTmp],
-                            Buckets
-                        ),
-                        lists:foreach(
-                            fun({Suffix, BucketValue}) ->
-                                vmq_reg:publish(
-                                    CAPPublish,
-                                    RegView,
-                                    ClientId,
-                                    MsgTmpl#vmq_msg{
-                                        routing_key = key(Prefix, SMetric ++ Suffix),
-                                        payload = val(BucketValue),
-                                        msg_ref = vmq_mqtt_fsm_util:msg_ref()
-                                    }
-                                )
-                            end,
-                            Tmp
-                        );
-                    ({#metric_def{name = Metric}, Val}) ->
-                        vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
-                            routing_key = key(Prefix, Metric),
-                            payload = val(Val),
-                            msg_ref = vmq_mqtt_fsm_util:msg_ref()
-                        })
-                end,
-                vmq_metrics:metrics()
-            ),
-            {noreply, true, Interval};
+            RegTables = [vmq_trie, vmq_trie_node],
+            case
+                lists:all(
+                    fun(T) -> ets:info(T) =/= undefined end,
+                    RegTables
+                )
+            of
+                true ->
+                    lists:foreach(
+                        fun
+                            ({#metric_def{type = histogram, name = Metric}, {Count, Sum, Buckets}}) ->
+                                SMetric = atom_to_list(Metric),
+                                CountTmp = {"_count", Count},
+                                SumTmp = {"_sum", Sum},
+                                Tmp = maps:fold(
+                                    fun(Bucket, BucketValue, Acc) ->
+                                        [
+                                            {
+                                                case Bucket of
+                                                    infinity -> "_bucket_inf";
+                                                    _ -> "_bucket_" ++ val(Bucket)
+                                                end,
+                                                BucketValue
+                                            }
+                                            | Acc
+                                        ]
+                                    end,
+                                    [CountTmp, SumTmp],
+                                    Buckets
+                                ),
+                                lists:foreach(
+                                    fun({Suffix, BucketValue}) ->
+                                        vmq_reg:publish(
+                                            CAPPublish,
+                                            RegView,
+                                            ClientId,
+                                            MsgTmpl#vmq_msg{
+                                                routing_key = key(Prefix, SMetric ++ Suffix),
+                                                payload = val(BucketValue),
+                                                msg_ref = vmq_mqtt_fsm_util:msg_ref()
+                                            }
+                                        )
+                                    end,
+                                    Tmp
+                                );
+                            ({#metric_def{name = Metric}, Val}) ->
+                                vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
+                                    routing_key = key(Prefix, Metric),
+                                    payload = val(Val),
+                                    msg_ref = vmq_mqtt_fsm_util:msg_ref()
+                                })
+                        end,
+                        vmq_metrics:metrics()
+                    ),
+                    {noreply, true, Interval};
+                false ->
+                    {noreply, true, Interval}
+            end;
         false ->
             {noreply, false, 30000}
     end;
 handle_info(Info, State) ->
-    lager:warning("vmq_systree received unexpected message ~p~n", [Info]),
+    ?LOG_WARNING("vmq_systree received unexpected message ~p~n", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

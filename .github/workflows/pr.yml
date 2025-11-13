@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 25.3.2
+  DEFAULT_RELEASE_OTP: 26.2
 
 jobs:
   code_checks:
@@ -23,27 +23,27 @@ jobs:
         run: |
           sudo apt-get install -y libsnappy-dev
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Cache PLTs
         id: cache-plts
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             plts
             plts_base
           key: plts-cache-${{ runner.os }}-otp-${{env.DEFAULT_RELEASE_OTP}}-hash-${{hashFiles('rebar.lock')}}
       - name: Cache _build/default
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: _build_default-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Install Erlang/OTP
-        uses: erlef/setup-beam@v1.16
+        uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Check code formatting (erlfmt)
@@ -103,18 +103,18 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get -qq install libsnappy-dev pcregrep
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Erlang/OTP
-        uses: erlef/setup-beam@v1.16
+        uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Cache _build/default
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: _build_default-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
@@ -130,7 +130,7 @@ jobs:
                 ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -))
       - run: ./rebar3 cover --verbose
       - name: Archive coverage report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-report
           path: _build/ci_tests+test/cover/
@@ -141,7 +141,7 @@ jobs:
         run: |
           tar -czf ct_test_report.tar.gz _build/ci_tests+test/logs/
       - name: Archive CT test report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         if: ${{ ! cancelled() }}
         with:
           name: ct-test-report
@@ -157,14 +157,17 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-22.04
-          # Monterrey
-          - macos-12
+          - ubuntu-24.04
+          # Sonoma
+          - macos-13
         otp:
-          - "26.1"
+          - "27.2"
+          - "26.2"
           - "25.3"
-          - "24.3"
-
+        exclude:
+          - os: macos-12
+            otp: "27.2"
+            
     steps:
       - name: Install dependencies (Linux)
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -173,7 +176,7 @@ jobs:
           sudo apt-get -qq install libsnappy-dev mosquitto-clients pcregrep
       - name: Configure Homebrew cache
         if: ${{ startsWith(matrix.os, 'macos') }}
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/Homebrew/
@@ -186,24 +189,24 @@ jobs:
           brew install coreutils snappy erlang@$majorversion openssl mosquitto pcre
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Erlang/OTP
         # setup beam doesn't provide MacOS packages
         # we use Homebrew to instal them
         if: ${{ !startsWith(matrix.os , 'macos') }}
-        uses: erlef/setup-beam@v1.16
+        uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ matrix.otp }}
-          version-type: strict
+          version-type: loose
       - name: Cache build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: ${{ runner.os }}-build-default-${{ matrix.otp }}-v2-${{ hashFiles(format('rebar.lock')) }}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: ${{runner.os}}-rebar3-${{matrix.otp}}-v2-${{ hashFiles(format('rebar.lock')) }}
@@ -218,7 +221,7 @@ jobs:
                 echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -) &&
                 ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -))
       - name: Upload JUnit Test Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         if: always() # always run even if the previous step fails
         with:
           name: junit-test-results-${{ runner.os }}-${{ matrix.otp }}
@@ -232,6 +235,8 @@ jobs:
           ./_build/default/rel/vernemq/bin/vernemq config generate -l debug
           # Allow anonymous connections
           echo "allow_anonymous = on" >> _build/default/rel/vernemq/etc/vernemq.conf
+          # Configure MQTT Listener
+          echo "listener.tcp.test = 127.0.0.1:1883" >> _build/default/rel/vernemq/etc/vernemq.conf
           ./_build/default/rel/vernemq/bin/vernemq start
           # Wait for port to come up
           timeout 300 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 1883
@@ -259,7 +264,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: Event File
           path: ${{ github.event_path }}

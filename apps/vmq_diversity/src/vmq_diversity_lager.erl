@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_lager).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -29,19 +31,19 @@ table() ->
     ].
 
 info([Bin], St) when is_binary(Bin) ->
-    lager:info(esc(Bin), []),
+    ?LOG_INFO(esc(Bin), []),
     {[], St}.
 
 error([Bin], St) when is_binary(Bin) ->
-    lager:error(esc(Bin), []),
+    ?LOG_ERROR(esc(Bin), []),
     {[], St}.
 
 debug([Bin], St) when is_binary(Bin) ->
-    lager:debug(esc(Bin), []),
+    ?LOG_DEBUG(esc(Bin), []),
     {[], St}.
 
 warning([Bin], St) when is_binary(Bin) ->
-    lager:warning(esc(Bin), []),
+    ?LOG_WARNING(esc(Bin), []),
     {[], St}.
 
 esc(Log) when is_binary(Log) ->

@@ -9,6 +9,8 @@
 %% COMMON TEST CALLBACK FUNCTIONS
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
+    application:ensure_started(credentials_obfuscation),    
+    credentials_obfuscation:set_secret(<<"Testing">>),
     Config.
 
 end_per_suite(_Config) ->
@@ -28,7 +30,8 @@ all() ->
      enough_data_max_not_exceeded,
      not_enough_data_max_exceeded,
      not_enough_data_max_not_exceeded,
-     parse_unparse_tests     
+     parse_unparse_tests,
+     no_null_char_in_client  
     ].
 
 %%--------------------------------------------------------------------
@@ -64,6 +67,10 @@ not_enough_data_max_not_exceeded(_Config) ->
     PartialSize = byte_size(CompletePacket) - 1,
     <<IncompletePacket:PartialSize/binary, _LastByte/binary>> = CompletePacket,
     more  = vmq_parser:parse(IncompletePacket, byte_size(CompletePacket)).
+
+no_null_char_in_client(_Config) ->
+    C = vmq_parser:gen_connect(<<1,0>>, []),
+    {{error, invalid_utf8_string}, <<>>} = vmq_parser:parse(C).
 
 parse_unparse_tests(_Config) ->
     compare_frame("connect1", vmq_parser:gen_connect("test-client", [])),

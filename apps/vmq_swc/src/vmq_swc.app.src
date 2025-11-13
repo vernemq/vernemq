@@ -6,8 +6,6 @@
     {applications, [
         kernel,
         stdlib,
-        sasl,
-        lager,
         swc,
         riak_dt,
         sext

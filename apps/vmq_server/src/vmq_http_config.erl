@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,8 @@
 %% limitations under the License.
 
 -module(vmq_http_config).
+-include_lib("kernel/include/logger.hrl").
+
 -export([config/1, auth_mode/2]).
 
 -callback routes() -> [{string(), atom(), any()}].
@@ -36,7 +39,7 @@ config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
         config(Rest, Routes ++ ModRoutes)
     catch
         E:R ->
-            lager:error("can't call ~p:routes() due to ~p ~p", [HttpModule, E, R]),
+            ?LOG_ERROR("can't call ~p:routes() due to ~p ~p", [HttpModule, E, R]),
             config(Rest, Routes)
     end;
 config([], Routes) ->

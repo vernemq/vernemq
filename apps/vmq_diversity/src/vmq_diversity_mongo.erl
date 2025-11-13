@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_mongo).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
@@ -185,12 +187,78 @@ ensure_pool(As, St) ->
                                         proplists:get_value(keyfile, DefaultConf)
                                     )
                                 ),
+                                Verify = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"verify">>,
+                                        Options,
+                                        proplists:get_value(verify, DefaultConf)
+                                    )
+                                ),
+                                Depth = vmq_diversity_utils:int(
+                                    maps:get(
+                                        <<"depth">>,
+                                        Options,
+                                        proplists:get_value(depth, DefaultConf)
+                                    )
+                                ),
+                                CustomizeHostnameCheck0 = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"customize_hostname_check">>,
+                                        Options,
+                                        proplists:get_value(customize_hostname_check, DefaultConf)
+                                    )
+                                ),
+                                SystemCAs = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"use_system_cas">>,
+                                        Options,
+                                        proplists:get_value(use_system_cas, DefaultConf)
+                                    )
+                                ),
+                                SNI = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"sni">>,
+                                        Options,
+                                        proplists:get_value(sni, DefaultConf, Host)
+                                    )
+                                ),
                                 L = [
                                     {certfile, CertFile},
-                                    {cacertfile, CaCertFile},
-                                    {keyfile, KeyFile}
+                                    {keyfile, KeyFile},
+                                    {verify, Verify},
+                                    {depth, Depth},
+                                    {server_name_indication, SNI}
                                 ],
-                                [P || {_, V} = P <- L, V /= ""];
+                                MaybeHostNameCheck =
+                                    case CustomizeHostnameCheck0 of
+                                        'https' ->
+                                            [
+                                                {customize_hostname_check, [
+                                                    {match_fun,
+                                                        public_key:pkix_verify_hostname_match_fun(
+                                                            https
+                                                        )}
+                                                ]}
+                                                | L
+                                            ];
+                                        _ ->
+                                            L
+                                    end,
+                                MaybeCacertfile =
+                                    case CaCertFile of
+                                        [] ->
+                                            MaybeHostNameCheck;
+                                        CF ->
+                                            [{cacertfile, CF} | MaybeHostNameCheck]
+                                    end,
+                                MaybeSystemCAs =
+                                    case SystemCAs of
+                                        false ->
+                                            MaybeCacertfile;
+                                        true ->
+                                            [{cacerts, public_key:cacerts_get()} | MaybeCacertfile]
+                                    end,
+                                [P || {_, V} = P <- MaybeSystemCAs, V /= ""];
                             false ->
                                 []
                         end,
@@ -257,7 +325,7 @@ insert(As, St) ->
                             {[Result2], NewSt}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute insert ~p due to ~p:~p",
                                 [TableOrTables, E, R]
                             ),
@@ -291,7 +359,7 @@ update(As, St) ->
                             {[true], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute update ~p due to ~p:~p",
                                 [{Selector, Command}, E, R]
                             ),
@@ -316,7 +384,7 @@ delete(As, St) ->
                             {[true], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute delete ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -350,7 +418,7 @@ find(As, St) ->
                             {[<<"mongo-cursor-", BinPid/binary>>], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute find ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -389,7 +457,7 @@ find_one(As, St) ->
                             {[false], St}
                     catch
                         E:R ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't execute find_one ~p due to ~p:~p",
                                 [Selector, E, R]
                             ),
@@ -449,7 +517,7 @@ pool_id(BPoolId, As, St) ->
         APoolId -> APoolId
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            ?LOG_ERROR("unknown pool ~p", [BPoolId]),
             badarg_error(unknown_pool, As, St)
     end.
 

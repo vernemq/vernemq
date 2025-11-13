@@ -1,4 +1,5 @@
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -12,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_listener_cli).
+-include_lib("kernel/include/logger.hrl").
 -export([register_server_cli/0]).
 
 register_server_cli() ->
@@ -154,7 +156,11 @@ vmq_listener_start_cmd() ->
             end}
         ]},
         {psk_support, [
-            {longname, "psk_support"}
+            {longname, "psk_support"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
         ]},
         {ciphers, [
             {longname, "ciphers"},
@@ -173,19 +179,43 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
-        {require_certificate, [{longname, "require_certificate"}]},
-        {tls_version, [
-            {longname, "tls_version"},
+        {require_certificate, [
+            {longname, "require_certificate"},
             {typecast, fun
-                ("tlsv1") -> tlsv1;
-                ("tlsv1.1") -> 'tlsv1.1';
-                ("tlsv1.2") -> 'tlsv1.2';
-                ("tlsv1.3") -> 'tlsv1.3';
-                (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
+                ("true") -> true;
+                ("false") -> false
             end}
         ]},
-        {use_identity_as_username, [{longname, "use_identity_as_username"}]},
-        {allow_anonymous_override, [{longname, "allow_anonymous_override"}]},
+        {forward_connection_opts, [
+            {longname, "forward_connection_opts"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
+        {tls_version, [
+            {longname, "tls_version"},
+            {typecast, fun(A) ->
+                case vmq_schema:parse_tls_list(A) of
+                    {ok, L} -> L;
+                    {error, _} -> {error, {invalid_flag_value, {'tls-version', A}}}
+                end
+            end}
+        ]},
+        {use_identity_as_username, [
+            {longname, "use_identity_as_username"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
+        {allow_anonymous_override, [
+            {longname, "allow_anonymous_override"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
         {config_mod, [
             {longname, "config_mod"},
             {typecast, fun(M) -> list_to_existing_atom(M) end}
@@ -248,7 +278,7 @@ start_listener(Type, Addr, Port, Opts) ->
             vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't start listener ~p ~p ~p ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             ),
@@ -359,11 +389,11 @@ vmq_listener_show_cmd() ->
     FlagSpecs = [
         {tls, [
             {shortname, "t"},
-            {longname, "show_tls"}
+            {longname, "tls"}
         ]},
         {mqtt, [
             {shortname, "m"},
-            {longname, "show_mqtt"}
+            {longname, "mqtt"}
         ]}
     ],
     Callback =
@@ -378,6 +408,13 @@ vmq_listener_show_cmd() ->
                             PSKFile, AllowedProtocolVersions, AllowAnonymousOverride},
                         Acc
                     ) ->
+                        % Table fix: For WS, ActiveConns = AllConns; no historic max.
+                        ActiveConns1 =
+                            case Type of
+                                mqttws -> AllConns;
+                                mqttwss -> AllConns;
+                                _ -> ActiveConns
+                            end,
                         [
                             [
                                 {type, Type},
@@ -386,7 +423,7 @@ vmq_listener_show_cmd() ->
                                 {port, Port},
                                 {mountpoint, MP},
                                 {max_conns, MaxConns},
-                                {active_conns, ActiveConns},
+                                {active_conns, ActiveConns1},
                                 {all_conns, AllConns}
                             ] ++
                                 case IsTLS of

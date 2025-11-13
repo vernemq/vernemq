@@ -1,4 +1,109 @@
 - vmq_reg_trie': Move from genserver2 to genserver for improved memory management.
+- Logging: Rejected/failed Subscribes are now logged as errors with SubscribedId and Peer info
+- Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause
+- Enhancement: Don't log msg payload in pubauth errors.
+- Bugfix: active connections count for WS in metrics and listener info
+
+
+## VerneMQ 2.1.1
+
+- Bugfix syslog boot and add log.syslog.level setting #2413
+- Enhancement: vmq_server: don't add local MQTT and WS default listeners
+- vmq_swc: minor adaptation of plugin start
+- vmq_server: Remove some minor unused functions and modules
+- vmq_server: Fix HTTPS internal config type, fixing a regression in 2.1.0
+
+## VerneMQ 2.1.0
+
+- vmq_swc: Add a separate initial sync round for empty joining nodes (experimental)
+- Bugfix: Make vmq_systree wait for reg tables
+- vmq_bridge: New configuration option 'mountpoint' that allows restricting a bridge to a specific mountpoint
+- vmq_bridge: Bridge can forward retained messages (#2391, #1420, #1691)
+- New configuration: Allow multiple TLS versions per SSL and WSS listener
+- Plugins: Plugins can subscribe to topics with additional subinfo allowing a more MQTTv5-like experience (#2390)
+- New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections
+- Bugfix: Fix load path for patch directory, so that activated plugins can be patched
+- Bugfix: set correct state of init_sync flag when booting from disk
+- Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
+- Bugfix: Configuration parsing for domain sockets (#2372)
+- Dependency: Update Cuttlefish to 3.4.0
+- Retain Cache/Server: Add setting (expire_retain_cache) for automatic removal of expired retained messages (#2373)
+- vmq_diversity (PostGreSQL): Add method parameter to validate_result_client_side (#2361)
+- vmq_diversity: change mongodb-erlang dep to fork supporting MongoDB 6 (#2358)
+- Add NULL check in ensure_utf8 (#2356)
+- Enhancement: tighten max_packet_size checks in parsers (#2352)
+- Enhancement: Do not load non-persistent subscriptions into routing tables at boot (#2351)
+- Remove vmq_pulse (deprecated remote diagnostics plugin) (#2329)
+- vmq_diversity: set SSL to 'off' as a default in MySQL2 plugin (#2340)
+- vmq_diversity: extend SSL options for MongoDB (#2324)
+- Initial support for compile with OTP-27 (#2293)
+- Add fold fun to delete expired retained messages (#2325)
+- New feature: admin cmd 'vmq-admin session unsubscribe" (#2333)
+
+
+## VerneMQ 2.1.0 (RC 3)
+
+- New config value: outgoing_connect_options, to configure the outgoing side of vmq inter-node connections
+- Bugfix: Fix load path for patch directory, so that activated plugins can be patched
+
+## VerneMQ 2.1.0 (RC 2)
+
+- Bugfix: set correct state of init_sync flag when booting from disk
+
+## VerneMQ 2.1.0 (RC 1)
+
+- Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
+- Bugfix: Configuration parsing for domain sockets (#2372)
+- Dependency: Update Cuttlefish to 3.4.0
+- Retain Cache/Server: Add setting (`expire_retain_cache`) for automatic removal of expired retained messages (#2373) 
+- vmq_diversity (PostGreSQL): Add method parameter to validate_result_client_side (#2361)
+- vmq_diversity: change mongodb-erlang dep to fork supporting MongoDB 6 (#2358)
+- Add NULL check in ensure_utf8 (#2356)
+- Enhancement: tighten max_packet_size checks in parsers (#2352)
+- Enhancement: Do not load non-persistent subscriptions into routing tables at boot (#2351)
+- Remove vmq_pulse (deprecated remote diagnostics plugin) (#2329) 
+- vmq_diversity: set SSL to 'off' as a default in MySQL2 plugin (#2340)
+- vmq_diversity: extend SSL options for MongoDB (#2324)
+- Initial support for compile with OTP-27 (#2293)
+- Add fold fun to delete expired retained messages (#2325)
+- New feature: admin cmd 'vmq-admin session unsubscribe" (#2333)
+
+## VerneMQ 2.0.1
+
+- Bugfix: make session keepalive timers not use OS timestamps to protect against OS clock jumps
+- New feature (vmq_diversity): add alternative MySQL auth plugin (MySQL2), initial version
+- Bugfix: Client Pub Messages should not accept subscription identifier (#2283)
+- Enhancement: Support JSON Logformat on Console (#2295)
+- Bugfix: Ensure that client_id, username and topics are well-formed UTF8 strings (#2283)
+- Bugfix: Fix an auth issue with vmq_http_pub when using vmq_diversity (#2308) 
+- Bugfix: Correct SWC summary for empty Nodeclocks that prevented cluster joins in some situations
+- Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
+- Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
+- Update clique and plumtree dependencies
+- Update luerl dependency to 1.2.0
+- New feature: max_header_value_length option, solves #2267
+
+## VerneMQ 2.0.0
+
+- New feature: Synchronized wait for retained message store
+- Add option for a default rule ("*") in database Lua scripts, so that Clients can fallback to default ACLs.
+
+## VerneMQ 2.0 Release Candidate
+
+- Introduce credentials obfusication that avoid printing secrets to logs and stack traces (breaking change)
+- New feature: Support prometheus namespace
+- New feature: Add logger support, instead of lager
+- Remove deprecated subscriber format (#2247)
+- Protect against empty XFF CN/Username
+- Add simple options to HTTP health listener (health/ping)
+- Remove deprecated allow_multiple_sessions 
+- Improve systemd support: Add support of systemd-notify
+- New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
+- Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
+- 'vmq_http_api_v2': Set apikey as new default authentication method
+- Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
+- New feature: "null" message store that disables persisting messages
+- Add environment variable support for erlang configuration arguments
 - 'vmq_admin': Introduce regex search for session show command
 - 'vmq_admin': Extend vmq-admin listener show with  TLS and MQTT listener settings
 - Improve error reporting (include client) in logs (#2184)
@@ -8,6 +113,8 @@
 - Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
+- New feature: Add configuration option disconnect_on_unauthorized_publish_v3 to force disconnect on unauthorized publish even for MQTT clients before v3.1.1
+- New feature: Add persistent message queueing functionality to `vmq_bridge` Plugin, using [ReplayQ](https://github.com/emqx/replayq)
 
 ## VerneMQ 1.13.0
 
@@ -56,6 +163,7 @@
   `total_active_connections`. Adapt Status page. This also fixes an error,
   where the status page would show a false connection count.
 - Add `active_conns` and `all_conns` info to `vmq-admin listener show`.
+
 ## VerneMQ 1.12.6.2
 
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.

@@ -86,6 +86,7 @@ http() ->
 
 
      auth_on_register_test,
+     auth_on_register_opts_test,
      auth_on_publish_test,
      auth_on_publish_no_payload_test,
      auth_on_subscribe_test,
@@ -284,6 +285,12 @@ auth_on_register_test(_) ->
                       [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
+auth_on_register_opts_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                        [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, ?OPTS]),
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
 auth_on_publish_test(_) ->
     register_hook(auth_on_publish, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
@@ -347,7 +354,7 @@ on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
 
@@ -685,7 +692,7 @@ base_https_test(Config, ServerOpts, ClientSSLEnv) ->
     register_hook(on_deliver, ?HTTPS_ENDPOINT),
     Self = pid_to_bin(self()),
     _ = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}]),
     ExpResponse = exp_response(on_deliver_ok),
     clear_ssl_app_env(),
     deregister_hook(on_deliver, ?HTTPS_ENDPOINT),

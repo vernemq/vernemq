@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_reg).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 
 %% API
@@ -91,25 +93,25 @@ subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Existing = subscriptions_exist(OldSubs, Topics),
     add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
-    QoSTable =
+    {QoSTable, _Ign} =
         lists:foldl(
             fun
                 %% MQTTv4 clauses
-                ({_, {_, not_allowed}}, AccQoSTable) ->
-                    [not_allowed | AccQoSTable];
-                ({Exists, {T, QoS}}, AccQoSTable) when is_integer(QoS) ->
-                    deliver_retained(SubscriberId, T, QoS, #{}, Exists),
-                    [QoS | AccQoSTable];
+                ({_, {_, not_allowed}}, {AccQoSTable, WaitSync}) ->
+                    {[not_allowed | AccQoSTable], WaitSync};
+                ({Exists, {T, QoS}}, {AccQoSTable, WaitSync}) when is_integer(QoS) ->
+                    WaitSync0 = deliver_retained(SubscriberId, T, QoS, #{}, Exists, WaitSync),
+                    {[QoS | AccQoSTable], WaitSync0};
                 %% MQTTv5 clauses
-                ({_, {_, {not_allowed, _}}}, AccQoSTable) ->
-                    [not_allowed | AccQoSTable];
-                ({Exists, {T, {QoS, SubOpts}}}, AccQoSTable) when
+                ({_, {_, {not_allowed, _}}}, {AccQoSTable, WaitSync}) ->
+                    {[not_allowed | AccQoSTable], WaitSync};
+                ({Exists, {T, {QoS, SubOpts}}}, {AccQoSTable, WaitSync}) when
                     is_integer(QoS), is_map(SubOpts)
                 ->
-                    deliver_retained(SubscriberId, T, QoS, SubOpts, Exists),
-                    [QoS | AccQoSTable]
+                    WaitSync0 = deliver_retained(SubscriberId, T, QoS, SubOpts, Exists, WaitSync),
+                    {[QoS | AccQoSTable], WaitSync0}
             end,
-            [],
+            {[], (vmq_config:get_env(subscriber_retain_mode, immediate) == syncwait)},
             lists:zip(Existing, Topics)
         ),
     {ok, lists:reverse(QoSTable)}.
@@ -531,7 +533,7 @@ publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg = Msg, remote_matche
         ok ->
             Acc#publish_fold_acc{remote_matches = N + 1};
         {error, Reason} ->
-            lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
+            ?LOG_WARNING("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Acc
     end.
 
@@ -572,17 +574,28 @@ add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups, 
         SubscriberGroups
     ).
 
--spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
-deliver_retained(_, _, _, #{retain_handling := dont_send}, _) ->
+-spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean(), boolean()) -> 'ok'.
+deliver_retained(_, _, _, #{retain_handling := dont_send}, _, WaitSync) ->
     %% don't send, skip
-    ok;
-deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true) ->
+    WaitSync;
+deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true, WaitSync) ->
     %% subscription already existed, skip.
-    ok;
-deliver_retained(_SubscriberId, [<<"$share">> | _], _QoS, _SubOpts, _) ->
+    WaitSync;
+deliver_retained(_SubscriberId, [<<"$share">> | _], _QoS, _SubOpts, _, WaitSync) ->
     %% Never deliver retained messages to subscriber groups.
-    ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
+    WaitSync;
+deliver_retained(SubscriberId, Topic, QoS, SubOpts, _, WaitSync) ->
+    deliver_retained(SubscriberId, Topic, QoS, SubOpts, WaitSync).
+
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, WaitSync) ->
+    Ret0 =
+        case WaitSync of
+            true ->
+                timer:sleep(vmq_config:get_env(retain_persist_interval, 1000) * 2),
+                false;
+            _ ->
+                false
+        end,
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
         fun
@@ -607,7 +620,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
                 },
                 Msg1 = maybe_add_sub_id({QoS, SubOpts}, Msg),
                 maybe_delete_expired(ExpiryTs, MP, Topic),
-                vmq_queue:enqueue(QPid, {deliver, QoS, Msg1});
+                vmq_queue:front(QPid, {deliver, QoS, Msg1});
             ({{_M, T}, Payload}, _) when is_binary(Payload) ->
                 %% compatibility with old style retained messages.
                 Msg = #vmq_msg{
@@ -620,12 +633,13 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
                     msg_ref = vmq_mqtt_fsm_util:msg_ref(),
                     properties = #{}
                 },
-                vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
+                vmq_queue:front(QPid, {deliver, QoS, Msg})
         end,
         ok,
         MP,
         Topic
-    ).
+    ),
+    Ret0.
 
 maybe_delete_expired(undefined, _, _) ->
     ok;
@@ -792,7 +806,7 @@ fix_dead_queues(DeadNodes, AccTargets) ->
     %% DeadNodes must be a list of offline VerneMQ nodes. Targets must
     %% be a list of online VerneMQ nodes
     {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}),
-    lager:info("dead queues summary: ~p queues fixed", [N]).
+    ?LOG_INFO("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
     %%% Why not use maybe_remap_subscriber/2:
@@ -823,7 +837,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                         ok ->
                             {DeadNodes, Targets ++ [Target], N + 1};
                         Error ->
-                            lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                            ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                                 SubscriberId, Target, Error
                             ]),
                             {DeadNodes, Targets ++ [Target], N}
@@ -831,7 +845,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
                 end,
             case vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000) of
                 {error, Error} ->
-                    lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [
+                    ?LOG_INFO("repairing dead queue for ~p on ~p failed due to ~p~n", [
                         SubscriberId, Target, Error
                     ]),
                     {DeadNodes, Targets ++ [Target], N};
@@ -1007,7 +1021,7 @@ direct_plugin_exports(LogName, Opts) ->
             %% - trade-consistency flag
             %% - reg_view
             %% - shared subscription policy
-            %% - user_proeprties
+            %% - user_properties
 
             UserProperties = maps:get(user_property, Opts_, undefined),
             Properties =
@@ -1019,7 +1033,6 @@ direct_plugin_exports(LogName, Opts) ->
                     _ ->
                         #{}
                 end,
-
             Msg = #vmq_msg{
                 routing_key = Topic,
                 mountpoint = maps:get(mountpoint, Opts_, Mountpoint),
@@ -1040,6 +1053,12 @@ direct_plugin_exports(LogName, Opts) ->
                 MaybeWaitTillReady(),
                 CallingPid = self(),
                 subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, 0}]);
+            %% accepts a tuple {Topic, SubInfo} where subinfo is a map e.g.
+            %% #{rap => True} to allow a more MQTTv5 like experience
+            ({[W | _] = Topic, SubInfo}) when is_binary(W) ->
+                MaybeWaitTillReady(),
+                CallingPid = self(),
+                subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, {0, SubInfo}}]);
             (_) ->
                 {error, invalid_topic}
         end,
@@ -1066,10 +1085,10 @@ subscribe_subscriber_changes() ->
 
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
-        fun({MP, _} = SubscriberId, Subs, AAcc) ->
+        fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
             vmq_subscriber:fold(
                 fun({Topic, QoS, Node}, AAAcc) ->
-                    FoldFun({MP, Topic, {SubscriberId, QoS, Node}}, AAAcc)
+                    FoldFun({MP, Topic, {SubscriberId, QoS, Node, CleanSession}}, AAAcc)
                 end,
                 AAcc,
                 Subs

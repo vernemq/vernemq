@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,8 +14,10 @@
 %% limitations under the License.
 
 -module(vmq_updo).
+-if(?OTP_RELEASE >= 27).
+-compile(nowarn_deprecated_function).
+-endif.
 -include_lib("sasl/src/systools.hrl").
-
 -export([
     run/0,
     run/1,

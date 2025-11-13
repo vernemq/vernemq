@@ -33,7 +33,7 @@ command(State) ->
          frequency([
                     {10, {call, vmq_swc_dkm, insert, [State#state.dkm, Id, next_cnt(Id), Key]}},
                     {8, {call, vmq_swc_dkm, mark_for_gc, [State#state.dkm, Key]}},
-                    {3, {call, vmq_swc_dkm, prune, [State#state.dkm, Id, current_cnt(Id), []]}}
+                    {3, {call, vmq_swc_dkm, prune_, [State#state.dkm, Id, current_cnt(Id), []]}}
                ])).
 
 precondition(State, {call, vmq_swc_dkm, mark_for_gc, [_DKM, Key]}) ->
@@ -41,7 +41,7 @@ precondition(State, {call, vmq_swc_dkm, mark_for_gc, [_DKM, Key]}) ->
 precondition(_State, _Call) ->
     true.
 
-postcondition(State0, {call, vmq_swc_dkm, prune, [_DKM, Id, Cnt, []]}, _DBOps) ->
+postcondition(State0, {call, vmq_swc_dkm, prune_, [_DKM, Id, Cnt, []]}, _DBOps) ->
     {_, State1} = model_dkm_prune(Id, Cnt, State0),
     vmq_swc_dkm:dkm(State1#state.dkm) == to_map(State1#state.mdkm);
 postcondition(_State, _Call, _Res) ->
@@ -51,7 +51,7 @@ next_state(State, _Var, {call, vmq_swc_dkm, insert, [_DKM, Id, Cnt, Key]}) ->
     model_dkm_insert({Id, Cnt}, Key, State);
 next_state(State, _Var, {call, vmq_swc_dkm, mark_for_gc, [_DKM, Key]}) ->
     model_dkm_remove(Key, State);
-next_state(State0, _Var, {call,vmq_swc_dkm, prune, [_DKM, Id, Cnt, _Acc]}) ->
+next_state(State0, _Var, {call,vmq_swc_dkm, prune_, [_DKM, Id, Cnt, _Acc]}) ->
     {_, State1} = model_dkm_prune(Id, Cnt, State0),
     State1.
 

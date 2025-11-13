@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -18,6 +19,7 @@
 -behaviour(gen_server).
 
 -include_lib("vmq_metrics.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([start_link/0]).
@@ -125,7 +127,7 @@ handle_info(timeout, undefined) ->
         true ->
             case vmq_config:get_env(graphite_host) of
                 undefined ->
-                    lager:error("can't connect to Graphite due to no host configured.", []),
+                    ?LOG_ERROR("can't connect to Graphite due to no host configured.", []),
                     {noreply, undefined, 5000};
                 Host ->
                     Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
@@ -141,7 +143,7 @@ handle_info(timeout, undefined) ->
                             ),
                             {noreply, Socket, Interval};
                         {error, Reason} ->
-                            lager:error(
+                            ?LOG_ERROR(
                                 "can't connect to Graphite due to ~p.",
                                 [Reason]
                             ),

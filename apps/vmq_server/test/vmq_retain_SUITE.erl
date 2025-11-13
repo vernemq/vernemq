@@ -28,8 +28,16 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_group(mqttv4, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, immediate),
     [{protover, 4}|Config];
 init_per_group(mqttv5, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, immediate),
+    [{protover, 5}|Config];
+init_per_group(mqttv4waitsync, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, waitsync),
+    [{protover, 4}|Config];
+init_per_group(mqttv5waitsync, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, waitsync),
     [{protover, 5}|Config].
 
 end_per_group(_Group, _Config) ->
@@ -44,7 +52,9 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv4waitsync},
+     {group, mqttv5},
+     {group, mqttv5waitsync}
     ].
 
 groups() ->
@@ -61,6 +71,7 @@ groups() ->
     GroupOpts = [shuffle, parallel],
     [
      {mqttv4, GroupOpts, Tests},
+     {mqttv4waitsync, GroupOpts, Tests},
      {mqttv5, GroupOpts,
       [
        retain_with_properties,
@@ -68,7 +79,15 @@ groups() ->
        subscribe_retain_as_published_test,
        subscribe_retain_handling_flags_test,
        subscribe_retain_subid_test
-       |Tests]}
+       |Tests]},
+       {mqttv5waitsync, GroupOpts,
+       [
+        retain_with_properties,
+        retain_with_message_expiry,
+        subscribe_retain_as_published_test,
+        subscribe_retain_handling_flags_test,
+        subscribe_retain_subid_test
+        |Tests]} 
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -283,6 +302,7 @@ retain_with_properties(Cfg) ->
     ok = packetv5:expect_frame(SubSocket, Pub).
 
 retain_with_message_expiry(Cfg) ->
+    vmq_metrics:reset_counter(queue_message_expired),
     %% set up publisher
     PubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-pub", [{keepalive, 60}]),
     Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
@@ -291,18 +311,18 @@ retain_with_message_expiry(Cfg) ->
     %% Publish some messages
     Expiry60s = #{p_message_expiry_interval => 60},
     PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                 [{properties, Expiry60s}, {mid, 0},
+                                 [{properties, Expiry60s}, {mid, 1},
                                   {retain, true}]),
     ok = gen_tcp:send(PubSocket, PE60s),
-    Puback0 = packetv5:gen_puback(0),
+    Puback0 = packetv5:gen_puback(1),
     ok = packetv5:expect_frame(PubSocket, Puback0),
 
     Expiry1s = #{p_message_expiry_interval => 1},
     PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                [{properties, Expiry1s}, {mid, 1},
+                                [{properties, Expiry1s}, {mid, 2},
                                  {retain, true}]),
     ok = gen_tcp:send(PubSocket, PE1s),
-    Puback1 = packetv5:gen_puback(1),
+    Puback1 = packetv5:gen_puback(2),
     ok = packetv5:expect_frame(PubSocket, Puback1),
     ok = gen_tcp:close(PubSocket),
 
@@ -531,7 +551,7 @@ retain_compat_pre_test(_Cfg) ->
     Pre = <<"msg">>,
     Pre = vmq_reg:retain_pre(Pre),
 
-    Future = {retain_msg, 1, <<"future_msg">>, something, else},
+    Future = {retain_msg, 1, <<"future_msg">>, something, different},
     <<"future_msg">> = vmq_reg:retain_pre(Future).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

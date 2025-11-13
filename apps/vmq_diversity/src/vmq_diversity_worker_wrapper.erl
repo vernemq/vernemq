@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -18,6 +19,7 @@
 %% resource is not available and all the client processes die.
 %% @end.
 -module(vmq_diversity_worker_wrapper).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(poolboy_worker).
 -behaviour(gen_server).
@@ -176,7 +178,7 @@ handle_info(
                 MRef = monitor(process, Pid),
                 State#state{worker = {MRef, Pid}, connected = true, reconnect_tref = undefined};
             {error, Reason} ->
-                lager:warning(
+                ?LOG_WARNING(
                     "Could not connect to ~p due to ~p",
                     [Name, Reason]
                 ),

@@ -15,7 +15,7 @@
 
 require "auth/auth_commons"
 
--- In order to use this Lua plugin your MongoDB docs used for authentication 
+-- In order to use this Lua plugin your MongoDB docs used for authentication
 -- and authorization must contain the following properties:
 --
 --  - mountpoint: STRING
@@ -25,8 +25,8 @@ require "auth/auth_commons"
 --  - publish_acl: [PubAclObj]  (Array of PubAclObj)
 --  - subscribe_acl: [SubAclObj]  (Array of SubAclObj)
 --
--- 	The BSON array passed as publish/subscribe ACL contains the ACL objects 
--- 	for this particular user. 
+-- 	The BSON array passed as publish/subscribe ACL contains the ACL objects
+-- 	for this particular user.
 --
 --  PubAclObj = {
 --      // required
@@ -60,20 +60,21 @@ require "auth/auth_commons"
 --      ]
 --
 --  }
--- 
+--
 -- IF YOU USE THE DOCUMENT SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        doc = mongodb.find_one(pool, "vmq_acl_auth", 
-                                {mountpoint = reg.mountpoint,
-                                 client_id = reg.client_id,
-                                 username = reg.username})
+        local specific = { mountpoint = reg.mountpoint, client_id = reg.client_id, username = reg.username }
+        local default = { mountpoint = reg.mountpoint, client_id = '*', username = reg.username }
+        local doc = mongodb.find_one(pool, "vmq_acl_auth", specific) or mongodb.find_one(pool, "vmq_acl_auth", default)
+
         if doc ~= false then
-            if doc.passhash == bcrypt.hashpw(reg.password, doc.passhash) then
+            pwd = obf.decrypt(reg.password)
+            if doc.passhash == bcrypt.hashpw(pwd, doc.passhash) then
                 cache_insert(
-                    reg.mountpoint, 
-                    reg.client_id, 
+                    reg.mountpoint,
+                    reg.client_id,
                     reg.username,
                     doc.publish_acl,
                     doc.subscribe_acl

@@ -14,7 +14,7 @@
 -- provision your database.
 require "auth/auth_commons"
 
--- In order to use this Lua plugin you must store a JSON Object containing 
+-- In order to use this Lua plugin you must store a JSON Object containing
 -- the following properties as Redis Value:
 --
 --  - passhash: STRING (bcrypt)
@@ -22,28 +22,24 @@ require "auth/auth_commons"
 --  - subscribe_acl: [ACL]  (Array of ACL JSON Objects)
 --
 -- 	The JSON array passed as publish/subscribe ACL contains the ACL objects topic
--- 	for this particular user. MQTT wildcards as well as the variable 
+-- 	for this particular user. MQTT wildcards as well as the variable
 -- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
--- 	inside a pattern. 
+-- 	inside a pattern.
 --
 -- The Redis Key is the JSON Array [mountpoint, client_id, username]
--- 
--- IF YOU USE THE KEY/VALUE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED 
+--
+-- IF YOU USE THE KEY/VALUE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED
 -- IN THE FOLLOWING SCRIPT.
 function auth_on_register(reg)
-    if reg.username ~= nil and reg.password ~= nil then
-        key = json.encode({reg.mountpoint, reg.client_id, reg.username})
-        res = redis.cmd(pool, "get " .. key)
+    pwd = obf.decrypt(reg.password)
+    if reg.username ~= nil and pwd ~= nil then
+        local specificKey = json.encode({ reg.mountpoint, reg.client_id, reg.username })
+        local defaultKey = json.encode({ reg.mountpoint, '*', reg.username })
+        local res = redis.cmd(pool, "get " .. specificKey) or redis.cmd(pool, "get " .. defaultKey)
         if res then
             res = json.decode(res)
-            if res.passhash == bcrypt.hashpw(reg.password, res.passhash) then
-                cache_insert(
-                    reg.mountpoint, 
-                    reg.client_id, 
-                    reg.username,
-                    res.publish_acl,
-                    res.subscribe_acl
-                    )
+            if res.passhash == bcrypt.hashpw(pwd, res.passhash) then
+                cache_insert(reg.mountpoint, reg.client_id, reg.username, res.publish_acl, res.subscribe_acl)
                 return true
             end
         end

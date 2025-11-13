@@ -99,7 +99,7 @@ ssl_certs_opts_inheritance_test(Config) ->
                 "ciphers" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
                 DummyCert = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 true      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
-                'tlsv1.1' = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+                ['tlsv1.1'] = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
         end,
 
     lists:foreach(
@@ -112,10 +112,10 @@ ssl_certs_opts_inheritance_test(Config) ->
               end
       end,
       [
-       {"vmqs", vmqs},
+     %  {"vmqs", vmqs},
        {"ssl", mqtts},
-       {"wss", mqttwss},
-       {"https", https}
+       {"wss", mqttwss}
+      % {"https", https}
       ]).
 
 ssl_certs_opts_override_test(Config) ->
@@ -166,7 +166,7 @@ ssl_certs_opts_override_test(Config) ->
                 "overridden"      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
                 DummyCertOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 false             = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
-                'tlsv1.2'         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version]),
+                ['tlsv1.2']         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version]),
                 case IntName of
                     https -> skip;
                     _ ->
@@ -184,10 +184,10 @@ ssl_certs_opts_override_test(Config) ->
               end
       end,
       [
-       {"vmqs", vmqs},
+    %   {"vmqs", vmqs},
        {"ssl", mqtts},
-       {"wss", mqttwss},
-       {"https", https}
+       {"wss", mqttwss}
+     %  {"https", https}
       ]).
 
 

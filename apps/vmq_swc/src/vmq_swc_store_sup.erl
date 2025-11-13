@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -66,18 +67,12 @@ init([SwcGroup, Opts]) ->
     SWC_ID = {node(), Actor},
     %   list_to_atom(TS ++ atom_to_list(node())),
 
-    DbBackend =
-        case
-            proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb))
-        of
-            rocksdb -> vmq_swc_db_rocksdb;
-            leveled -> vmq_swc_db_leveled;
-            leveldb -> vmq_swc_db_leveldb
-        end,
+    DbBackend = vmq_swc_db_leveldb,
+    DkmBackend = vmq_swc_dkm_leveldb,
 
     DbOpts = proplists:get_value(db_opts, Opts, []),
 
-    Config = config(SWC_ID, SwcGroup, DbBackend, vmq_swc_edist_srv),
+    Config = config(SWC_ID, SwcGroup, DbBackend, DkmBackend, vmq_swc_edist_srv),
     % this table is created by the root supervisor
     ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
 
@@ -93,6 +88,7 @@ init([SwcGroup, Opts]) ->
     },
 
     DBChildSpecs = vmq_swc_db:childspecs(DbBackend, Config, DbOpts),
+    DkmChildSpecs = vmq_swc_db:childspecs(DkmBackend, Config, DbOpts),
 
     BatcherChildSpec = #{
         id => {vmq_swc_store_batcher, SwcGroup},
@@ -120,7 +116,7 @@ init([SwcGroup, Opts]) ->
 
     {ok,
         {SupFlags,
-            DBChildSpecs ++
+            DBChildSpecs ++ DkmChildSpecs ++
                 [
                     TransportChildSpec,
                     ExchangeSupChildSpec,
@@ -129,11 +125,12 @@ init([SwcGroup, Opts]) ->
                     StoreChildSpec
                 ]}}.
 
-config(SWC_ID, SwcGroup, DbBackend, TransportMod) when
+config(SWC_ID, SwcGroup, DbBackend, DkmBackend, TransportMod) when
     is_atom(SwcGroup) and is_atom(TransportMod)
 ->
     SwcGroupStr = atom_to_list(SwcGroup),
     DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
+    DkmName = list_to_atom("vmq_swc_dkm_" ++ SwcGroupStr),
     StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
     CacheName = list_to_atom("vmq_swc_store_r_o_w_" ++ SwcGroupStr),
     BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
@@ -142,6 +139,8 @@ config(SWC_ID, SwcGroup, DbBackend, TransportMod) when
         peer = SWC_ID,
         group = SwcGroup,
         db = DBName,
+        dkm = DkmName,
+        dkm_backend = DkmBackend,
         db_backend = DbBackend,
         store = StoreName,
         r_o_w_cache = CacheName,

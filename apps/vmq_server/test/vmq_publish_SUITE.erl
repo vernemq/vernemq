@@ -34,6 +34,7 @@ end_per_group(_Group, _Config) ->
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, false),
     vmq_server_cmd:set_config(retry_interval, 2),
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
@@ -77,13 +78,17 @@ groups() ->
          message_size_exceeded_close,
          shared_subscription_offline,
          shared_subscription_online_first,
-         direct_plugin_exports_test
+         direct_plugin_exports_test,
+         direct_plugin_exports_test_subinfo
         ],
     [
      {mqttv3, [shuffle], [
                    not_allowed_publish_close_qos0_mqtt_3_1,
                    not_allowed_publish_close_qos1_mqtt_3_1,
                    not_allowed_publish_close_qos2_mqtt_3_1,
+                   not_allowed_publish_close_qos0_mqtt_3_1_forced_disconnect,
+                   not_allowed_publish_close_qos1_mqtt_3_1_forced_disconnect,
+                   not_allowed_publish_close_qos2_mqtt_3_1_forced_disconnect,
                    message_size_exceeded_close]},
      {mqttv4, [shuffle], [
                    not_allowed_publish_close_qos0_mqtt_3_1_1,
@@ -102,6 +107,7 @@ groups() ->
                    publish_c2b_topic_alias,
                    publish_b2c_topic_alias,
                    forward_properties,
+                   not_allowed_properties,
                    max_packet_size
                    | V4V5Tests] }
     ].
@@ -641,6 +647,41 @@ not_allowed_publish_close_qos2_mqtt_3_1(_) ->
     ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     gen_tcp:close(Socket).
 
+
+not_allowed_publish_close_qos0_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos1_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos2_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+
 not_allowed_publish_close_qos0_mqtt_3_1_1(_) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
                                                       {proto_ver, 4}]),
@@ -880,16 +921,16 @@ message_expiry_interval(_) ->
     %% Publish some messages
     Expiry60s = #{p_message_expiry_interval => 60},
     PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                 [{properties, Expiry60s}, {mid, 0}]),
+                                 [{properties, Expiry60s}, {mid, 1}]),
     ok = gen_tcp:send(PubSocket, PE60s),
-    Puback0 = packetv5:gen_puback(0),
+    Puback0 = packetv5:gen_puback(1),
     ok = packetv5:expect_frame(PubSocket, Puback0),
 
     Expiry1s = #{p_message_expiry_interval => 1},
     PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                [{properties, Expiry1s}, {mid, 1}]),
+                                [{properties, Expiry1s}, {mid, 2}]),
     ok = gen_tcp:send(PubSocket, PE1s),
-    Puback1 = packetv5:gen_puback(1),
+    Puback1 = packetv5:gen_puback(2),
     ok = packetv5:expect_frame(PubSocket, Puback1),
     ok = gen_tcp:close(PubSocket),
 
@@ -1074,6 +1115,17 @@ forward_properties(_Config) ->
     disable_on_publish(),
     disable_on_subscribe().
 
+not_allowed_properties(_Config) ->
+
+    PubConnect = packetv5:gen_connect("property-not_allowed-propeties-pub-test", [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+ 
+    Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_server_ref => [1]}}]),
+    ok = gen_tcp:send(PubSocket, Pub),
+    {error, closed} = gen_tcp:recv(PubSocket, 0, 1000).
+  
+
 max_packet_size(Config) ->
     enable_on_publish(),
     enable_on_subscribe(),
@@ -1115,6 +1167,49 @@ max_packet_size(Config) ->
     disable_on_message_drop(),
     ok.
 
+direct_plugin_exports_test_subinfo(Cfg) ->
+    Topic = vmq_cth:utopic(Cfg),
+    WTopic = re:split(list_to_binary(Topic), <<"/">>),
+    {RegFun0, PubFun3, {SubFun1, UnsubFun1}}
+        = vmq_reg:direct_plugin_exports(?FUNCTION_NAME),
+    ok = RegFun0(),
+    {ok, [0]} = SubFun1({WTopic, #{rap => true}}),
+    %% this client-id generation is taken from
+    %% `vmq_reg:direct_plugin_exports/1`. It would be better if that
+    %% function would return the generated client-id.
+    ClientId = fun(T) ->
+                       list_to_binary(
+                         base64:encode_to_string(
+                           integer_to_binary(
+                             erlang:phash2(T)
+                            )
+                          ))
+               end,
+    TestSub =
+        fun(T, MustBePresent) ->
+                Subscribers = vmq_reg_trie:fold({"", ClientId(self())},
+                                                T, fun(E,_From,Acc) -> [E|Acc] end, []),
+                IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
+                MustBePresent =:= IsPresent
+        end,
+    vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
+    {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{retain => true}),
+    receive
+        {deliver, WTopic, <<"msg1">>, 0, true, false, _Info} -> ok;
+        Other -> throw({received_unexpected_msg, Other})
+    after
+        1000 ->
+            throw(didnt_receive_expected_msg_from_direct_plugin_exports)
+    end,
+    ok = UnsubFun1(WTopic),
+    vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, false) end, 100, 10),
+    {ok, {0, 0}} = PubFun3(WTopic, <<"msg2">>, #{}),
+    receive
+        M -> throw({received_unexpected_msg_from_direct_plugin_exports, M})
+    after
+        100 -> ok
+    end.
+
 direct_plugin_exports_test(Cfg) ->
     Topic = vmq_cth:utopic(Cfg),
     WTopic = re:split(list_to_binary(Topic), <<"/">>),
@@ -1143,7 +1238,7 @@ direct_plugin_exports_test(Cfg) ->
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
     {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{}),
     receive
-        {deliver, WTopic, <<"msg1">>, 0, false, false} -> ok;
+        {deliver, WTopic, <<"msg1">>, 0, false, false, _Info} -> ok;
         Other -> throw({received_unexpected_msg, Other})
     after
         1000 ->

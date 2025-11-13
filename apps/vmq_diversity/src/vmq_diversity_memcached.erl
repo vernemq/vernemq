@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_memcached).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
@@ -292,6 +294,6 @@ pool_id(BPoolId, As, St) ->
         APoolId -> APoolId
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            ?LOG_ERROR("unknown pool ~p", [BPoolId]),
             badarg_error(unknown_pool, As, St)
     end.

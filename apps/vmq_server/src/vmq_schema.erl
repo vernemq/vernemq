@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -12,9 +13,11 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(vmq_schema).
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     translate_listeners/1,
+    parse_tls_list/1,
     string_to_secs/1,
     parse_list_to_term/1
 ]).
@@ -58,6 +61,11 @@ translate_listeners(Conf) ->
     IntVal = fun
         (_, I, _) when is_integer(I) -> I;
         (_, undefined, Def) -> Def
+    end,
+    SSLVersionsListVal = fun
+        (_, SSLVersions, _) when is_list(SSLVersions) -> validate_sslversion(SSLVersions);
+        (_, undefined, undefined) -> undefined;
+        (_, undefined, Def) -> validate_sslversion(Def)
     end,
     %% Either "", meaning all known named curves are allowed]
     %% or a list like "[secp256r1,sect239k1,sect233k1]"
@@ -234,12 +242,34 @@ translate_listeners(Conf) ->
         extract("listener.vmq", "low_msgq_watermark", IntVal, Conf)
     ),
 
-    {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
-    {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
-    {HTTPIPs, HTTPModules} = lists:unzip(extract("listener.http", "http_modules", StrVal, Conf)),
     {HTTPIPs, HTTPMaxLengths} = lists:unzip(
         extract("listener.http", "max_request_line_length", IntVal, Conf)
     ),
+    {HTTP_SSLIPs, HTTP_SSLMaxLengths} = lists:unzip(
+        extract("listener.https", "max_request_line_length", IntVal, Conf)
+    ),
+    {WSIPs, WSMaxLengths} = lists:unzip(
+        extract("listener.ws", "max_request_line_length", IntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLMaxLengths} = lists:unzip(
+        extract("listener.wss", "max_request_line_length", IntVal, Conf)
+    ),
+    {HTTPIPs, HTTPHeaderLengths} = lists:unzip(
+        extract("listener.http", "max_header_value_length", IntVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLHeaderLengths} = lists:unzip(
+        extract("listener.https", "max_header_value_length", IntVal, Conf)
+    ),
+    {WSIPs, WSHeaderLengths} = lists:unzip(
+        extract("listener.ws", "max_header_value_length", IntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLHeaderLengths} = lists:unzip(
+        extract("listener.wss", "max_header_value_length", IntVal, Conf)
+    ),
+
+    {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
+    {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
+    {HTTPIPs, HTTPModules} = lists:unzip(extract("listener.http", "http_modules", StrVal, Conf)),
     {HTTPIPs, HTTPListenerName} = lists:unzip(extract_var("listener.http", "listener_name", Conf)),
 
     {HTTP_SSLIPs, HTTP_SSLListenerName} = lists:unzip(
@@ -254,9 +284,6 @@ translate_listeners(Conf) ->
     {HTTP_SSLIPs, HTTP_SSLHTTPModules} = lists:unzip(
         extract("listener.https", "http_modules", StrVal, Conf)
     ),
-    {HTTP_SSLIPs, HTTP_SSLMaxLengths} = lists:unzip(
-        extract("listener.https", "max_request_line_length", IntVal, Conf)
-    ),
     % SSL
     {SSLIPs, SSLCAFiles} = lists:unzip(extract("listener.ssl", "cafile", StrVal, Conf)),
     {SSLIPs, SSLDepths} = lists:unzip(extract("listener.ssl", "depth", IntVal, Conf)),
@@ -269,9 +296,14 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLRequireCerts} = lists:unzip(
         extract("listener.ssl", "require_certificate", BoolVal, Conf)
     ),
-    {SSLIPs, SSLVersions} = lists:unzip(extract("listener.ssl", "tls_version", AtomVal, Conf)),
+    {SSLIPs, SSLVersions} = lists:unzip(
+        extract("listener.ssl", "tls_version", SSLVersionsListVal, Conf)
+    ),
     {SSLIPs, SSLUseIdents} = lists:unzip(
         extract("listener.ssl", "use_identity_as_username", BoolVal, Conf)
+    ),
+    {SSLIPs, SSLForwardClientCerts} = lists:unzip(
+        extract("listener.ssl", "forward_connection_opts", BoolVal, Conf)
     ),
     {SSLIPs, SSLPSKSupport} = lists:unzip(
         extract("listener.ssl", "psk_support", BoolVal, Conf)
@@ -297,10 +329,13 @@ translate_listeners(Conf) ->
         extract("listener.wss", "require_certificate", BoolVal, Conf)
     ),
     {WS_SSLIPs, WS_SSLVersions} = lists:unzip(
-        extract("listener.wss", "tls_version", AtomVal, Conf)
+        extract("listener.wss", "tls_version", SSLVersionsListVal, Conf)
     ),
     {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(
         extract("listener.wss", "use_identity_as_username", BoolVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLForwardClientCerts} = lists:unzip(
+        extract("listener.wss", "forward_connection_opts", BoolVal, Conf)
     ),
 
     % VMQS
@@ -349,7 +384,7 @@ translate_listeners(Conf) ->
         extract("listener.https", "require_certificate", BoolVal, Conf)
     ),
     {HTTP_SSLIPs, HTTP_SSLVersions} = lists:unzip(
-        extract("listener.https", "tls_version", AtomVal, Conf)
+        extract("listener.https", "tls_version", SSLVersionsListVal, Conf)
     ),
 
     TCP = lists:zip(
@@ -377,6 +412,8 @@ translate_listeners(Conf) ->
             WSProxyXFFTrusted,
             WSProxyXFFCN,
             WSProxyXFF_CN_HEADER,
+            WSMaxLengths,
+            WSHeaderLengths,
             WSAllowedProto
         ])
     ),
@@ -401,6 +438,7 @@ translate_listeners(Conf) ->
             HTTPConfigMod,
             HTTPConfigFun,
             HTTPMaxLengths,
+            HTTPHeaderLengths,
             HTTPModules,
             HTTPListenerName,
             HTTPProxyProto
@@ -426,6 +464,7 @@ translate_listeners(Conf) ->
             SSLRequireCerts,
             SSLVersions,
             SSLUseIdents,
+            SSLForwardClientCerts,
             SSLPSKSupport,
             SSLPSKFile,
             SSLPSKFileSeparator,
@@ -454,6 +493,9 @@ translate_listeners(Conf) ->
             WS_SSLRequireCerts,
             WS_SSLVersions,
             WS_SSLUseIdents,
+            WS_SSLForwardClientCerts,
+            WS_SSLMaxLengths,
+            WS_SSLHeaderLengths,
             WS_SSLAllowedProto
         ])
     ),
@@ -496,6 +538,7 @@ translate_listeners(Conf) ->
             HTTP_SSLConfigMod,
             HTTP_SSLConfigFun,
             HTTP_SSLMaxLengths,
+            HTTP_SSLHeaderLengths,
             HTTP_SSLHTTPModules,
             HTTP_SSLListenerName
         ])
@@ -548,6 +591,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "require_certificate",
             "tls_version",
             "use_identity_as_username",
+            "forward_connection_opts",
             "psk_support",
             "pskfile",
             "pskfile_separator",
@@ -563,6 +607,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "config_fun",
             "http_modules",
             "max_request_line_length",
+            "max_header_value_length",
             %% mqtt listener specific
             "allowed_protocol_versions",
             %% other
@@ -587,22 +632,29 @@ extract(Prefix, Suffix, Val, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
-            {ok, Addr} = parse_addr(StrAddr),
             Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             V1 = Val(Name, RootDefault, undefined),
             V2 = Val(Name, RootDefault, V1),
             V3 = Val(Name, cuttlefish:conf_get(Prefix4, Conf, Default), V2),
-
-            AddrPort = {Addr, Port},
+            AddrPort =
+                case Result of
+                    {StrAddr, P} ->
+                        {ok, Addr} = parse_addr(StrAddr),
+                        {Addr, P};
+                    {local, StrAddr, P} ->
+                        {ok, Addr} = parse_addr("local:" ++ StrAddr),
+                        {Addr, P}
+                end,
             {AddrPort, {list_to_atom(Suffix), V3}}
         end
-     || {[_, _, Name], {StrAddr, Port}} <- lists:filter(
+     || {[_, _, Name], Result} <- lists:filter(
             fun({K, _V}) ->
                 cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
             end,
             Conf
         ),
-        not lists:member(Name, Mappings ++ ExcludeRootSuffixes)
+        not lists:member(Name, Mappings ++ ExcludeRootSuffixes),
+        Result =/= true
     ].
 
 parse_addr(StrA) ->
@@ -615,6 +667,10 @@ parse_addr(StrA) ->
                 {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
             end
     end.
+
+validate_sslversion(Versions) ->
+    {ok, ParsedList} = parse_tls_list(Versions),
+    ParsedList.
 
 validate_eccs("") ->
     ssl:eccs();
@@ -650,6 +706,20 @@ string_to_secs(S) ->
         {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
         _ -> error
     end.
+
+parse_tls_list(Val) when is_list(Val) ->
+    Values = string:tokens(Val, ","),
+    try
+        {ok, [convert_tls(V) || V <- Values]}
+    catch
+        throw:invalid_value -> {error, invalid_value}
+    end.
+
+convert_tls("tlsv1") -> 'tls_v1';
+convert_tls("tlsv1.1") -> 'tlsv1.1';
+convert_tls("tlsv1.2") -> 'tlsv1.2';
+convert_tls("tlsv1.3") -> 'tlsv1.3';
+convert_tls(_) -> throw(invalid_value).
 
 parse_list_to_term(Val) ->
     {ok, T, _} =

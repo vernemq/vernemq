@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -23,7 +24,8 @@
     insert/3,
     delete/2,
     match_fold/4,
-    stats/0
+    stats/0,
+    fold_expired/0
 ]).
 
 %% gen_server callbacks
@@ -36,7 +38,7 @@
     code_change/3
 ]).
 
--record(state, {}).
+-record(state, {expiry_cleanup}).
 
 -define(RETAIN_DB, {vmq, retain}).
 -define(RETAIN_CACHE, ?MODULE).
@@ -137,6 +139,21 @@ stats() ->
             end
     end.
 
+fold_expired() ->
+    Fun = fun
+        ({{MP, Topic}, {retain_msg, _, #{p_message_expiry_interval := _}, {TS, _}}}, Acc) ->
+            case vmq_time:is_past(TS) of
+                true ->
+                    vmq_retain_srv:delete(MP, Topic),
+                    Acc + 1;
+                _ ->
+                    Acc
+            end;
+        ({{_, _}, {retain_msg, _, _, _}}, Acc) ->
+            Acc
+    end,
+    ets:foldl(Fun, 0, ?RETAIN_CACHE).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -153,6 +170,7 @@ stats() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    ExpCleanup = vmq_config:get_env(expire_retain_cache, 60) * 1000,
     vmq_metadata:subscribe(?RETAIN_DB),
     vmq_metadata:fold(
         ?RETAIN_DB,
@@ -169,7 +187,13 @@ init([]) ->
         self(),
         persist
     ),
-    {ok, #state{}}.
+    case ExpCleanup of
+        C when is_integer(C), C > 0 ->
+            erlang:send_after(ExpCleanup, self(), remove_expired);
+        _ ->
+            ignore
+    end,
+    {ok, #state{expiry_cleanup = ExpCleanup}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -224,6 +248,14 @@ handle_info(persist, State) ->
         vmq_config:get_env(retain_persist_interval, 1000),
         self(),
         persist
+    ),
+    {noreply, State};
+handle_info(remove_expired, #state{expiry_cleanup = ExpCleanup} = State) ->
+    fold_expired(),
+    erlang:send_after(
+        ExpCleanup,
+        self(),
+        remove_expired
     ),
     {noreply, State};
 handle_info(_, State) ->

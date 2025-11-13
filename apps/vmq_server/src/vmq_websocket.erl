@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -16,6 +17,7 @@
 -behaviour(cowboy_websocket).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -define(SEC_WEBSOCKET_PROTOCOL, <<"sec-websocket-protocol">>).
 
@@ -66,7 +68,7 @@ init(Req, Opts) ->
                         {SrcAddr, SrcPort};
                     % WS request without proxy_protocol (might have XFF)
                     error ->
-                        XFF_On = proplists:get_value(proxy_xff_support, Opts, false),
+                        XFF_On = proplists:get_value(xff_proxy, Opts, false),
                         case XFF_On of
                             true ->
                                 {ok, NewPeer} = vmq_proxy_xff:new_peer(
@@ -82,13 +84,18 @@ init(Req, Opts) ->
             FsmState =
                 case Type of
                     mqttwss ->
+                        Cert = cowboy_req:cert(Req),
+                        Opts1 =
+                            case proplists:get_value(forward_connection_opts, Opts, false) of
+                                true -> [{conn_opts, #{client_cert => Cert}} | Opts];
+                                false -> Opts
+                            end,
                         case proplists:get_value(use_identity_as_username, Opts, false) of
                             false ->
-                                FsmMod:init(Peer, Opts);
+                                FsmMod:init(Peer, Opts1);
                             true ->
-                                Cert = cowboy_req:cert(Req),
                                 FsmMod:init(Peer, [
-                                    {preauth, vmq_ssl:cert_to_common_name(Cert)} | Opts
+                                    {preauth, vmq_ssl:cert_to_common_name(Cert)} | Opts1
                                 ])
                         end;
                     %mqttws
@@ -99,16 +106,27 @@ init(Req, Opts) ->
                                 RequireXFFCN = proplists:get_value(
                                     xff_use_cn_as_username, Opts, false
                                 ),
+                                XFF_On1 = proplists:get_value(xff_proxy, Opts, false),
                                 case RequireXFFCN of
                                     false ->
                                         FsmMod:init(Peer, Opts);
-                                    true ->
+                                    true when XFF_On1 == true ->
                                         CNHeaderName = proplists:get_value(
                                             xff_cn_header, Opts, <<"x-ssl-client-cn">>
                                         ),
                                         HN = ensure_binary(CNHeaderName),
-                                        XFFCN = cowboy_req:header(HN, Req),
-                                        FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                        case cowboy_req:header(HN, Req0) of
+                                            undefined ->
+                                                {vmq_cowboy_websocket, Req0,
+                                                    {error, no_xff_cn_username}};
+                                            <<>> ->
+                                                {vmq_cowboy_websocket, Req0,
+                                                    {error, no_xff_cn_username}};
+                                            XFFCN ->
+                                                FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                        end;
+                                    _ ->
+                                        {vmq_cowboy_websocket, Req0, {error, xff_not_allowed}}
                                 end;
                             true ->
                                 case ProxyInfo0 of
@@ -141,7 +159,8 @@ init(Req, Opts) ->
             {vmq_cowboy_websocket, Req, {error, unsupported_protocol}}
     end.
 
-websocket_init({error, unsupported_protocol}) ->
+websocket_init(#state{fsm_state = {vmq_cowboy_websocket, _, E}} = _State) ->
+    ?LOG_DEBUG("websocket init error ~p~n", [E]),
     _ = vmq_metrics:incr_socket_open(),
     {stop, #state{fsm_state = terminated}};
 websocket_init(State) ->
@@ -221,23 +240,23 @@ handle_fsm_return({throttle, MilliSecs, FsmState, Rest, Out}, State) ->
 handle_fsm_return({ok, FsmState, Out}, State) ->
     maybe_reply(Out, State#state{fsm_state = FsmState});
 handle_fsm_return({stop, normal, Out}, State) ->
-    lager:debug("ws session normally stopped", []),
+    ?LOG_DEBUG("ws session normally stopped", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
 handle_fsm_return({stop, shutdown, Out}, State) ->
-    lager:debug("ws session stopped due to shutdown", []),
+    ?LOG_DEBUG("ws session stopped due to shutdown", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
 handle_fsm_return({stop, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
     SubscriberId = apply(FsmMod, subscriber, [FsmState]),
-    lager:warning("ws session for client ~p stopped abnormally due to '~p'", [
+    ?LOG_WARNING("ws session for client ~p stopped abnormally due to '~p'", [
         SubscriberId, Reason
     ]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
 handle_fsm_return({error, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
     SubscriberId = apply(FsmMod, subscriber, [FsmState]),
-    lager:warning("ws session error for client ~p, force terminate due to '~p'", [
+    ?LOG_WARNING("ws session error for client ~p, force terminate due to '~p'", [
         SubscriberId, Reason
     ]),
     self() ! {?MODULE, terminate},

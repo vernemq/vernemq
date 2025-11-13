@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Basel Switzerland (http://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -35,10 +36,10 @@ active_mqtt_connections() ->
                 {MQTT + Active, WS};
             ({mqtts, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
                 {MQTT + Active, WS};
-            ({mqttws, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
-                {MQTT, WS + Active};
-            ({mqttwss, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
-                {MQTT, WS + Active};
+            ({mqttws, _, _, _, _, _, _, All}, {MQTT, WS}) ->
+                {MQTT, WS + All};
+            ({mqttwss, _, _, _, _, _, _, All}, {MQTT, WS}) ->
+                {MQTT, WS + All};
             (_, Sum) ->
                 Sum
         end,

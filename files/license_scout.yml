@@ -12,7 +12,7 @@ fallbacks:
     - name: https://github.com/uwiger/edown
       license_id: Apache-2.0
       license_content: http://www.apache.org/licenses/LICENSE-2.0.txt
-    - name: https://github.com/vernemq/eleveldb
+    - name: https://github.com/basho/eleveldb
       license_id: Apache-2.0, BSD-3-Clause
       license_content: http://www.apache.org/licenses/LICENSE-2.0.txt
     - name: https://github.com/benoitc/hackney
@@ -42,3 +42,24 @@ fallbacks:
     - name: https://github.com/Vagabond/erlang-syslog
       license_id: BSD-2-Clause
       license_content: https://raw.githubusercontent.com/Vagabond/erlang-syslog/master/LICENSE
+    - name: https://github.com/comtihon/bson-erlang
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/comtihon/bson-erlang/master/LICENSE
+    - name: https://github.com/vernemq/clique.git
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/vernemq/clique/master/LICENSE
+    - name: https://github.com/EchoTeam/corman.git
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/EchoTeam/corman/master/LICENSE
+    - name: https://github.com/ninenines/
+      license_id: ISC
+      license_content: https://raw.githubusercontent.com/ninenines/cowboy/master/LICENSE
+    - name: https://github.com/ninenines/cowlib
+      license_id: ISC
+      license_content: https://raw.githubusercontent.com/ninenines/cowlib/master/LICENSE
+    - name: https://github.com/EchoTeam/dht_ring.git
+      license_id: BSD-2-Clause
+      license_content: https://raw.githubusercontent.com/EchoTeam/dht_ring/master/LICENSE
+    - name: https://github.com/basho/lager_syslog.git
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/basho/lager_syslog/master/LICENSE

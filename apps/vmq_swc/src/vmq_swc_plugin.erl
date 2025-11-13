@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -30,8 +31,10 @@
     cluster_events_delete_handler/2,
     cluster_events_call_handler/3,
 
-    plugin_start/0,
-    plugin_stop/0
+    plugin_start/0, plugin_start/1,
+    plugin_stop/0,
+    summary/0, summary/1,
+    history/0, history/1
 ]).
 
 -define(METRIC, metadata).
@@ -42,6 +45,7 @@
 plugin_start() ->
     SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
     ok = persistent_term:put(?INFO_KEY, {?NR_OF_GROUPS, SWCGroups}),
+    _ = application:ensure_all_started(vmq_swc),
     _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
@@ -49,6 +53,12 @@ plugin_stop() ->
     {_, SWCGroups} = ?SWC_GROUPS,
     _ = [vmq_swc:stop(G) || G <- SWCGroups],
     persistent_term:erase(?INFO_KEY),
+    ok.
+% for tests
+plugin_start(SWCGroups) ->
+    ok = persistent_term:put(?INFO_KEY, {length(SWCGroups), SWCGroups}),
+    _ = application:ensure_all_started(vmq_swc),
+    _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 group_for_key(PKey) ->
@@ -197,3 +207,52 @@ lww_resolver(TimestampedVals) ->
 
 extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
+
+summary() ->
+    {_, Groups} = ?SWC_GROUPS,
+    summary(Groups).
+summary(SWCGroup) when is_atom(SWCGroup) ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Node = node(),
+    NodeClocks = [
+        vmq_swc_store:node_clock_by_storename(
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SWCGroup))
+        )
+    ],
+    [{maps:get({Node, Actor}, NC, {1, 0}), maps:size(NC)} || NC <- NodeClocks];
+summary(SWCGroups) ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Node = node(),
+    NodeClocks = [
+        vmq_swc_store:node_clock_by_storename(
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SWCGroup))
+        )
+     || SWCGroup <- SWCGroups
+    ],
+    [{maps:get({Node, Actor}, NC, {1, 0}), maps:size(NC)} || NC <- NodeClocks].
+
+% The Node is empty when all local Nodeclocks in SWCGroups are
+% 0 and we only have the local Node in the Nodeclocks.
+% In other words: history/1 returns {0,0,true}, in case
+% the node has no history.
+history() ->
+    SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    history(SWCGroups).
+history(SWCGroups) ->
+    LocalClockList = summary(SWCGroups),
+    NrOfGroups =
+        case SWCGroups of
+            X when is_atom(X) -> 1;
+            _ -> length(SWCGroups)
+        end,
+    {{LocalDots, Gap}, TotalClocks} =
+        lists:foldl(
+            fun(X, {{A, B}, C}) ->
+                {{N, M}, Z} = X,
+                {{A + N, B + M}, C + Z}
+            end,
+            {{0, 0}, 0},
+            LocalClockList
+        ),
+    NeverClustered = NrOfGroups == TotalClocks,
+    {LocalDots, Gap, NeverClustered}.

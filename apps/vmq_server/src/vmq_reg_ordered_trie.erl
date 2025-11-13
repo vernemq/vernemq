@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_reg_ordered_trie).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -dialyzer(no_undefined_callbacks).
 
@@ -250,8 +252,11 @@ handle_info(
         queue:to_list(Q)
     ),
     NrOfSubscribers = ets:info(vmq_ordered_tree_subs, size),
+    NrOfRemoteSubscribers = ets:info(vmq_trie_remote_subs, size),
     persistent_term:put(subscribe_trie_ready, 1),
-    lager:info("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
+    ?LOG_INFO("loaded ~p local subscriptions and ~p remote subscriptions into ~p", [
+        NrOfSubscribers, NrOfRemoteSubscribers, ?MODULE
+    ]),
     {noreply, State#state{status = ready, event_queue = undefined}};
 handle_info(Event, #state{status = init, event_queue = Q} = State) ->
     {noreply, State#state{event_queue = queue:in(Event, Q)}};
@@ -353,15 +358,29 @@ match_(Topic, [{NodeOrGroup, _} | Rest], Acc) ->
 match_(_, [], Acc) ->
     Acc.
 
-initialize_trie({MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node}}, Acc) ->
+initialize_trie(
+    {_MP, [<<"$share">>, _Group | _Topic], {_SubscriberId, _SubInfo, Node, CleanSession}}, Acc
+) when
+    Node =:= node(), CleanSession == true
+->
+    Acc;
+initialize_trie(
+    {MP, [<<"$share">>, Group | Topic], {SubscriberId, SubInfo, Node, _CleanSession}}, Acc
+) ->
     add_complex_topic(MP, Topic, {Node, Group}, true),
     add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {SubscriberId, SubInfo, Node}}, Acc) when Node =:= node() ->
+initialize_trie({_, _, {_, _, Node, CleanSession}}, Acc) when
+    Node =:= node(), CleanSession == true
+->
+    Acc;
+initialize_trie({MP, Topic, {SubscriberId, SubInfo, Node, _CleanSession}}, Acc) when
+    Node =:= node()
+->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_subscriber(MP, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {_SubscriberId, _SubInfo, Node}}, Acc) ->
+initialize_trie({MP, Topic, {_SubscriberId, _SubInfo, Node, _CleanSession}}, Acc) ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     Acc.

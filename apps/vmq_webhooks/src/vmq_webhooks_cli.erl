@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,8 @@
 %% limitations under the License.
 
 -module(vmq_webhooks_cli).
+-include_lib("kernel/include/logger.hrl").
+
 -export([register_cli/0]).
 -behaviour(clique_handler).
 
@@ -159,7 +162,7 @@ register_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't register endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),
@@ -192,7 +195,7 @@ deregister_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't deregister endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),

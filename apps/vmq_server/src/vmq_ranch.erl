@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_ranch).
 -include("vmq_server.hrl").
 -behaviour(ranch_protocol).
+-include_lib("kernel/include/logger.hrl").
 
 %% API.
 -export([start_link/4, start_link/3]).
@@ -66,7 +68,7 @@ init(Ref, Parent, Transport, Opts) ->
                         {error, Reason} ->
                             %% If the socket already closed we don't want to
                             %% go through teardown, because no session was initialized
-                            lager:debug("getopts error, socket already closed: ~p", [Reason]);
+                            ?LOG_DEBUG("getopts error, socket already closed: ~p", [Reason]);
                         {ok, BufSizes} ->
                             BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
                             setopts(MaskedSocket, [{buffer, BufSize}]),
@@ -83,10 +85,10 @@ init(Ref, Parent, Transport, Opts) ->
             %% know about it - it's not an error.
             ok;
         {error, {proxy_protocol_error, Error}} ->
-            lager:warning("Proxy Protocol Error: ~p~n", [Error]),
+            ?LOG_WARNING("Proxy Protocol Error: ~p~n", [Error]),
             ok;
         {error, Reason} ->
-            lager:debug("could not get socket peername: ~p", [Reason]),
+            ?LOG_DEBUG("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
             %% listener to crash just because this socket had an
             %% error.
@@ -134,12 +136,18 @@ peer_info_no_proxy(undefined, Socket, Transport, Opts) ->
     end;
 peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
     UseCN = proplists:get_value(use_identity_as_username, Opts, false),
+    ForwardConnOpts = proplists:get_value(forward_connection_opts, Opts, false),
+    Opts1 =
+        case ForwardConnOpts of
+            true -> [{conn_opts, #{client_cert => vmq_ssl:client_cert(Socket)}} | Opts];
+            _ -> Opts
+        end,
     case {Transport, UseCN} of
         {ranch_ssl, true} ->
             CN = vmq_ssl:socket_to_common_name(Socket),
-            {ok, {Peer, [{preauth, CN} | Opts]}};
+            {ok, {Peer, [{preauth, CN} | Opts1]}};
         _ ->
-            {ok, {Peer, Opts}}
+            {ok, {Peer, Opts1}}
     end.
 
 start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
@@ -155,7 +163,6 @@ start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
     }).
 
 mask_socket(ranch_tcp, Socket) -> Socket;
-mask_socket(vmq_ranch_proxy_protocol, Socket) -> vmq_ranch_proxy_protocol:get_csocket(Socket);
 mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
 
 loop(State) ->
@@ -180,12 +187,14 @@ loop_({exit, Reason, State}) ->
 teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("session normally stopped", []);
+            ?LOG_DEBUG("session normally stopped", []);
         shutdown ->
-            lager:debug("session stopped due to shutdown", []);
+            ?LOG_DEBUG("session stopped due to shutdown", []);
+        keep_alive_timeout ->
+            ?LOG_DEBUG("session stopped due to keep_alive_timeout", []);
         _ ->
             SubscriberId = apply(FsmMod, subscriber, [FsmState]),
-            lager:warning("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
+            ?LOG_WARNING("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
@@ -261,13 +270,13 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = Fsm
                 buffer = Rest
             });
         {error, Reason, Out} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),
             {exit, Reason, State#st{pending = [Pending | Out]}};
         {error, Reason} ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "[~p] parse error '~p' for data: ~p and  parser state: ~p",
                 [Proto, Reason, Data, Buffer]
             ),

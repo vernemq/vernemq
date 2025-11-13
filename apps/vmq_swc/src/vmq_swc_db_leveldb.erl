@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,8 @@
 
 -module(vmq_swc_db_leveldb).
 -include("vmq_swc.hrl").
+-include_lib("kernel/include/logger.hrl").
+
 -behaviour(vmq_swc_db).
 -behaviour(gen_server).
 
@@ -22,7 +25,10 @@
     childspecs/2,
     write/3,
     read/4,
-    fold/5
+    fold/5,
+    fold/6,
+    fold_with_iterator/7,
+    get_ref/1
 ]).
 
 -export([
@@ -42,8 +48,7 @@
     config,
     read_opts = [],
     write_opts = [],
-    fold_opts = [{fill_cache, false}],
-    refs = ets:new(?MODULE, [])
+    fold_opts = [{fill_cache, false}]
 }).
 
 % vmq_swc_db impl
@@ -67,6 +72,16 @@ read(#swc_config{db = DBName}, Type, Key, _Opts) ->
 fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey) ->
     gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey}, infinity).
 
+-spec fold(config(), type(), foldfun(), any(), first | db_key(), integer()) -> any().
+fold(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N) ->
+    gen_server:call(DBName, {fold, Type, FoldFun, Acc, FirstKey, N}, infinity).
+
+fold_with_iterator(#swc_config{db = DBName}, Type, FoldFun, Acc, FirstKey, N, Itr) ->
+    gen_server:call(DBName, {fold_with_iterator, Type, FoldFun, Acc, FirstKey, N, Itr}, infinity).
+
+get_ref(#swc_config{db = DBName}) ->
+    gen_server:call(DBName, get_ref).
+
 %% gen_server impl
 start_link(#swc_config{db = DBName} = Config, Opts) ->
     gen_server:start_link({local, DBName}, ?MODULE, [Config | Opts], []).
@@ -82,7 +97,6 @@ init([#swc_config{peer = SWC_ID, group = SwcGroup} = _Config | Opts]) ->
         Opts,
         application:get_env(vmq_swc, data_dir, binary_to_list(DefaultDataDir))
     ),
-
     %% Initialize state
     S0 = init_state(filename:join(DataDir, SwcGroup), Opts),
     process_flag(trap_exit, true),
@@ -108,10 +122,61 @@ handle_call({write, Objects}, _From, State) ->
     {reply, ok, State};
 handle_call({read, Type, Key}, _From, State) ->
     {reply, eleveldb:get(State#state.ref, key(Type, Key), State#state.read_opts), State};
+handle_call(get_ref, _From, State) ->
+    {reply, State#state.ref, State};
 handle_call({fold, Type, FoldFun, Acc, FirstKey0}, From, State) ->
     spawn_link(
         fun() ->
             {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
+            FirstKey1 =
+                case FirstKey0 of
+                    first ->
+                        key(Type, <<>>);
+                    _ ->
+                        key(Type, FirstKey0)
+                end,
+            KeyPrefix = key_prefix(Type),
+            KeyPrefixSize = byte_size(KeyPrefix),
+            Result = iterate(
+                FoldFun,
+                Acc,
+                Itr,
+                key_prefix(Type),
+                KeyPrefixSize,
+                eleveldb:iterator_move(Itr, FirstKey1)
+            ),
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State};
+handle_call({fold, Type, FoldFun, Acc, FirstKey0, _N}, From, State) ->
+    spawn_link(
+        fun() ->
+            {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
+            FirstKey1 =
+                case FirstKey0 of
+                    first ->
+                        key(Type, <<>>);
+                    _ ->
+                        key(Type, FirstKey0)
+                end,
+            KeyPrefix = key_prefix(Type),
+            KeyPrefixSize = byte_size(KeyPrefix),
+            Result = iterate(
+                FoldFun,
+                Acc,
+                Itr,
+                key_prefix(Type),
+                KeyPrefixSize,
+                eleveldb:iterator_move(Itr, FirstKey1)
+            ),
+            gen_server:reply(From, Result)
+        end
+    ),
+    {noreply, State};
+handle_call({fold_with_iterator, Type, FoldFun, Acc, FirstKey0, _N, Itr}, From, State) ->
+    spawn_link(
+        fun() ->
             FirstKey1 =
                 case FirstKey0 of
                     first ->
@@ -160,7 +225,10 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             case FoldFun(Key, Value, Acc0) of
                 stop ->
                     eleveldb:iterator_close(Itr),
-                    Acc0;
+                    case Acc0 of
+                        {Acc2, _N} when is_list(Acc2) -> Acc2;
+                        _ -> Acc0
+                    end;
                 Acc1 ->
                     iterate(
                         FoldFun,
@@ -173,7 +241,10 @@ iterate(FoldFun, Acc0, Itr, KeyPrefix, PrefixSize, {ok, PrefixedKey, Value}) ->
             end;
         _ ->
             eleveldb:iterator_close(Itr),
-            Acc0
+            case Acc0 of
+                {Acc2, _N} when is_list(Acc2) -> Acc2;
+                _ -> Acc0
+            end
     end;
 iterate(_, Acc, _Itr, _, _, {error, _}) ->
     %% no need to close the iterator
@@ -221,7 +292,7 @@ init_state(DataRoot, Config) ->
     BS = proplists:get_value(block_size, OpenOpts, false),
     case BS /= false andalso SSTBS == false of
         true ->
-            lager:warning(
+            ?LOG_WARNING(
                 "eleveldb block_size has been renamed sst_block_size "
                 "and the current setting of ~p is being ignored.  "
                 "Changing sst_block_size is strongly cautioned "
@@ -235,7 +306,7 @@ init_state(DataRoot, Config) ->
     end,
 
     %% Generate a debug message with the options we'll use for each operation
-    lager:debug(
+    ?LOG_DEBUG(
         "datadir ~s options for LevelDB: ~p\n",
         [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]
     ),
@@ -266,7 +337,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
     DataRoot = State0#state.data_root,
     case eleveldb:open(DataRoot, State0#state.open_opts) of
         {ok, Ref} ->
-            lager:info("Opening LevelDB SWC database at ~p~n", [DataRoot]),
+            ?LOG_INFO("Opening LevelDB SWC database at ~p~n", [DataRoot]),
             {ok, State0#state{ref = Ref}};
         %% Check specifically for lock error, this can be caused if
         %% a crashed instance takes some time to flush leveldb information
@@ -275,7 +346,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
         {error, {db_open, OpenErr} = Reason} ->
             case lists:prefix("Corruption: truncated record ", OpenErr) of
                 true ->
-                    lager:info(
+                    ?LOG_INFO(
                         "VerneMQ LevelDB SWC Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
                         [DataRoot, OpenErr]
                     ),
@@ -290,7 +361,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
                     case lists:prefix("IO error: lock ", OpenErr) of
                         true ->
                             SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                            lager:info(
+                            ?LOG_INFO(
                                 "VerneMQ LevelDB SWC Store backend retrying ~p in ~p ms after error ~s\n",
                                 [DataRoot, SleepFor, OpenErr]
                             ),

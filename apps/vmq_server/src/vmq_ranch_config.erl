@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,7 @@
 -module(vmq_ranch_config).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -297,7 +299,7 @@ reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Lis
         ok ->
             ok;
         {error, Reason} ->
-            lager:error(
+            ?LOG_ERROR(
                 "can't reconfigure ~p listener(~p, ~p) with Options ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             )
@@ -355,6 +357,8 @@ protocol_opts(vmq_ranch, _, Opts) ->
 protocol_opts(cowboy_clear, Type, Opts) when
     (Type == mqttws) or (Type == mqttwss)
 ->
+    MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
+    MaxHeaderValueLength = proplists:get_value(max_header_value_length, Opts, 4096),
     MOpts =
         case proplists:get_value(proxy_protocol, Opts, false) of
             false -> default_session_opts(Opts);
@@ -362,7 +366,9 @@ protocol_opts(cowboy_clear, Type, Opts) when
         end,
     maps:merge(maps:from_list(MOpts), #{
         env => #{dispatch => dispatch(Type, Opts)},
-        stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
+        stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h],
+        max_request_line_length => MaxRequestLength,
+        max_header_value_length => MaxHeaderValueLength
     });
 protocol_opts(cowboy_clear, _, Opts) ->
     Apply = fun(Mod, Fun, Param) ->
@@ -370,7 +376,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
             apply(Mod, Fun, Param)
         catch
             E:R ->
-                lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
+                ?LOG_ERROR("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
         end
     end,
@@ -387,7 +393,13 @@ protocol_opts(cowboy_clear, _, Opts) ->
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
-    #{env => #{dispatch => Dispatch}, max_request_line_length => MaxRequestLength, opts => Opts};
+    MaxHeaderValueLength = proplists:get_value(max_header_value_length, Opts, 4096),
+    #{
+        env => #{dispatch => Dispatch},
+        max_request_line_length => MaxRequestLength,
+        max_header_value_length => MaxHeaderValueLength,
+        opts => Opts
+    };
 protocol_opts(vmq_cluster_com, _, Opts) ->
     Opts.
 
@@ -397,10 +409,15 @@ default_session_opts(Opts) ->
             false -> [];
             {_, V} -> [{use_identity_as_username, V}]
         end,
+    MaybeSSLDefaults2 =
+        case lists:keyfind(forward_connection_opts, 1, Opts) of
+            false -> MaybeSSLDefaults;
+            {_, Val} -> [{forward_connection_opts, Val} | MaybeSSLDefaults]
+        end,
     MaybeProxyDefaults =
         case lists:keyfind(proxy_protocol_use_cn_as_username, 1, Opts) of
-            false -> MaybeSSLDefaults;
-            {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults]
+            false -> MaybeSSLDefaults2;
+            {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults2]
         end,
     MaybeProxyDefaults2 =
         case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
@@ -410,7 +427,7 @@ default_session_opts(Opts) ->
                 [
                     {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
                     {proxy_xff_trusted_intermediate, V2},
-                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, "")},
+                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, undefined)},
                     {xff_use_cn_as_username,
                         proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
                     | MaybeProxyDefaults

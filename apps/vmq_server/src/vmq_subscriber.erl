@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_subscriber).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     new/1,
@@ -31,8 +33,7 @@
     get_nodes/1,
     get_sessions/1,
     change_node_all/3,
-    change_node/4,
-    check_format/1
+    change_node/4
 ]).
 
 -ifdef(TEST).
@@ -174,27 +175,6 @@ change_node_all([Node | Rest], NewNode, Subs, CleanSession, ChNodes) ->
 change_node_all([], _, Subs, _, ChNodes) ->
     {Subs, ChNodes}.
 
--spec check_format(any()) -> subs().
-check_format(Subs0) ->
-    maybe_convert_v0(Subs0).
-
-%% @doc convert deprecated subscription format to current format (v1). The
-%% new format was introduced in VerneMQ 0.15.1.
--spec maybe_convert_v0(any()) -> subs().
-maybe_convert_v0([{Topic, _, _} | _] = Version0Subs) when is_list(Topic) ->
-    %% Per default converted subscriptions use initially clean session=false,
-    %% because we don't know better, and it will be subsequentially adjusted
-    %% anyways.
-    maybe_convert_v0(Version0Subs, new(false));
-maybe_convert_v0(Subs) ->
-    Subs.
-
-maybe_convert_v0([{Topic, QoS, Node} | Version0Subs], NewStyleSubs) ->
-    {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
-    maybe_convert_v0(Version0Subs, NewSubs);
-maybe_convert_v0([], NewStyleSubs) ->
-    NewStyleSubs.
-
 %
 % Expected two sorted lists and compares each element. Returns A -- B and B -- A.
 %
@@ -262,7 +242,7 @@ subtract([{N, _, NSubs1} | Subs1], [{N, _, NSubs2} | Subs2], Acc) ->
     %% same node with different node subscriptions
     % case {ordsets:is_set(NSubs1), ordsets:is_set(NSubs2)} of
     %    {true, true} -> ok;
-    %    _ -> lager:info("!!!!!!!!!!!!!!!!!!!!! Unfortunately not ordered!")
+    %    _ -> ?LOG_INFO("!!!!!!!!!!!!!!!!!!!!! Unfortunately not ordered!")
     %end,
     case NSubs1 -- NSubs2 of
         [] ->
@@ -293,7 +273,7 @@ get_node_subs(Node, Subs) ->
 fold(Fun, Acc, Subs) ->
     lists:foldl(
         fun
-            ({Node, _, NSubs}, AccAcc) ->
+            ({Node, _CleanSession, NSubs}, AccAcc) ->
                 lists:foldl(
                     fun({Topic, SubInfo}, AccAccAcc) ->
                         Fun({Topic, SubInfo, Node}, AccAccAcc)

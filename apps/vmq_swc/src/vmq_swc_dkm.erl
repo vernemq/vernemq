@@ -1,5 +1,6 @@
 %% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -62,8 +63,10 @@
     init/0,
     insert/4,
     mark_for_gc/2,
-    prune/3, prune/4,
+    prune/4,
+    prune_/4,
     prune_for_peer/2,
+    enforce_prune_for_peer/2,
     destroy/1,
     test/0
 ]).
@@ -276,18 +279,18 @@ mark_for_gc(#dkm{latest = LT, gc_candidates = GCT}, Key) ->
     end,
     ok.
 
--spec prune(dotkeymap(), watermark(), [db_op()]) -> [db_op()].
-prune(#dkm{} = DKM, Watermark, DbOps) ->
+-spec prune(dotkeymap(), watermark(), [db_op()], nodeclock()) -> [db_op()].
+prune(#dkm{} = DKM, Watermark, DbOps, _NodeClock) ->
     lists:foldl(
         fun(Id, Acc) ->
             Min = swc_watermark:min(Watermark, Id),
-            prune(DKM, Id, Min, Acc)
+            prune_(DKM, Id, Min, Acc)
         end,
         DbOps,
         swc_watermark:peers(Watermark)
     ).
 
-prune(#dkm{gc_candidates = GCT} = DKM, Id, Min, DbOps) ->
+prune_(#dkm{gc_candidates = GCT} = DKM, Id, Min, DbOps) ->
     ets:foldl(
         fun({Key}, Acc) -> prune_latest_dot(DKM, Key, Id, Min, Acc, true) end,
         prune_candidates(DKM, Id, Min, DbOps),
@@ -365,6 +368,24 @@ prune_for_peer(#dkm{latest = LT} = DKM, Id) ->
         end,
         [],
         LT
+    ).
+
+% Enforce deletion of all dots for a specific Peer, having dots in LT AND in
+% GCT
+enforce_prune_for_peer(#dkm{latest = LT, gc_candidates = GCT} = _DKM, Id) ->
+    ets:foldl(
+        fun({Key}, Acc0) ->
+            case ets:lookup(LT, Key) of
+                [{Key, {I, _Cnt} = CurrentDot}] when I == Id ->
+                    ets:delete(LT, Key),
+                    ets:delete(GCT, Key),
+                    [{?DB_DKM, sext:encode(CurrentDot), ?DELETED}, {?DB_OBJ, Key, ?DELETED} | Acc0];
+                _ ->
+                    Acc0
+            end
+        end,
+        [],
+        GCT
     ).
 
 destroy(#dkm{latest = LT, gc_candidates = GCT}) ->

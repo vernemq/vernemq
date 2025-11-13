@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_bridge).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_mqtt_client).
 
@@ -63,7 +65,8 @@
     %% subscriptions on the remote broker
     subs_remote = [],
     %% subscriptions on the local broker
-    subs_local = []
+    subs_local = [],
+    client_version = 3
 }).
 
 %%%===================================================================
@@ -91,7 +94,7 @@ on_connect({coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 on_connect_error(Reason, State) ->
-    lager:error("connection failed due to ~p", [Reason]),
+    ?LOG_ERROR("connection failed due to ~p", [Reason]),
     {ok, State}.
 
 on_disconnect(State) ->
@@ -104,9 +107,9 @@ on_subscribe(Topics, {coord, CoordPid} = State) ->
     ],
     case FailedTopics of
         [] ->
-            lager:info("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
+            ?LOG_INFO("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
         _ ->
-            lager:warning(
+            ?LOG_WARNING(
                 "Bridge Pid ~p had subscription failure codes in SUBACK for topics ~p~n", [
                     CoordPid, FailedTopics
                 ]
@@ -122,14 +125,20 @@ on_publish(Topic, Payload, Opts, {coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 init([Type, Host, Port, RegistryMFA, Opts]) ->
-    {M, F, [A, OptMap]} = RegistryMFA,
+    {M, F, [A, OptMap0]} = RegistryMFA,
+    OptMap =
+        case OptMap0 of
+            A when is_map(A) -> A;
+            _ -> #{}
+        end,
+    MP = proplists:get_value(mountpoint, Opts, ""),
     {ok, #{
         publish_fun := PublishFun,
         register_fun := RegisterFun,
         subscribe_fun := SubscribeFun,
         unsubscribe_fun := UnsubscribeFun
     }} =
-        apply(M, F, [A, OptMap]),
+        apply(M, F, [A, maps:merge(OptMap, #{mountpoint => MP})]),
     true = is_function(RegisterFun, 0),
     true = is_function(PublishFun, 3),
     true = is_function(SubscribeFun, 1),
@@ -138,10 +147,10 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
     ok = RegisterFun(),
     self() ! init_client,
     {ok, #state{
+        port = Port,
         name = Name,
         type = Type,
         host = Host,
-        port = Port,
         opts = Opts,
         publish_fun = PublishFun,
         subscribe_fun = SubscribeFun,
@@ -150,22 +159,32 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
 init([{coord, _CoordinatorPid} = State]) ->
     {ok, State}.
 
-handle_call(info, _From, #state{client_pid = Pid} = State) ->
+handle_call(info, _From, #state{client_pid = Pid, client_version = ClientVersion} = State) ->
     {ResponseType, Info} =
         case Pid of
             undefined ->
                 {error, not_started};
             Pid ->
-                gen_mqtt_client:info(Pid)
+                case ClientVersion of
+                    mqtt -> gen_mqtt_client:info(Pid);
+                    mqttV5 -> gen_mqtt_v5_client:info(Pid)
+                end
         end,
     {reply, {ResponseType, Info}, State};
-handle_call(get_metrics, _From, #state{counters_ref = CR, client_pid = Pid} = State) ->
+handle_call(
+    get_metrics,
+    _From,
+    #state{counters_ref = CR, client_version = ClientVersion, client_pid = Pid} = State
+) ->
     {ResponseType, Info} =
         case Pid of
             undefined ->
                 {error, not_started};
             Pid ->
-                gen_mqtt_client:metrics(Pid, CR)
+                case ClientVersion of
+                    mqtt -> gen_mqtt_client:metrics(Pid, CR);
+                    mqttV5 -> gen_mqtt_v5_client:metrics(Pid, CR)
+                end
         end,
     {reply, {ResponseType, Info}, State};
 handle_call(_Req, _From, State) ->
@@ -188,13 +207,14 @@ handle_info(
     } = State
 ) ->
     CountersRef = counters:new(6, [atomics]),
-    {ok, Pid} = start_client(Type, Host, Port, [{counters_ref, CountersRef} | Opts]),
+    {ok, Pid, ClientVersion} = start_client(Type, Host, Port, [{counters_ref, CountersRef} | Opts]),
     Topics = proplists:get_value(topics, Opts),
-    Subscriptions = bridge_subscribe(local, Pid, Topics, SubscribeFun, []),
+    Subscriptions = bridge_subscribe(local, Pid, ClientVersion, Topics, SubscribeFun, []),
     {noreply, State#state{
         client_pid = Pid,
         subs_local = Subscriptions,
-        counters_ref = CountersRef
+        counters_ref = CountersRef,
+        client_version = ClientVersion
     }};
 handle_info(
     connected,
@@ -204,27 +224,32 @@ handle_info(
         port = Port,
         client_pid = Pid,
         opts = Opts,
-        subscribe_fun = SubscribeFun
+        subscribe_fun = SubscribeFun,
+        client_version = ClientVersion
     } = State
 ) ->
-    lager:info("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
+    ?LOG_INFO("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
     Topics = proplists:get_value(topics, Opts),
-    Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
+    Subscriptions = bridge_subscribe(remote, Pid, ClientVersion, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote = Subscriptions}};
 handle_info(
-    {deliver_remote, Topic, Payload, #{qos := QoS, retain := Retain}},
+    {deliver_remote, Topic, Payload, #{
+        qos := QoS, retain := Retain, user_property := UserProperties
+    }},
     #state{publish_fun = PublishFun, subs_remote = Subscriptions} = State
 ) ->
     %% publish an incoming message from the remote broker locally if
     %% we have a matching subscription
     lists:foreach(
         fun
-            ({{in, T}, {LocalPrefix, RemotePrefix}}) ->
+            ({{in, T}, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
                 case match(Topic, T) of
                     true ->
                         % ignore if we're ready or not.
                         PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{
-                            qos => QoS, retain => Retain
+                            qos => QoS,
+                            retain => Retain and FwdRetain,
+                            user_property => UserProperties
                         });
                     false ->
                         ok
@@ -236,22 +261,20 @@ handle_info(
     ),
     {noreply, State};
 handle_info(
-    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup},
-    #state{subs_local = Subscriptions, client_pid = ClientPid} = State
+    {deliver_remote, Topic, Payload, #{qos := QoS, retain := Retain}},
+    #state{publish_fun = PublishFun, subs_remote = Subscriptions} = State
 ) ->
-    %% forward matching, locally published messages to the remote broker.
+    %% publish an incoming message from the remote broker locally if
+    %% we have a matching subscription
     lists:foreach(
         fun
-            ({{out, T}, QoS, {LocalPrefix, RemotePrefix}}) ->
+            ({{in, T}, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
                 case match(Topic, T) of
                     true ->
-                        ok = gen_mqtt_client:publish(
-                            ClientPid,
-                            swap_prefix(LocalPrefix, RemotePrefix, Topic),
-                            Payload,
-                            QoS,
-                            IsRetained
-                        );
+                        % ignore if we're ready or not.
+                        PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{
+                            qos => QoS, retain => Retain and FwdRetain
+                        });
                     false ->
                         ok
                 end;
@@ -260,6 +283,58 @@ handle_info(
         end,
         Subscriptions
     ),
+    {noreply, State};
+handle_info(
+    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup, Info},
+    #state{subs_local = Subscriptions, client_version = ClientVersion, client_pid = ClientPid} =
+        State
+) ->
+    {_Mountpoint, Props, _ExpiryTS} = Info,
+    %% forward matching, locally published messages to the remote broker.
+    lists:foreach(
+        fun
+            ({{out, T}, QoS, FwdRetain, {LocalPrefix, RemotePrefix}}) ->
+                case match(Topic, T) of
+                    true ->
+                        case ClientVersion of
+                            mqtt ->
+                                ok = gen_mqtt_client:publish(
+                                    ClientPid,
+                                    swap_prefix(LocalPrefix, RemotePrefix, Topic),
+                                    Payload,
+                                    QoS,
+                                    IsRetained and FwdRetain
+                                );
+                            mqttV5 ->
+                                ok = gen_mqtt_v5_client:publish(
+                                    ClientPid,
+                                    swap_prefix(LocalPrefix, RemotePrefix, Topic),
+                                    Payload,
+                                    QoS,
+                                    IsRetained and FwdRetain,
+                                    Props
+                                )
+                        end;
+                    false ->
+                        ok
+                end;
+            (_) ->
+                ok
+        end,
+        Subscriptions
+    ),
+    {noreply, State};
+handle_info(
+    Msg,
+    #state{
+        name = Name,
+        host = Host,
+        port = Port
+    } = State
+) ->
+    ?LOG_WARNING("Bridge ~s connected to ~s:~p received unexpected internal message ~p ~n", [
+        Name, Host, Port, Msg
+    ]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -271,21 +346,26 @@ code_change(_OldVsn, State, _Extra) ->
 bridge_subscribe(
     remote = Type,
     Pid,
-    [{Topic, in, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    ClientVersion,
+    [{Topic, in, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             RemoteTopic = add_prefix(validate_prefix(RemotePrefix), TTopic),
-            gen_mqtt_client:subscribe(Pid, RemoteTopic, QoS),
+            case ClientVersion of
+                mqtt -> gen_mqtt_client:subscribe(Pid, RemoteTopic, QoS);
+                mqttV5 -> gen_mqtt_v5_client:subscribe(Pid, RemoteTopic, QoS)
+            end,
             bridge_subscribe(
                 Type,
                 Pid,
+                ClientVersion,
                 Rest,
                 SubscribeFun,
                 [
-                    {{in, RemoteTopic}, {
+                    {{in, RemoteTopic}, FwdRetain, {
                         validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                     }}
                     | Acc
@@ -296,26 +376,33 @@ bridge_subscribe(
                 "can't validate bridge topic conf ~p due to ~p",
                 [BT, Reason]
             ),
-            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, ClientVersion, Rest, SubscribeFun, Acc)
     end;
 bridge_subscribe(
     local = Type,
     Pid,
-    [{Topic, out, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    ClientVersion,
+    [{Topic, out, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-            {ok, _} = SubscribeFun(LocalTopic),
+            LocalTopic0 =
+                case FwdRetain of
+                    true -> {LocalTopic, #{rap => true}};
+                    _ -> LocalTopic
+                end,
+            {ok, _} = SubscribeFun(LocalTopic0),
             bridge_subscribe(
                 Type,
                 Pid,
+                ClientVersion,
                 Rest,
                 SubscribeFun,
                 [
-                    {{out, LocalTopic}, QoS, {
+                    {{out, LocalTopic}, QoS, FwdRetain, {
                         validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                     }}
                     | Acc
@@ -326,12 +413,13 @@ bridge_subscribe(
                 "can't validate bridge topic conf ~p due to ~p",
                 [BT, Reason]
             ),
-            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, ClientVersion, Rest, SubscribeFun, Acc)
     end;
 bridge_subscribe(
     Type,
     Pid,
-    [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT | Rest],
+    ClientVersion,
+    [{Topic, both, QoS, FwdRetain, LocalPrefix, RemotePrefix} = BT | Rest],
     SubscribeFun,
     Acc
 ) ->
@@ -340,14 +428,18 @@ bridge_subscribe(
             case Type of
                 remote ->
                     RemoteTopic = add_prefix(validate_prefix(RemotePrefix), TTopic),
-                    gen_mqtt_client:subscribe(Pid, RemoteTopic, QoS),
+                    case ClientVersion of
+                        mqtt -> gen_mqtt_v5_client:subscribe(Pid, RemoteTopic, QoS);
+                        mqttV5 -> gen_mqtt_v5_client:subscribe(Pid, RemoteTopic, QoS)
+                    end,
                     bridge_subscribe(
                         Type,
                         Pid,
+                        ClientVersion,
                         Rest,
                         SubscribeFun,
                         [
-                            {{in, RemoteTopic}, {
+                            {{in, RemoteTopic}, FwdRetain, {
                                 validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                             }}
                             | Acc
@@ -355,14 +447,20 @@ bridge_subscribe(
                     );
                 local ->
                     LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
-                    {ok, _} = SubscribeFun(LocalTopic),
+                    LocalTopic0 =
+                        case FwdRetain of
+                            true -> {LocalTopic, #{rap => true}};
+                            _ -> LocalTopic
+                        end,
+                    {ok, _} = SubscribeFun(LocalTopic0),
                     bridge_subscribe(
                         Type,
                         Pid,
+                        ClientVersion,
                         Rest,
                         SubscribeFun,
                         [
-                            {{out, LocalTopic}, QoS, {
+                            {{out, LocalTopic}, QoS, FwdRetain, {
                                 validate_prefix(LocalPrefix), validate_prefix(RemotePrefix)
                             }}
                             | Acc
@@ -374,21 +472,38 @@ bridge_subscribe(
                 "can't validate bridge topic conf ~p due to ~p",
                 [BT, Reason]
             ),
-            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, ClientVersion, Rest, SubscribeFun, Acc)
     end;
-bridge_subscribe(Type, Pid, [_ | Rest], SubscribeFun, Acc) ->
-    bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc);
-bridge_subscribe(_, _, [], _, Acc) ->
+bridge_subscribe(Type, Pid, ClientVersion, [_ | Rest], SubscribeFun, Acc) ->
+    bridge_subscribe(Type, Pid, ClientVersion, Rest, SubscribeFun, Acc);
+bridge_subscribe(_, _, _, [], _, Acc) ->
     Acc.
 
-start_client(Type, Host, Port, Opts) ->
+start_client_v3(Type, Host, Port, Opts) ->
     CR = proplists:get_value(counters_ref, Opts),
     ClientOpts = client_opts(Type, Host, Port, Opts),
     {ok, Pid} = gen_mqtt_client:start_link(?MODULE, [{coord, self()}], [
         {info_fun, {fun stats/2, CR}} | ClientOpts
     ]),
     ets:insert(vmq_bridge_meta, {Pid}),
-    {ok, Pid}.
+    {ok, Pid, mqtt}.
+
+start_client_v5(Type, Host, Port, Opts) ->
+    CR = proplists:get_value(counters_ref, Opts),
+    ClientOpts = client_opts(Type, Host, Port, Opts),
+    {ok, Pid} = gen_mqtt_v5_client:start_link(?MODULE, [{coord, self()}], [
+        {info_fun, {fun stats/2, CR}} | ClientOpts
+    ]),
+    ets:insert(vmq_bridge_meta, {Pid}),
+    {ok, Pid, mqttV5}.
+
+start_client(Type, Host, Port, Opts) ->
+    ClientOpts = client_opts(Type, Host, Port, Opts),
+    MQTTVersion = proplists:get_value(proto_version, ClientOpts, 99),
+    case MQTTVersion of
+        5 -> start_client_v5(Type, Host, Port, Opts);
+        _ -> start_client_v3(Type, Host, Port, Opts)
+    end.
 
 validate_prefix(undefined) ->
     undefined;
@@ -425,10 +540,16 @@ client_opts(tcp, Host, Port, Opts) ->
             {client, proplists:get_value(client_id, Opts)},
             {clean_session, proplists:get_value(cleansession, Opts, false)},
             {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
+            {persistent, proplists:get_value(persistent_queue, Opts)},
+            {queue_dir, proplists:get_value(queue_dir, Opts)},
+            {segment_size, proplists:get_value(segment_size, Opts)},
+            {out_batch_size, proplists:get_value(outgoing_batch_size, Opts)},
             {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
             {retry_interval, proplists:get_value(retry_interval, Opts)},
             {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
-            {transport, {gen_tcp, []}}
+            {queue_ratio, proplists:get_value(pubrel_queue_ratio, Opts)},
+            {transport, {gen_tcp, []}},
+            {inet_version, proplists:get_value(inet_version, Opts, inet)}
             | case
                 {
                     proplists:get_value(try_private, Opts, true),
@@ -441,6 +562,8 @@ client_opts(tcp, Host, Port, Opts) ->
                 {true, 4} ->
                     %% non-spec
                     [{proto_version, 132}];
+                {true, 5} ->
+                    [{proto_version, 5}];
                 {false, MqttVersion} ->
                     [{proto_version, MqttVersion}]
             end

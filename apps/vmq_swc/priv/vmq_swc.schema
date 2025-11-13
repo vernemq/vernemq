@@ -5,6 +5,13 @@
                                              hidden
                                             ]}.
 
+%% @doc Set the path to the DKM (dot key map) metadata directory.
+{mapping, "vmq_swc.dkm_directory", "vmq_swc.dkm_dir", [
+                                             {default, "{{platform_data_dir}}/swc_dkm"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.
+
 %% @doc Set the storage backend either leveldb, rocksdb or leveled (Erlang based LevelDB variant)
 {mapping, "vmq_swc.db_backend", "vmq_swc.db_backend", [
                                              {default, leveldb},
@@ -49,6 +56,13 @@
                                              {datatype, flag},
                                              hidden
                                             ]}.
+%% @doc Sync timeout for the SWC Exchange FSMs.
+%% Value in milliseconds. Default: 60000
+{mapping, "vmq_swc.sync_timeout", "vmq_swc.sync_timeout", [
+                                             {default, 60000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
 %% @doc Enable SWC broadcast. Default: on
 {mapping, "vmq_swc.enable_broadcast", "vmq_swc.enable_broadcast", [
                                              {default, on},
@@ -59,6 +73,14 @@
 {mapping, "vmq_swc.exchange_batch_size", "vmq_swc.exchange_batch_size", [
                                              {default, 100},
                                              {datatype, integer},
+                                             hidden
+                                            ]}.
+
+%% @doc Prevent a node with pre-existing history from cluster
+%% join attempts. (self-check by joining node)
+{mapping, "vmq_swc.prevent_nonempty_join", "vmq_swc.prevent_nonempty_join", [
+                                             {default, on},
+                                             {datatype, flag},
                                              hidden
                                             ]}.
 

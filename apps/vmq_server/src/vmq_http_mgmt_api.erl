@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_http_mgmt_api).
 -behaviour(vmq_http_config).
+-include_lib("kernel/include/logger.hrl").
 
 %% cowboy rest handler callbacks
 -export([
@@ -65,7 +67,7 @@ malformed_request(Req, State) ->
     QsVals = cowboy_req:parse_qs(Req),
     try validate_command(PathInfo, QsVals) of
         {error, V} ->
-            lager:error("malformed request ~p", [V]),
+            ?LOG_ERROR("malformed request ~p", [V]),
             {true, Req, State};
         M3 ->
             {false, Req, M3}

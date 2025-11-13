@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -23,8 +24,6 @@
     subscribe_db_events/0
 ]).
 
--import(vmq_subscriber, [check_format/1]).
-
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
 
@@ -40,7 +39,7 @@ read(SubscriberId) ->
 read(SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined -> Default;
-        Subs -> check_format(Subs)
+        Subs -> Subs
     end.
 
 -spec delete(subscriber_id()) -> ok.
@@ -52,7 +51,7 @@ fold(FoldFun, Acc) ->
         ?SUBSCRIBER_DB,
         fun
             ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-            ({SubscriberId, Subs}, AccAcc) -> FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
+            ({SubscriberId, Subs}, AccAcc) -> FoldFun({SubscriberId, Subs}, AccAcc)
         end,
         Acc
     ).
@@ -65,13 +64,13 @@ subscribe_db_events() ->
         ->
             ignore;
         ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
-            {delete, SubscriberId, check_format(Subscriptions)};
+            {delete, SubscriberId, Subscriptions};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs}) when
             (OldVal == ?TOMBSTONE) or (OldVal == undefined)
         ->
-            {update, SubscriberId, [], check_format(NewSubs)};
+            {update, SubscriberId, [], NewSubs};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
-            {update, SubscriberId, check_format(OldSubs), check_format(NewSubs)};
+            {update, SubscriberId, OldSubs, NewSubs};
         (_) ->
             ignore
     end.

@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -15,6 +16,8 @@
 -module(vmq_server_sup).
 
 -behaviour(supervisor).
+-include_lib("kernel/include/logger.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -22,7 +25,7 @@
 -export([init/1]).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 15000, Type, [I]}).
 
 %% ===================================================================
 %% API functions
@@ -43,7 +46,21 @@ start_link() ->
         ]}}.
 init([]) ->
     maybe_change_nodename(),
+    case
+        proplists:get_value(
+            obfuscation_secret, application:get_env(vmq_server, logging, []), <<"random">>
+        )
+    of
+        <<"random">> ->
+            Bytes = crypto:strong_rand_bytes(128),
+            credentials_obfuscation:set_secret(Bytes);
+        A when is_binary(A) -> credentials_obfuscation:set_secret(A);
+        _ ->
+            Bytes = crypto:strong_rand_bytes(128),
+            credentials_obfuscation:set_secret(Bytes)
+    end,
     persistent_term:put(subscribe_trie_ready, 0),
+    init_systemd_notify(),
     {ok,
         {{one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
@@ -59,7 +76,7 @@ init([]) ->
 maybe_change_nodename() ->
     case vmq_peer_service:members() of
         [Node] when Node =/= node() ->
-            lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
+            ?LOG_INFO("rename VerneMQ node from ~p to ~p", [Node, node()]),
             _ = vmq_peer_service:rename_member(Node, node()),
             vmq_reg:fold_subscribers(
                 fun(SubscriberId, Subs, _) ->
@@ -72,4 +89,14 @@ maybe_change_nodename() ->
             %% we ignore if the node has the same name
             %% or if more than one node is returned (clustered)
             ignore
+    end.
+
+init_systemd_notify() ->
+    %% systemd -> set status to ready and start watchdog
+    Pid = os:getpid(),
+    systemd:notify(ready),
+    case os:getenv("WATCHDOG_PID") of
+        false -> systemd:watchdog(enable);
+        Pid -> systemd:watchdog(enable);
+        _ -> false
     end.

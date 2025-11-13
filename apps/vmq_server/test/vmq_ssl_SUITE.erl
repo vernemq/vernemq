@@ -11,6 +11,7 @@
 -export([connect_no_auth_test/1,
          connect_no_auth_wrong_ca_test/1,
          connect_cert_auth_test/1,
+         connect_cert_auth_test_tlsv12/1,
          connect_cert_auth_without_test/1,
          connect_cert_auth_expired_test/1,
          connect_cert_auth_revoked_test/1,
@@ -21,9 +22,10 @@
          connect_identity_allow_anonymous_override_off_test/1,
          connect_psk_test/1,
          connect_psk_wrong_identity/1,
-         connect_no_auth_test_passwd/1]).
+         connect_no_auth_test_passwd/1,
+         connect_forward_conn_opts_test/1]).
 
--export([hook_preauth_success/5]).
+-export([hook_preauth_success/5, hook_conn_opts_handler/5, hook_conn_opts_handler/6]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -47,8 +49,9 @@ init_per_testcase(Case, Config) ->
           lists:member(Case, all_cert_auth_identity_allow_anonymous_override_on()),
           lists:member(Case, all_cert_auth_identity_allow_anonymous_override_off()),
           lists:member(Case, all_psk_auth()),
-          lists:member(Case, all_no_auth_encrypted_keyfile())} of
-        {true, _, _, _, _, _, _, _, _, _, _} ->
+          lists:member(Case, all_no_auth_encrypted_keyfile()),
+          lists:member(Case, all_forward_conn_opts())} of
+        {true, _, _, _, _, _, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
@@ -56,7 +59,7 @@ init_per_testcase(Case, Config) ->
                                                            {certfile, ssl_path("server.crt")},
                                                            {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"}]);
-        {_, true, _, _, _, _, _, _, _, _, _} ->
+        {_, true, _, _, _, _, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
@@ -65,7 +68,7 @@ init_per_testcase(Case, Config) ->
                                                            {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"},
                                                            {require_certificate, true}]);
-        {_, _, true, _, _, _, _, _, _, _, _} ->
+        {_, _, true, _, _, _, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
@@ -74,7 +77,7 @@ init_per_testcase(Case, Config) ->
                                                            {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.3"},
                                                            {require_certificate, true}]);
-        {_, _, _, true, _, _, _, _, _, _, _} ->
+        {_, _, _, true, _, _, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
@@ -84,7 +87,7 @@ init_per_testcase(Case, Config) ->
                                                            {tls_version, "tlsv1.2"},
                                                            {require_certificate, true},
                                                            {crlfile, ssl_path("crl.pem")}]);
-        {_, _, _, _, true, _, _, _, _, _, _} ->
+        {_, _, _, _, true, _, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                 {nr_of_acceptors, 5},
@@ -94,7 +97,7 @@ init_per_testcase(Case, Config) ->
                 {tls_version, "tlsv1.3"},
                 {require_certificate, true},
                 {crlfile, ssl_path("crl.pem")}]);
-        {_, _, _, _, _, true, _, _, _, _, _} ->
+        {_, _, _, _, _, true, _, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
@@ -107,7 +110,7 @@ init_per_testcase(Case, Config) ->
                                                            {use_identity_as_username, true}]),
             vmq_plugin_mgr:enable_module_plugin(
               auth_on_register, ?MODULE, hook_preauth_success, 5);
-        {_, _, _, _, _, _, true, _, _, _, _} ->
+        {_, _, _, _, _, _, true, _, _, _, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                 {nr_of_acceptors, 5},
@@ -120,7 +123,7 @@ init_per_testcase(Case, Config) ->
                 {use_identity_as_username, true}]),
             vmq_plugin_mgr:enable_module_plugin(
                 auth_on_register, ?MODULE, hook_preauth_success, 5);
-        {_, _, _, _, _, _, _, true, _, _, _} ->
+        {_, _, _, _, _, _, _, true, _, _, _,_} ->
                 {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
                 {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                                {nr_of_acceptors, 5},
@@ -132,7 +135,7 @@ init_per_testcase(Case, Config) ->
                                                                {require_certificate, true},
                                                                {crlfile, ssl_path("crl.pem")},
                                                                {use_identity_as_username, true}]);
-        {_, _, _, _, _, _, _, _, true, _, _} ->
+        {_, _, _, _, _, _, _, _, true, _, _,_} ->
                 {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
                 {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                                {nr_of_acceptors, 5},
@@ -144,14 +147,14 @@ init_per_testcase(Case, Config) ->
                                                                {require_certificate, true},
                                                                {crlfile, ssl_path("crl.pem")},
                                                                {use_identity_as_username, true}]);
-        {_, _, _, _, _, _, _, _, _, true, _} ->
+        {_, _, _, _, _, _, _, _, _, true, _,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
                                                            {psk_support, true},
                                                            {pskfile, ssl_path("test-psk.psk")},
                                                            {tls_version, "tlsv1.2"}]);
-        {_, _, _, _, _, _, _, _, _, _, true} ->
+        {_, _, _, _, _, _, _, _, _, _, true,_} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                 {nr_of_acceptors, 5},
@@ -166,7 +169,21 @@ init_per_testcase(Case, Config) ->
                 {certfile, ssl_path("server.crt")},
                 {keyfile, ssl_path("server.encrypted.key")},
                 {keypasswd, "VerneMQ123Wrong"},
-                {tls_version, "tlsv1.2"}])
+                {tls_version, "tlsv1.2"}]);
+        {_, _, _, _, _, _, _, _, _, _, _,true} ->
+            {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
+            {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
+                        {nr_of_acceptors, 5},
+                        {cafile, ssl_path("all-ca.crt")},
+                        {certfile, ssl_path("server.crt")},
+                        {keyfile, ssl_path("server.key")},
+                        {tls_version, "tlsv1.2"},
+                        {require_certificate, true},
+                        {crlfile, ssl_path("crl.pem")},
+                        {use_identity_as_username, true},
+                        {forward_connection_opts, true}]),
+            ok = vmq_plugin_mgr:enable_module_plugin(
+                        auth_on_register, ?MODULE, hook_conn_opts_handler, 6)
     end,
     Config.
 
@@ -185,7 +202,8 @@ all() ->
     ++ all_cert_auth_identity_allow_anonymous_override_on()
     ++ all_cert_auth_identity_allow_anonymous_override_off()
     ++ all_psk_auth()
-    ++ all_no_auth_encrypted_keyfile().
+    ++ all_no_auth_encrypted_keyfile()
+    ++ all_forward_conn_opts().
 
 all_no_auth() ->
     [connect_no_auth_test,
@@ -198,6 +216,7 @@ all_cert_auth() ->
 
 all_cert_auth_tlsv1_3() ->
     [connect_cert_auth_test,
+     connect_cert_auth_test_tlsv12,
      connect_cert_auth_without_test,
      connect_cert_auth_expired_test].
 
@@ -229,6 +248,9 @@ all_psk_auth() ->
 
 all_no_auth_encrypted_keyfile() ->
     [connect_no_auth_test_passwd].
+
+all_forward_conn_opts() ->
+    [connect_forward_conn_opts_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -307,6 +329,15 @@ connect_cert_auth_test(_) ->
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
+
+connect_cert_auth_test_tlsv12(_) ->
+    {error, {tls_alert, {protocol_version, _}}} = ssl:connect("localhost", 1888,
+                              [binary, {active, false}, {packet, raw},
+                               {versions, ['tlsv1.2']},
+                               {verify, verify_peer},
+                               {cacerts, load_cacerts()},
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]).
 
 connect_cert_auth_without_test(_) ->
     assert_error_or_closed([{error,{tls_alert,"handshake failure"}},
@@ -426,10 +457,34 @@ connect_no_identity_test(_) ->
                                {verify, verify_peer},
                                {cacerts, load_cacerts()}])).
 
+connect_forward_conn_opts_test(_) ->
+    Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    {ok, SSock} = ssl:connect("localhost", 1888,
+                              [binary, {active, false}, {packet, raw},
+                               {verify, verify_peer},
+                               {cacerts, load_cacerts()},
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]),
+    ok = ssl:send(SSock, Connect),
+    ok = packet:expect_packet(ssl, SSock, "connack", Connack),
+    ok = ssl:close(SSock).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, undefined, _) -> ok.
+
+hook_conn_opts_handler(_, {"", <<"connect-success-test">>}, <<"test client">>, _, _, ConnOpts) when is_map(ConnOpts) ->
+    ClientCert = maps:get(client_cert, ConnOpts, undefined),
+    % just check whether the client cert is a binary (Pem)
+    case ClientCert of
+        C when is_binary(C) -> ok;
+        _ -> next
+    end;
+hook_conn_opts_handler(_,_,_,_,_,_) ->
+    next.
+hook_conn_opts_handler(_,_,_,_,_) -> next.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

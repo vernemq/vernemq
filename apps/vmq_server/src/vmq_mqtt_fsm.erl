@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,6 +15,7 @@
 
 -module(vmq_mqtt_fsm).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
@@ -28,8 +30,6 @@
 -define(IS_PROTO_4(X), X =:= 4; X =:= 132).
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
-
--type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
 -record(cap_settings, {
     allow_register = false :: boolean(),
@@ -52,6 +52,7 @@
         undefined
         | username()
         | {preauth, string() | undefined},
+    conn_opts :: map(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     retry_queue = queue:new() :: queue:queue(),
@@ -59,8 +60,7 @@
     proto_ver :: undefined | pos_integer(),
     queue_pid :: pid() | undefined,
 
-    last_time_active = os:timestamp() :: timestamp(),
-    last_trigger = os:timestamp() :: timestamp(),
+    last_time_active = erlang:monotonic_time(microsecond) :: integer(),
 
     %% config
     allow_anonymous = false :: boolean(),
@@ -80,6 +80,9 @@
     %% flags and settings which have a non-default value if
     %% present and default value if not present.
     def_opts :: map(),
+
+    %% disconnect on unauthorized publish, even for non MQTT 3.1.1 clients
+    disconnect_on_unauthorized_publish_v3 = false :: boolean(),
 
     %% TODO
     trace_fun :: undefined | any()
@@ -106,14 +109,14 @@ init(
         proto_ver = ProtoVer
     } = ConnectFrame
 ) ->
-    rand:seed(exsplus, os:timestamp()),
+    rand:seed(exsplus),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(
         allowed_protocol_versions,
         Opts
     ),
-    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 5000),
     set_maxlifetime_timer(MaxLifetime),
     PreAuthUser =
@@ -122,6 +125,7 @@ init(
             {_, undefined} -> undefined;
             {_, PreAuth} -> {preauth, PreAuth}
         end,
+    ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -141,6 +145,9 @@ init(
         allow_subscribe = CAPSubscribe,
         allow_unsubscribe = CAPUnsubscribe
     },
+    DisconnectOnUnauthorizedPublishV3 = vmq_config:get_env(
+        disconnect_on_unauthorized_publish_v3, false
+    ),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
@@ -162,6 +169,7 @@ init(
         max_inflight_messages = MaxInflightMsgs,
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
+        conn_opts = ConnOpts,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -169,6 +177,7 @@ init(
         cap_settings = CAPSettings,
         reg_view = RegView,
         def_opts = DOpts1,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3,
         trace_fun = TraceFun
     },
 
@@ -183,7 +192,7 @@ init(
                     {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
             end;
         false ->
-            lager:warning(
+            ?LOG_WARNING(
                 "invalid protocol version for ~p ~p",
                 [SubscriberId, ProtoVer]
             ),
@@ -328,7 +337,7 @@ connected(
     NewState =
         case Dropped > 0 of
             true ->
-                lager:warning(
+                ?LOG_WARNING(
                     "subscriber ~p dropped ~p messages",
                     [SubscriberId, Dropped]
                 ),
@@ -385,7 +394,7 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State, [PubRelFrame]};
         not_found ->
-            lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
             terminate(normal, State)
     end;
@@ -419,7 +428,7 @@ connected(#mqtt_pubcomp{message_id = MessageId}, State) ->
             });
         % error or wrong waiting_ack, definitely not well behaving client
         not_found ->
-            lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
+            ?LOG_DEBUG("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
@@ -453,15 +462,24 @@ connected(
             {State, [Frame]};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
+            ?LOG_ERROR(
+                "can't authorize SUBSCRIBE from v3 client ~p from ~s due to not_authorized",
+                [SubscriberId, peertoa(State#state.peer)]
+            ),
             QoSs = [not_allowed || _ <- Topics],
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
-        {error, _Reason} ->
+        {error, Reason} ->
             %% can't subscribe due to overload or netsplit,
-            %% Subscribe uses QoS 1 so the client will retry
+            ?LOG_ERROR(
+                "can't authorize SUBSCRIBE from v3 client ~p from ~s due to ~p",
+                [SubscriberId, peertoa(State#state.peer), Reason]
+            ),
+            QoSs = [not_allowed || _ <- Topics],
+            Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_error_subscribe(),
-            {State, []}
+            {State, [Frame]}
     end;
 connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
     #state{
@@ -514,12 +532,12 @@ connected(
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue = NewRetryQueue}, RetryFrames};
 connected({disconnect, Reason}, State) ->
-    lager:debug("stop due to disconnect", []),
+    ?LOG_DEBUG("stop due to disconnect", []),
     terminate(Reason, State);
 connected(
     disconnect_max_conn_lifetime, State
 ) ->
-    lager:debug("stop due to max connection lifetime reached", []),
+    ?LOG_DEBUG("stop due to max connection lifetime reached", []),
     terminate(?ADMINISTRATIVE_ACTION, State);
 connected(
     check_keepalive,
@@ -530,14 +548,21 @@ connected(
         username = UserName
     } = State
 ) ->
-    Now = os:timestamp(),
-    case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
+    Now = erlang:monotonic_time(microsecond),
+    case (Now - Last) > (1500000 * KeepAlive) of
         true ->
-            lager:warning("client ~p with username ~p stopped due to keepalive expired", [
-                SubscriberId, UserName
-            ]),
+            case proplists:get_value(keepalive_as_warning, vmq_config:get_env(logging, []), true) of
+                false ->
+                    ?LOG_INFO("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ]);
+                _ ->
+                    ?LOG_WARNING("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ])
+            end,
             _ = vmq_metrics:incr(?MQTT4_CLIENT_KEEPALIVE_EXPIRED),
-            terminate(normal, State);
+            terminate(keep_alive_timeout, State);
         false ->
             set_keepalive_check_timer(KeepAlive),
             {State, []}
@@ -566,7 +591,7 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+    ?LOG_WARNING("stopped connected session for client ~p, due to unexpected frame type ~p", [
         State#state.subscriber_id, Unexpected
     ]),
     terminate({error, unexpected_message, Unexpected}, State).
@@ -636,7 +661,7 @@ check_client_id(#mqtt_connect{client_id = <<>>, proto_ver = Ver} = F, State) whe
             )
     end;
 check_client_id(#mqtt_connect{client_id = <<>>, proto_ver = Ver}, State) when ?IS_PROTO_3(Ver) ->
-    lager:warning(
+    ?LOG_WARNING(
         "empty client id not allowed in mqttv3 ~p",
         [State#state.subscriber_id]
     ),
@@ -651,7 +676,7 @@ check_client_id(
     SubscriberId = {MountPoint, ClientId},
     check_user(F, State#state{subscriber_id = SubscriberId});
 check_client_id(#mqtt_connect{client_id = Id}, State) ->
-    lager:warning("invalid client id ~p", [Id]),
+    ?LOG_WARNING("invalid client id ~p", [Id]),
     connack_terminate(?CONNACK_INVALID_ID, State).
 
 -spec check_user(mqtt_connect(), state()) ->
@@ -693,30 +718,32 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                                 SubscriberId,
                                 State1#state.username
                             ]),
-                            State2 = State1#state{queue_pid = QPid, next_msg_id = MsgId},
+                            State2 = State1#state{
+                                queue_pid = QPid, next_msg_id = MsgId, conn_opts = undefined
+                            },
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
-                            lager:warning(
+                            ?LOG_WARNING(
                                 "can't register client ~p with username ~p due to ~p",
                                 [SubscriberId, User, Reason]
                             ),
                             connack_terminate(?CONNACK_SERVER, State1)
                     end;
                 {error, no_matching_hook_found} ->
-                    lager:error(
+                    ?LOG_ERROR(
                         "can't authenticate client ~p from ~s due to no_matching_hook_found",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
                     connack_terminate(?CONNACK_AUTH, State);
                 {error, invalid_credentials} ->
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to invalid_credentials",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
                     connack_terminate(?CONNACK_CREDENTIALS, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), Error]
                     ),
@@ -751,7 +778,7 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                         queue_pid = QPid, username = User, next_msg_id = MsgId
                     });
                 {error, Reason} ->
-                    lager:warning(
+                    ?LOG_WARNING(
                         "can't register client ~p due to reason ~p",
                         [SubscriberId, Reason]
                     ),
@@ -800,7 +827,7 @@ check_will(
                 SessCtrl
             };
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't authenticate last will\n"
                 "                          for client ~p due to ~p",
                 [SubscriberId, Reason]
@@ -815,9 +842,15 @@ auth_on_register(Password, State) ->
         peer = Peer,
         cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        conn_opts = ConnOpts
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean],
+    BasicHookArgs = [Peer, SubscriberId, User, Password, Clean],
+    HookArgs =
+        case ConnOpts of
+            M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
+            _ -> BasicHookArgs
+        end,
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};
@@ -947,7 +980,9 @@ auth_on_publish(
                 SessCtrl
             );
         {error, Re} ->
-            lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
+            ?LOG_ERROR("can't auth publish for client ~p (user ~p) on topic ~p due to ~p", [
+                SubscriberId, User, Topic, Re
+            ]),
             {error, not_allowed}
     end.
 
@@ -1025,13 +1060,15 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
         subscriber_id = SubscriberId,
         proto_ver = Proto,
         cap_settings = CAPSettings,
-        reg_view = RegView
+        reg_view = RegView,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, _Reason} ->
@@ -1050,14 +1087,16 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         subscriber_id = SubscriberId,
         proto_ver = Proto,
         cap_settings = CAPSettings,
-        reg_view = RegView
+        reg_view = RegView,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id = MessageId}], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, not_allowed} ->
@@ -1082,7 +1121,8 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         proto_ver = Proto,
         cap_settings = CAPSettings,
         reg_view = RegView,
-        waiting_acks = WAcks
+        waiting_acks = WAcks,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case maps:get({qos2, MessageId}, WAcks, not_found) of
         not_found ->
@@ -1097,8 +1137,9 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                         [Frame],
                         SessCtrl
                     };
-                {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+                {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
                     %% we have to close connection for 3.1.1
+                    %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
                     _ = vmq_metrics:incr_mqtt_error_auth_publish(),
                     {error, not_allowed};
                 {error, not_allowed} ->
@@ -1216,11 +1257,12 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         payload = Payload,
         retain = IsRetained,
         dup = IsDup,
-        qos = MsgQoS
+        qos = MsgQoS,
+        properties = Props0
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {NewTopic, NewPayload} =
-        case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained) of
+        case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained, Props0) of
             {error, _} ->
                 %% no on_deliver hook specified... that's ok
                 {Topic, Payload};
@@ -1256,16 +1298,11 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
             }}
     end.
 
--spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> any().
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
-    HookArgs0 = [User, SubscriberId, Topic, Payload],
-    case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
-        {error, _} ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
-            vmq_plugin:all_till_ok(on_deliver, HookArgs1);
-        Other ->
-            Other
-    end.
+-spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag(), any()) ->
+    any().
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties],
+    vmq_plugin:all_till_ok(on_deliver, HookArgs).
 
 -spec maybe_publish_last_will(state(), any()) -> ok.
 maybe_publish_last_will(_, ?CLIENT_DISCONNECT) ->
@@ -1298,7 +1335,7 @@ maybe_publish_last_will(
             ),
             ok;
         true ->
-            lager:debug(
+            ?LOG_DEBUG(
                 "last will and testament suppressed on session takeover for subscriber ~p",
                 [SubscriberId]
             ),
@@ -1380,7 +1417,7 @@ do_throttle(_, #state{max_message_rate = Rate}) ->
 
 -spec set_last_time_active(boolean(), state()) -> state().
 set_last_time_active(true, State) ->
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     State#state{last_time_active = Now};
 set_last_time_active(false, State) ->
     State.
@@ -1420,22 +1457,22 @@ set_retry(MsgTag, MsgId, Interval, RetryQueue) ->
         true ->
             %% no waiting ack
             vmq_mqtt_fsm_util:send_after(Interval, retry),
-            Now = os:timestamp(),
+            Now = erlang:monotonic_time(microsecond),
             queue:in({Now, {MsgTag, MsgId}}, RetryQueue);
         false ->
-            Now = os:timestamp(),
+            Now = erlang:monotonic_time(microsecond),
             queue:in({Now, {MsgTag, MsgId}}, RetryQueue)
     end.
 
 handle_retry(Interval, RetryQueue, WAcks) ->
     %% the fired timer was set for the oldest element in the queue!
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, []).
 
 handle_retry(
     Now, Interval, {{value, {Ts, {MsgTag, MsgId} = RetryId} = Val}, RetryQueue}, WAcks, Acc
 ) ->
-    NowDiff = timer:now_diff(Now, Ts) div 1000,
+    NowDiff = (Now - Ts) div 1000,
     case NowDiff < Interval of
         true ->
             vmq_mqtt_fsm_util:send_after(Interval - NowDiff, retry),
@@ -1516,8 +1553,8 @@ prop_val(Key, Args, Default, Validator) ->
     end.
 
 -spec queue_opts(state(), [any()]) -> map().
-queue_opts(#state{clean_session = CleanSession}, Args) ->
-    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession} | Args]),
+queue_opts(#state{clean_session = CleanSession, upgrade_qos = UpgradeQoS}, Args) ->
+    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}, {upgrade_qos, UpgradeQoS} | Args]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
 -spec unflag(boolean() | 0 | 1) -> boolean().

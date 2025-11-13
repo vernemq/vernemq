@@ -24,7 +24,9 @@ connect(Host, Port, Opts, Timeout) ->
     ProxyInfo = proplists:get_value(proxy_info, Opts),
     Opts1 = proplists:delete(ws_protocols, Opts),
     Opts2 = proplists:delete(proxy_info, Opts1),
-    case gen_tcp:connect(Host, Port, Opts2, Timeout) of
+    XFFUsername = proplists:get_value(xff_username, Opts, undefined),
+    Opts3 = proplists:delete(xff_username, Opts2),
+    case gen_tcp:connect(Host, Port, Opts3, Timeout) of
         {ok, Socket} ->
             case ProxyInfo of
                 undefined -> ignore;
@@ -32,16 +34,34 @@ connect(Host, Port, Opts, Timeout) ->
                              gen_tcp:send(Socket, Header)
             end,
             WSProtocolsStr = string:join(WSProtocols, ","),
-            Hello = [
+            Hello = 
+                case XFFUsername of 
+                    undefined ->
+                    [
                      "GET /mqtt HTTP/1.1\r\n"
                      "Host: localhost\r\n"
                      "Connection: Upgrade\r\n"
                      "Origin: http://localhost\r\n"
+                     "x-forwarded-for: 127.0.0.1,127.0.0.1\r\n"
                      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                      "Sec-WebSocket-Protocol: "++ WSProtocolsStr++"\r\n"
                      "Sec-WebSocket-Version: 13\r\n"
                      "Upgrade: websocket\r\n"
-                     "\r\n"],
+                     "\r\n"];
+                    Username ->
+                        [
+                            "GET /mqtt HTTP/1.1\r\n"
+                            "Host: localhost\r\n"
+                            "Connection: Upgrade\r\n"
+                            "Origin: http://localhost\r\n"
+                            "x-ssl-client-cn: "++ Username++"\r\n"
+                            "x-forwarded-for: 127.0.0.1,127.0.0.1\r\n"
+                            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                            "Sec-WebSocket-Protocol: "++ WSProtocolsStr++"\r\n"
+                            "Sec-WebSocket-Version: 13\r\n"
+                            "Upgrade: websocket\r\n"
+                            "\r\n"]
+                        end,
             ok = gen_tcp:send(Socket, Hello),
             {ok, Handshake} = gen_tcp:recv(Socket, 0, 6000),
             {ok, {http_response, {1, 1}, 101, "Switching Protocols"}, Rest}

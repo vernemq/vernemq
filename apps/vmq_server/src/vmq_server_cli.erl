@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -21,6 +22,7 @@
 ]).
 
 -include("vmq_metrics.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(clique_handler).
 
@@ -57,10 +59,13 @@ register_cli() ->
     register_cli_usage(),
     vmq_server_start_cmd(),
     vmq_server_status_cmd(),
+    vmq_server_sync_status_cmd(),
+    vmq_server_flag_as_init_synced_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
+    vmq_server_history_cmd(),
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
@@ -70,10 +75,9 @@ register_cli() ->
     vmq_mgmt_delete_api_key_cmd(),
     vmq_mgmt_list_api_keys_cmd(),
 
-    vmq_mgmt_tls_clear_pem_cache_cmd(),
-
     vmq_listener_cli:register_server_cli(),
     vmq_info_cli:register_cli(),
+    vmq_ssl_cli:register_cli(),
 
     vmq_tracer_cli:register_cli(),
     ok.
@@ -83,8 +87,13 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "status"], status_usage()),
+    clique:register_usage(["vmq-admin", "node", "swc_sync_status"], sync_status_usage()),
+    clique:register_usage(
+        ["vmq-admin", "node", "flag_as_init_synced"], flag_as_init_synced_usage()
+    ),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
+    clique:register_usage(["vmq-admin", "node", "history"], history_usage()),
 
     clique:register_usage(["vmq-admin", "cluster"], cluster_usage()),
     clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
@@ -96,9 +105,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key"], api_usage()),
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
-
-    clique:register_usage(["vmq-admin", "tls"], tls_usage()),
-    clique:register_usage(["vmq-admin", "tls", "clear-pem-cache"], tls_clear_pem_cache_usage()),
+    clique:register_usage(["vmq-admin", "api-key", "create"], api_create_key_usage()),
 
     ok.
 
@@ -125,7 +132,44 @@ vmq_server_status_cmd() ->
         Table = [[{'Status', Key}, {'Value', Value}] || {Key, Value} <- Status],
         [clique_status:table(Table)]
     end,
+    clique:register_command(Cmd, [], [], Callback).
 
+vmq_server_sync_status_cmd() ->
+    Cmd = ["vmq-admin", "node", "swc_sync_status"],
+    Callback = fun(_, _, _) ->
+        Status = maps:to_list(vmq_swc_group_coordinator:sync_state()),
+        Table = [[{'SWC Partition', Key}, {'InitSynced', Value}] || {Key, Value} <- Status],
+        [clique_status:table(Table)]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_flag_as_init_synced_cmd() ->
+    Cmd = ["vmq-admin", "node", "flag_as_init_synced"],
+    Callback = fun(_, _, _) ->
+        ok = vmq_swc_group_coordinator:flag_as_init_synced(),
+        [clique_status:text("Done")]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+% for scripts to check for empty state at boot
+vmq_server_history_cmd() ->
+    Cmd = ["vmq-admin", "node", "history"],
+    Callback = fun(_, _, _) ->
+        Status =
+            case vmq_config:get_env(metadata_impl) of
+                vmq_swc ->
+                    History = vmq_swc_plugin:history(),
+                    {LocalNode, Gap, _} = History,
+                    case {LocalNode, Gap} of
+                        {0, 0} -> empty_state;
+                        _ -> existing_state
+                    end;
+                _ ->
+                    not_swc
+            end,
+        Status1 = io_lib:format("~p", [Status]),
+        [clique_status:text(Status1)]
+    end,
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_server_show_cmd() ->
@@ -461,13 +505,13 @@ wait_till_all_offline(_, 0) ->
 wait_till_all_offline(Sleep, N) ->
     case vmq_queue_sup_sup:summary() of
         {0, 0, Drain, Offline, Msgs} ->
-            lager:info(
+            ?LOG_INFO(
                 "all queues offline: ~p draining, ~p offline, ~p msgs",
                 [Drain, Offline, Msgs]
             ),
             ok;
         {Online, WaitForOffline, Drain, Offline, Msgs} ->
-            lager:info(
+            ?LOG_INFO(
                 "intermediate queue summary: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs",
                 [Online, WaitForOffline, Drain, Offline, Msgs]
             ),
@@ -497,8 +541,7 @@ vmq_cluster_join_cmd() ->
                     vmq_cluster:recheck(),
                     [clique_status:text("Done")];
                 {error, Reason} ->
-                    Text = io_lib:format("Couldn't join cluster due to ~p~n", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
+                    {error, {{badrpc, Reason}, Node}}
             end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
@@ -660,15 +703,6 @@ vmq_mgmt_list_api_keys_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-vmq_mgmt_tls_clear_pem_cache_cmd() ->
-    Cmd = ["vmq-admin", "tls", "clear-pem-cache"],
-    KeySpecs = [],
-    FlagSpecs = [],
-    Callback = fun(_, _, _) ->
-        ok = ssl:clear_pem_cache()
-    end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
 start_usage() ->
     [
         "vmq-admin node start\n\n",
@@ -681,6 +715,21 @@ status_usage() ->
     [
         "vmq-admin node status\n\n",
         "  Prints status information about the node\n"
+    ].
+
+sync_status_usage() ->
+    [
+        "vmq-admin node swc_sync_status\n\n",
+        "  Boolean to show whether the SWC partition have been init synced or not.\n"
+        "  Note that a non-clustered node will show 'false' until an initial cluster round.\n"
+    ].
+
+flag_as_init_synced_usage() ->
+    [
+        "vmq-admin node flag_as_init_synced\n\n",
+        "  Actively flag an empty or non-empty node as init_synced.\n"
+        "  This will avoid any special init sync method, and just do normal sync between nodes after joining.\n"
+        "  This command is only relevant for clusters synced with vmq_swc.\n"
     ].
 
 stop_usage() ->
@@ -752,6 +801,7 @@ usage() ->
         "    api-key     Manage API keys for the HTTP management interface\n",
         "    trace       Trace various aspects of VerneMQ\n",
         "    tls         Manage TLS/SSL\n",
+        "    log         Manage log\n",
         remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
         "  Use --help after a sub-command for more details.\n"
     ].
@@ -829,27 +879,43 @@ api_delete_key_usage() ->
 api_add_key_usage() ->
     [
         "vmq-admin api-key add key=<API Key> scope=<SCOPE> expires=<DATE>\n\n",
-        "  Adds an API Key. \n",
+        "  Adds an API Key. \n\n",
         "  Scope and expires are optional. The scope allows to set an API key for different \n"
         "  parts of VerneMQ e.g. management API (mgmt), status page (status), health endpoint \n"
         "  (health) or metrics endpoint (metrics).\n",
         "  expires allows to set an expiery date, the expected format is \"yyyy-mm-ddThh:mm:ss\" \n\n",
         "  Example: \n",
-        "  vmq-admin api-key add key=abcd scope=mgmt expires=2023-02-15T08:00:00 \n\n"
+        "     vmq-admin api-key add key=abcd scope=mgmt expires=2023-02-15T08:00:00 \n\n",
+        "  Possible scopes:\n    "
+        | [
+            string:join(vmq_auth_apikey:scopes(), ",")
+        ]
     ].
 
-tls_usage() ->
+api_create_key_usage() ->
     [
-        "vmq-admin tls <sub-command>\n\n",
-        "  Interact with the TLS subsystem.\n\n",
+        "vmq-admin api-key add scope=<SCOPE> expires=<DATE>\n\n",
+        "  Creates an API Key. \n\n",
+        "  Scope and expires are optional. The scope allows to set an API key for different \n"
+        "  parts of VerneMQ e.g. management API (mgmt), status page (status), health endpoint \n"
+        "  (health) or metrics endpoint (metrics).\n",
+        "  expires allows to set an expiery date, the expected format is \"yyyy-mm-ddThh:mm:ss\" \n\n",
+        "  Example: \n",
+        "      vmq-admin api-key create scope=mgmt expires=2023-02-15T08:00:00 \n\n",
+        "  Possible scopes:\n    "
+        | [
+            string:join(vmq_auth_apikey:scopes(), ","),
+            "\n\n"
+        ]
+    ].
+
+history_usage() ->
+    [
+        "vmq-admin node <sub-command>\n\n",
+        "  Get info on node history.\n\n",
         "  Sub-commands:\n",
-        "    clear-pem-cache      Cleares cached certifactes and forces reload.\n"
-    ].
-
-tls_clear_pem_cache_usage() ->
-    [
-        "vmq-admin tls clear-pem-cache\n\n",
-        "  Cleares cached certifactes and forces reload.\n\n"
+        "    history        Shows whether this VerneMQ node is empty (has no history)\n\n",
+        "                  or not.\n"
     ].
 
 ensure_all_stopped(App) ->
@@ -860,8 +926,6 @@ ensure_all_stopped([kernel | Apps], Res) ->
 ensure_all_stopped([stdlib | Apps], Res) ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([sasl | Apps], Res) ->
-    ensure_all_stopped(Apps, Res);
-ensure_all_stopped([lager | Apps], Res) ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([clique | Apps], Res) ->
     ensure_all_stopped(Apps, Res);

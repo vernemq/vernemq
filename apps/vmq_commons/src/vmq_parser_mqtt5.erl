@@ -1,3 +1,17 @@
+%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 -module(vmq_parser_mqtt5).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
@@ -37,6 +51,12 @@
     enc_properties/1
 ]).
 
+-ifdef(TEST).
+-define(allowedPubProps, ?allowedServerPubProps).
+-else.
+-define(allowedPubProps, ?allowedClientPubProps).
+-endif.
+
 -spec parse(binary()) ->
     {mqtt5_frame(), binary()}
     | {error, any()}
@@ -46,6 +66,8 @@ parse(Data) ->
 
 -spec parse(binary(), non_neg_integer()) ->
     {mqtt5_frame(), binary()} | {error, atom()} | {{error, atom()}, any()} | more.
+parse(Data, MaxSize) when MaxSize > ?MAX_PACKET_SIZE ->
+    parse(Data, ?MAX_PACKET_SIZE);
 parse(<<Fixed:1/binary, 0:1, DataSize:7, Data/binary>>, MaxSize) ->
     parse(DataSize, MaxSize, Fixed, Data);
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>, MaxSize) ->
@@ -59,20 +81,19 @@ parse(<<_:8/binary, _/binary>>, _) ->
 parse(_, _) ->
     more.
 
-parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
-    %% no max size limit
-    <<Var:DataSize/binary, Rest/binary>> = Data,
-    {variable(Fixed, Var), Rest};
-parse(DataSize, 0, _Fixed, Data) when byte_size(Data) < DataSize ->
-    more;
+parse(DataSize, 0, Fixed, Data) ->
+    parse(DataSize, ?MAX_PACKET_SIZE, Fixed, Data);
 parse(DataSize, MaxSize, Fixed, Data) when
     byte_size(Data) >= DataSize,
-    byte_size(Data) =< MaxSize
+    byte_size(Data) =< MaxSize,
+    MaxSize =< ?MAX_PACKET_SIZE
 ->
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, MaxSize, _, _) when
-    DataSize > MaxSize
+parse(DataSize, MaxSize, _, Data) when
+    DataSize > MaxSize;
+    MaxSize > ?MAX_PACKET_SIZE;
+    byte_size(Data) > ?MAX_PACKET_SIZE
 ->
     {error, packet_exceeds_max_size};
 parse(_, _, _, _) ->
@@ -106,7 +127,7 @@ variable(
     <<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
     <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Rest/binary>>
 ) when
-    QoS < 3
+    QoS < 3, MessageId > 0
 ->
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
@@ -290,28 +311,33 @@ variable(
         Flags:6/bitstring, CleanStart:1, 0:1, KeepAlive:16/big, Rest0/binary>>
 ) ->
     %% The properties are the last element of the variable header.
-    case parse_properties(Rest0, ?allowedConnectProps) of
+    case parse_connect_properties(Rest0, ?allowedConnectProps) of
         {ok, Properties, Rest1} ->
             %% Parse the payload.
             case Rest1 of
                 <<ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest2/binary>> ->
-                    case parse_will_properties(Rest2, Flags) of
-                        #{
-                            lwt := LWT,
-                            username := Username,
-                            password := Password
-                        } ->
-                            #mqtt5_connect{
-                                proto_ver = ?PROTOCOL_5,
-                                username = Username,
-                                password = Password,
-                                clean_start = CleanStart == 1,
-                                keep_alive = KeepAlive,
-                                client_id = ClientId,
-                                lwt = LWT,
-                                properties = Properties
-                            };
-                        {error, _} = E ->
+                    case ensure_utf8(ClientId) of
+                        {ok, ClientId0} ->
+                            case parse_will_properties(Rest2, Flags) of
+                                #{
+                                    lwt := LWT,
+                                    username := Username,
+                                    password := Password
+                                } ->
+                                    #mqtt5_connect{
+                                        proto_ver = ?PROTOCOL_5,
+                                        username = Username,
+                                        password = Password,
+                                        clean_start = CleanStart == 1,
+                                        keep_alive = KeepAlive,
+                                        client_id = ClientId0,
+                                        lwt = LWT,
+                                        properties = Properties
+                                    };
+                                {error, _} = E ->
+                                    E
+                            end;
+                        E ->
                             E
                     end;
                 _ ->
@@ -390,7 +416,12 @@ parse_username(Rest, <<0:1, _:5>> = Flags, M) ->
     %% Username bit is zero, no username.
     parse_password(Rest, Flags, M#{username => undefined});
 parse_username(<<Len:16/big, UserName:Len/binary, Rest/binary>>, <<1:1, _:5>> = Flags, M) ->
-    parse_password(Rest, Flags, M#{username => UserName});
+    case ensure_utf8(UserName) of
+        {ok, UserName0} ->
+            parse_password(Rest, Flags, M#{username => UserName0});
+        E ->
+            E
+    end;
 parse_username(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_username}.
@@ -398,7 +429,7 @@ parse_username(_, _, _) ->
 parse_password(<<>>, <<_:1, 0:1, _:4>>, M) ->
     M#{password => undefined};
 parse_password(<<Len:16/big, Password:Len/binary>>, <<_:1, 1:1, _:4>>, M) ->
-    M#{password => Password};
+    M#{password => credentials_obfuscation:encrypt(Password)};
 parse_password(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_password}.
@@ -414,23 +445,33 @@ parse_topics(
 ) when
     (QoS >= 0), (QoS < 3), RetainHandling < 3
 ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            T = #mqtt5_subscribe_topic{
-                topic = ParsedTopic,
-                qos = QoS,
-                no_local = to_bool(NL),
-                rap = to_bool(Rap),
-                retain_handling = sub_retain_handling(RetainHandling)
-            },
-            parse_topics(Rest, Sub, [T | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    T = #mqtt5_subscribe_topic{
+                        topic = ParsedTopic,
+                        qos = QoS,
+                        no_local = to_bool(NL),
+                        rap = to_bool(Rap),
+                        retain_handling = sub_retain_handling(RetainHandling)
+                    },
+                    parse_topics(Rest, Sub, [T | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
 parse_topics(<<L:16/big, Topic:L/binary, Rest/binary>>, ?UNSUBSCRIBE = Sub, Acc) ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
@@ -674,6 +715,7 @@ flag(1) -> 1;
 flag(false) -> 0;
 flag(true) -> 1;
 flag(V) when is_binary(V) orelse is_list(V) -> 1;
+flag({encrypted, V}) when is_binary(V) -> 1;
 %% for test purposes
 flag(empty) -> 1;
 flag(_) -> 0.
@@ -693,8 +735,20 @@ utf8(empty) ->
     <<0:16/big>>;
 utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
+utf8({encrypted, Bin}) ->
+    Plain = credentials_obfuscation:decrypt({encrypted, Bin}),
+    <<(byte_size(Plain)):16/big, Plain/binary>>;
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
+
+ensure_utf8(Bin) when is_binary(Bin) ->
+    case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
+        % Invalid UTF-8
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        % NULL character found
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
+    end.
 
 binary(X) ->
     %% We encode MQTT binaries the same as utf8, but use this function
@@ -796,7 +850,8 @@ gen_connect(ClientId, Opts) ->
         clean_start = proplists:get_value(clean_start, Opts, true),
         keep_alive = proplists:get_value(keepalive, Opts, 60),
         username = ensure_binary(proplists:get_value(username, Opts)),
-        password = ensure_binary(proplists:get_value(password, Opts)),
+        password =
+            ensure_binary(proplists:get_value(password, Opts)),
         proto_ver = ?PROTOCOL_5,
         lwt = proplists:get_value(lwt, Opts, undefined),
         properties = proplists:get_value(properties, Opts, #{})
@@ -814,7 +869,7 @@ gen_connack(SP, RC, Properties) ->
 
 gen_publish(Topic, Qos, Payload, Opts) ->
     Frame = #mqtt5_publish{
-        message_id = proplists:get_value(mid, Opts, 0),
+        message_id = proplists:get_value(mid, Opts, 1),
         topic = ensure_binary(Topic),
         qos = Qos,
         retain = proplists:get_value(retain, Opts, false),
@@ -923,6 +978,25 @@ gen_auth(RC, Properties) ->
             }
         )
     ).
+
+-spec parse_connect_properties(binary(), list()) ->
+    {ok, map(), binary()}
+    | {error, any()}.
+parse_connect_properties(Data, AllowedProps) ->
+    case parse_properties(Data, AllowedProps) of
+        {ok, Properties, Rest1} when is_map(Properties) ->
+            case
+                {
+                    maps:is_key(p_authentication_data, Properties),
+                    maps:is_key(p_authentication_method, Properties)
+                }
+            of
+                {true, false} -> {error, authentication_data_without_authentication_method};
+                _ -> {ok, Properties, Rest1}
+            end;
+        E ->
+            E
+    end.
 
 -spec parse_properties(binary(), list()) ->
     {ok, map(), binary()}

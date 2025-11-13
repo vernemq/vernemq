@@ -1,5 +1,6 @@
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
+%% Copyright 2018-2024 Octavo Labs/VerneMQ (https://vernemq.com/)
+%% and Individual Contributors.
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -13,6 +14,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_postgres).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 %% API functions
@@ -72,7 +74,7 @@ execute(As, St) ->
                     APoolId -> APoolId
                 catch
                     _:_ ->
-                        lager:error("unknown pool ~p", [BPoolId]),
+                        ?LOG_ERROR("unknown pool ~p", [BPoolId]),
                         badarg_error(unknown_pool, As, St)
                 end,
 
@@ -99,7 +101,7 @@ execute(As, St) ->
                     {[false], St}
             catch
                 E:R ->
-                    lager:error("can't execute query ~p due to ~p", [BQuery, {E, R}]),
+                    ?LOG_ERROR("can't execute query ~p due to ~p", [BQuery, {E, R}]),
                     badarg_error(execute_equery, As, St)
             end;
         _ ->
@@ -198,12 +200,72 @@ ensure_pool(As, St, DB, DefaultPoolId) ->
                                         proplists:get_value(keyfile, DefaultConf)
                                     )
                                 ),
+                                Verify = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"verify">>,
+                                        Options,
+                                        proplists:get_value(verify, DefaultConf)
+                                    )
+                                ),
+                                Depth = vmq_diversity_utils:int(
+                                    maps:get(
+                                        <<"depth">>,
+                                        Options,
+                                        proplists:get_value(depth, DefaultConf)
+                                    )
+                                ),
+                                CustomizeHostnameCheck0 = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"customize_hostname_check">>,
+                                        Options,
+                                        proplists:get_value(customize_hostname_check, DefaultConf)
+                                    )
+                                ),
+                                SystemCAs = vmq_diversity_utils:atom(
+                                    maps:get(
+                                        <<"use_system_cas">>,
+                                        Options,
+                                        proplists:get_value(use_system_cas, DefaultConf)
+                                    )
+                                ),
+
                                 L = [
                                     {certfile, CertFile},
-                                    {cacertfile, CaCertFile},
-                                    {keyfile, KeyFile}
+                                    {keyfile, KeyFile},
+                                    {verify, Verify},
+                                    {depth, Depth},
+                                    {server_name_indication, Host}
                                 ],
-                                [P || {_, V} = P <- L, V /= ""];
+                                MaybeHostNameCheck =
+                                    case CustomizeHostnameCheck0 of
+                                        'https' ->
+                                            [
+                                                {customize_hostname_check, [
+                                                    {match_fun,
+                                                        public_key:pkix_verify_hostname_match_fun(
+                                                            https
+                                                        )}
+                                                ]}
+                                                | L
+                                            ];
+                                        _ ->
+                                            L
+                                    end,
+                                MaybeCacertfile =
+                                    case CaCertFile of
+                                        [] ->
+                                            MaybeHostNameCheck;
+                                        CF ->
+                                            [{cacertfile, CF} | MaybeHostNameCheck]
+                                    end,
+                                MaybeSystemCAs =
+                                    case SystemCAs of
+                                        false ->
+                                            MaybeCacertfile;
+                                        true ->
+                                            [{cacerts, public_key:cacerts_get()} | MaybeCacertfile]
+                                    end,
+                                [P || {_, V} = P <- MaybeSystemCAs, V /= ""];
                             false ->
                                 []
                         end,
