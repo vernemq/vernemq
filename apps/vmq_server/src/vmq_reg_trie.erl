@@ -66,7 +66,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init_subscriptions() ->
-    gen_server2:call(?MODULE, init_subs, 60000).
+    gen_server:call(?MODULE, init_subs, 60000).
 
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
