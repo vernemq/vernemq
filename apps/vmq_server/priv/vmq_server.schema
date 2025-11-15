@@ -1756,6 +1756,9 @@
 %%
 %%     - listener.ssl.my_ssl_listener.tls_version
 %%     - listener.wss.my_wss_listener.tls_version
+%% Example for multi-version listener:
+%%     - listener.ssl.my_ssl_listener.tls_version = tlsv1.2,tlsv1.3
+%% (add versions comma-separated, no space)
 {mapping, "listener.ssl.tls_version", "vmq_server.listeners", [
                                                                {default, "tlsv1.2"},
                                                                {datatype, string},
