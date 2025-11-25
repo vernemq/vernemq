@@ -507,7 +507,8 @@ offline({enqueue, Enq}, #state{id = SId} = State) ->
     {next_state, offline, insert(Enq, State)};
 offline(expire_session, #state{id = SId, offline = #queue{queue = Q}} = State) ->
     %% session has expired cleanup and go down
-    vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
+    UnsubbedTopics = get_topics(SId),
+    vmq_plugin:all(on_topic_unsubscribed, [SId, UnsubbedTopics]),
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
     _ = vmq_plugin:all(on_session_expired, [SId]),
@@ -655,7 +656,8 @@ handle_sync_event(
     %% Forcefully disconnect all sessions and cleanup all state
     case DoCleanup of
         true ->
-            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
+            UnsubbedTopics = get_topics(SId),
+            vmq_plugin:all(on_topic_unsubscribed, [SId, UnsubbedTopics]),
             vmq_reg:delete_subscriptions(SId),
             %% Collect all queues, make sure to include the backups
             SessionQueues = [
@@ -886,7 +888,8 @@ handle_session_down(
         ->
             %% last session gone
             %% ... we dont need to migrate this one
-            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
+            UnsubbedTopics = get_topics(SId),
+            vmq_plugin:all(on_topic_unsubscribed, [SId, UnsubbedTopics]),
             vmq_reg:delete_subscriptions(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             gen_fsm:reply(From, ok),
@@ -913,7 +916,8 @@ handle_session_down(
             %%
             %% it is assumed that all attached sessions use the same
             %% clean session flag
-            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
+            UnsubbedTopics = get_topics(SId),
+            vmq_plugin:all(on_topic_unsubscribed, [SId, UnsubbedTopics]),
             vmq_reg:delete_subscriptions(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             {stop, normal, NewState};
@@ -1526,3 +1530,12 @@ to_internal(Msg) ->
 
 to_external(#deliver{qos = QoS, msg = Msg}) ->
     {deliver, QoS, Msg}.
+
+
+get_topics(SubscriberId) ->
+    Subs = vmq_subscriber_db:read(SubscriberId),
+    lists:flatmap(
+        fun({_, _, NodeSubs}) ->
+            lists:map(fun({Topic, _}) -> Topic end, NodeSubs)
+        end,
+    Subs).
