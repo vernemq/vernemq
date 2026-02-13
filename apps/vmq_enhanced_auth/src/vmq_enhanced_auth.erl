@@ -32,10 +32,10 @@
 
 -export([
     auth_on_subscribe/3,
-    auth_on_publish/6,
+    auth_on_publish/7,
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
-    auth_on_register/5,
+    auth_on_register/6,
     change_config/1
 ]).
 
@@ -129,7 +129,7 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers)
             end
     end.
 
-auth_on_publish(User, SubscriberId, _Qos, Topic, _, _) ->
+auth_on_publish(User, SubscriberId, _Qos, Topic, _, _, _SessionId) ->
     D = is_acl_auth_disabled(),
     if
         D ->
@@ -163,7 +163,8 @@ auth_on_register(
     {_MountPoint, _ClientId} = _SubscriberId,
     UserName,
     Password,
-    _CleanSession
+    _CleanSession,
+    _SessionId
 ) ->
     %% do whatever you like with the params, all that matters
     %% is the return value of this function

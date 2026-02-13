@@ -42,20 +42,20 @@
 -behaviour(on_auth_m5_hook).
 
 -export([
-    auth_on_register/5,
-    auth_on_publish/6,
+    auth_on_register/6,
+    auth_on_publish/7,
     auth_on_subscribe/3,
-    on_register/4,
-    on_publish/7,
-    on_subscribe/3,
-    on_unsubscribe/3,
-    on_deliver/8,
-    on_offline_message/5,
-    on_client_wakeup/1,
-    on_client_offline/3,
-    on_client_gone/3,
-    on_session_expired/1,
-    on_delivery_complete/8,
+    on_register/5,
+    on_publish/8,
+    on_subscribe/4,
+    on_unsubscribe/4,
+    on_deliver/9,
+    on_offline_message/6,
+    on_client_wakeup/2,
+    on_client_offline/4,
+    on_client_gone/4,
+    on_session_expired/2,
+    on_delivery_complete/9,
 
     auth_on_register_m5/6,
     auth_on_publish_m5/7,
@@ -269,9 +269,9 @@ nullify(undefined) ->
 nullify(Val) ->
     Val.
 
--spec auth_on_register(peer(), subscriber_id(), username(), password(), boolean()) ->
+-spec auth_on_register(peer(), subscriber_id(), username(), password(), boolean(), session_id()) ->
     'next' | 'ok' | {'error', _} | {'ok', [auth_on_register_hook:reg_modifiers()]}.
-auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
+auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_register, [
@@ -281,7 +281,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
         {client_id, ClientId},
         {username, nullify(UserName)},
         {password, nullify(Password)},
-        {clean_session, CleanSession}
+        {clean_session, CleanSession},
+        {session_id, SessionId}
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
@@ -303,9 +304,9 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
         {properties, Props}
     ]).
 
--spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+-spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag(), session_id()) ->
     'next' | 'ok' | {'error', any()} | {'ok', payload() | [auth_on_publish_hook:msg_modifier()]}.
-auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_publish, [
         {username, nullify(UserName)},
@@ -314,7 +315,8 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
 -spec auth_on_publish_m5(
@@ -366,8 +368,8 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
-on_register(Peer, SubscriberId, UserName, #{?P_USER_PROPERTY := UserProps}) ->
+-spec on_register(peer(), subscriber_id(), username(), properties(), session_id()) -> 'next'.
+on_register(Peer, SubscriberId, UserName, #{?P_USER_PROPERTY := UserProps}, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register, [
@@ -376,9 +378,10 @@ on_register(Peer, SubscriberId, UserName, #{?P_USER_PROPERTY := UserProps}) ->
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nullify(UserName)},
-        {user_properties, maps:from_list(UserProps)}
+        {user_properties, maps:from_list(UserProps)},
+        {session_id, SessionId}
     ]);
-on_register(Peer, SubscriberId, UserName, _) ->
+on_register(Peer, SubscriberId, UserName, _, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register, [
@@ -386,7 +389,8 @@ on_register(Peer, SubscriberId, UserName, _) ->
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
-        {username, nullify(UserName)}
+        {username, nullify(UserName)},
+        {session_id, SessionId}
     ]).
 
 -spec on_register_m5(peer(), subscriber_id(), username(), properties()) -> 'next'.
@@ -402,8 +406,9 @@ on_register_m5(Peer, SubscriberId, UserName, Props) ->
         {properties, Props}
     ]).
 
--spec on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag(), _) -> 'next'.
-on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
+-spec on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag(), _, session_id()) ->
+    'next'.
+on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish, [
         {username, nullify(UserName)},
@@ -412,7 +417,8 @@ on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
 -spec on_publish_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->
@@ -430,8 +436,8 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
         {properties, Props}
     ]).
 
--spec on_subscribe(username(), subscriber_id(), [topic()]) -> 'next'.
-on_subscribe(UserName, SubscriberId, Topics) ->
+-spec on_subscribe(username(), subscriber_id(), [topic()], session_id()) -> 'next'.
+on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_subscribe, [
         {username, nullify(UserName)},
@@ -440,7 +446,8 @@ on_subscribe(UserName, SubscriberId, Topics) ->
         {topics, [
             [unword(T), from_internal_qos(QoS)]
          || {T, QoS, _} <- Topics
-        ]}
+        ]},
+        {session_id, SessionId}
     ]).
 
 -spec on_subscribe_m5(username(), subscriber_id(), [topic()], properties()) ->
@@ -458,9 +465,9 @@ on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_unsubscribe(username(), subscriber_id(), [topic()]) ->
+-spec on_unsubscribe(username(), subscriber_id(), [topic()], session_id()) ->
     'next' | 'ok' | {'ok', on_unsubscribe_hook:unsub_modifiers()}.
-on_unsubscribe(UserName, SubscriberId, Topics) ->
+on_unsubscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_unsubscribe, [
         {username, nullify(UserName)},
@@ -469,7 +476,8 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
         {topics, [
             unword(T)
          || T <- Topics
-        ]}
+        ]},
+        {session_id, SessionId}
     ]).
 
 -spec on_unsubscribe_m5(username(), subscriber_id(), [topic()], properties()) ->
@@ -487,9 +495,11 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {properties, Props}
     ]).
 
--spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _) ->
+-spec on_deliver(
+    username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _, session_id()
+) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nullify(UserName)},
@@ -498,12 +508,15 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
--spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _) ->
+-spec on_delivery_complete(
+    username(), subscriber_id(), qos(), topic(), payload(), flag(), _, _, session_id()
+) ->
     'next'.
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_delivery_complete, [
         {username, nullify(UserName)},
@@ -512,7 +525,8 @@ on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
 -spec on_deliver_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) ->
@@ -541,8 +555,9 @@ on_auth_m5(UserName, SubscriberId, Props) ->
         {properties, Props}
     ]).
 
--spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
-on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
+-spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag(), session_id()) ->
+    'next'.
+on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [
         {mountpoint, MP},
@@ -550,43 +565,48 @@ on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
--spec on_client_wakeup(subscriber_id()) -> 'next'.
-on_client_wakeup(SubscriberId) ->
+-spec on_client_wakeup(subscriber_id(), session_id()) -> 'next'.
+on_client_wakeup(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_wakeup, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {session_id, SessionId}
     ]).
 
--spec on_client_offline(subscriber_id(), _, username()) -> 'next'.
-on_client_offline(SubscriberId, Reason, UserName) ->
+-spec on_client_offline(subscriber_id(), _, username(), session_id()) -> 'next'.
+on_client_offline(SubscriberId, Reason, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_offline, [
         {mountpoint, MP},
         {client_id, ClientId},
         {reason, Reason},
-        {username, UserName}
+        {username, UserName},
+        {session_id, SessionId}
     ]).
 
--spec on_client_gone(subscriber_id(), _, username()) -> 'next'.
-on_client_gone(SubscriberId, Reason, UserName) ->
+-spec on_client_gone(subscriber_id(), _, username(), session_id()) -> 'next'.
+on_client_gone(SubscriberId, Reason, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_gone, [
         {mountpoint, MP},
         {client_id, ClientId},
         {reason, Reason},
-        {username, UserName}
+        {username, UserName},
+        {session_id, SessionId}
     ]).
 
--spec on_session_expired(subscriber_id()) -> 'next'.
-on_session_expired(SubscriberId) ->
+-spec on_session_expired(subscriber_id(), session_id()) -> 'next'.
+on_session_expired(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_session_expired, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {session_id, SessionId}
     ]).
 
 %%%===================================================================

@@ -11,3 +11,4 @@
 -define(LABEL, <<"test-label">>).
 -define(PATTERN, <<"test/pattern">>).
 -define(MESSAGE_DROP_REASON, <<"queue_full">>).
+-define(SESSION_ID, <<"96366244-e848-4ef4-82c1-5ee7c5cf8102">>).

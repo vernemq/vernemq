@@ -18,4 +18,5 @@ message OnDeliver {
   bytes payload = 8;
   MatchedACL matched_acl = 9;
   bool persisted = 10;
+  string session_id = 11;
 }

@@ -58,6 +58,9 @@
     last_time_active = os:timestamp() :: timestamp(),
     last_trigger = os:timestamp() :: timestamp(),
 
+    %% session tracking
+    session_id :: undefined | binary(),
+
     %% config
     allow_anonymous = false :: boolean(),
     max_client_id_size = 100 :: non_neg_integer(),
@@ -130,6 +133,8 @@ init(
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
 
+    SessionId = generate_session_id(),
+
     State = #state{
         peer = Peer,
         upgrade_qos = UpgradeQoS,
@@ -145,7 +150,8 @@ init(
         retry_interval = 1000 * RetryInterval,
         reg_view = RegView,
         def_opts = DOpts1,
-        trace_fun = TraceFun
+        trace_fun = TraceFun,
+        session_id = SessionId
     },
 
     case lists:member(ProtoVer, AllowedProtocolVersions) of
@@ -358,7 +364,8 @@ connected(
                 Payload,
                 IsRetain,
                 #matched_acl{name = Name},
-                Persisted
+                Persisted,
+                State#state.session_id
             ]),
             maybe_send_puback(Name, PubPid, PubMsgId),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
@@ -393,7 +400,8 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
                 Payload,
                 IsRetain,
                 #matched_acl{name = Name},
-                Persisted
+                Persisted,
+                State#state.session_id
             ]),
             PubRelFrame = #mqtt_pubrel{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
@@ -483,7 +491,7 @@ connected(
                 end,
             case vmq_reg:subscribe(SubscriberId, Subscriptions) of
                 {ok, _} = Res ->
-                    vmq_plugin:all(on_subscribe, [User, SubscriberId, T]),
+                    vmq_plugin:all(on_subscribe, [User, SubscriberId, T, State#state.session_id]),
                     Res;
                 Res ->
                     Res
@@ -517,13 +525,15 @@ connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
         fun(_SubscriberId, MaybeChangedTopics) ->
             case vmq_reg:unsubscribe(SubscriberId, MaybeChangedTopics) of
                 ok ->
-                    vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, MaybeChangedTopics]),
+                    vmq_plugin:all(on_topic_unsubscribed, [
+                        SubscriberId, MaybeChangedTopics, State#state.session_id
+                    ]),
                     ok;
                 V ->
                     V
             end
         end,
-    case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
+    case unsubscribe(User, SubscriberId, Topics, OnSuccess, State#state.session_id) of
         ok ->
             Frame = #mqtt_unsuback{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
@@ -636,6 +646,7 @@ terminate(
     ProtoReason = vmq_mqtt_fsm_util:terminate_proto_reason(NewReason),
     _ = vmq_metrics:incr({?MQTT_DISONNECT, ProtoReason}),
     vmq_queue:set_username(QueuePid, UserName),
+    vmq_queue:set_session_id(QueuePid, State#state.session_id),
     vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason),
     {stop, terminate_reason(Reason), []}.
 
@@ -738,7 +749,8 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                                 Peer,
                                 SubscriberId,
                                 State1#state.username,
-                                Properties
+                                Properties,
+                                State1#state.session_id
                             ]),
                             State2 = State1#state{queue_pid = QPid, next_msg_id = MsgId},
                             check_will(F, SessionPresent, State2);
@@ -791,7 +803,9 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                     queue_pid := QPid
                 }} ->
                     monitor(process, QPid),
-                    _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User, Properties]),
+                    _ = vmq_plugin:all(on_register, [
+                        Peer, SubscriberId, User, Properties, State#state.session_id
+                    ]),
                     check_will(F, SessionPresent, State#state{
                         queue_pid = QPid, username = User, next_msg_id = MsgId
                     });
@@ -829,7 +843,8 @@ check_will(
                 retain = unflag(IsRetain),
                 mountpoint = MountPoint
             },
-            fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end
+            fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end,
+            State#state.session_id
         )
     of
         {ok, Msg, SessCtrl} ->
@@ -859,9 +874,10 @@ auth_on_register(Password, State) ->
         clean_session = Clean,
         peer = Peer,
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean],
+    HookArgs = [Peer, SubscriberId, User, Password, Clean, SessionId],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};
@@ -921,11 +937,12 @@ auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
     username(),
     subscriber_id(),
     [{topic(), qos()}],
-    fun((subscriber_id(), [{topic(), qos()}]) -> ok | {error, _})
+    fun((subscriber_id(), [{topic(), qos()}]) -> ok | {error, _}),
+    session_id()
 ) -> ok | {error, _}.
-unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
+unsubscribe(User, SubscriberId, Topics, UnsubFun, SessionId) ->
     TTopics =
-        case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics]) of
+        case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics, SessionId]) of
             ok ->
                 Topics;
             {ok, [[W | _] | _] = NewTopics} when is_binary(W) ->
@@ -935,7 +952,7 @@ unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
         end,
     UnsubFun(SubscriberId, TTopics).
 
--spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun()) ->
+-spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun(), session_id()) ->
     {ok, msg(), session_ctrl()}
     | {error, atom()}.
 auth_on_publish(
@@ -947,16 +964,26 @@ auth_on_publish(
         qos = QoS,
         retain = IsRetain
     } = Msg,
-    AuthSuccess
+    AuthSuccess,
+    SessionId
 ) ->
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), SessionId],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), #matched_acl{}],
+            HookArgs1 = [
+                User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), #matched_acl{}, SessionId
+            ],
             AuthSuccess(Msg, HookArgs1, #{});
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             HookArgs1 = [
-                User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain), #matched_acl{}
+                User,
+                SubscriberId,
+                QoS,
+                Topic,
+                ChangedPayload,
+                unflag(IsRetain),
+                #matched_acl{},
+                SessionId
             ],
             AuthSuccess(Msg#vmq_msg{payload = ChangedPayload}, HookArgs1, #{});
         {ok, Args} when is_list(Args) ->
@@ -974,7 +1001,8 @@ auth_on_publish(
                 ChangedTopic,
                 ChangedPayload,
                 ChangedIsRetain,
-                MatchedAcl
+                MatchedAcl,
+                SessionId
             ],
             SessCtrl = session_ctrl(Args),
             AuthSuccess(
@@ -1005,16 +1033,25 @@ session_ctrl(Args) ->
             #{throttle => ThrottleMs}
     end.
 
--spec publish(module(), username(), subscriber_id(), msg()) ->
+-spec publish(module(), username(), subscriber_id(), msg(), session_id()) ->
     {ok, msg(), session_ctrl()}
     | {error, atom()}.
-publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
+publish(RegView, User, {_, ClientId} = SubscriberId, Msg, SessionId) ->
     auth_on_publish(
         User,
         SubscriberId,
         Msg,
         fun(MaybeChangedMsg, HookArgs, SessCtrl) ->
-            [_User, _SubscriberId, _QoS, _Topic, _Payload, _IsRetain, #matched_acl{name = Name}] =
+            [
+                _User,
+                _SubscriberId,
+                _QoS,
+                _Topic,
+                _Payload,
+                _IsRetain,
+                #matched_acl{name = Name},
+                _SessionId
+            ] =
                 HookArgs,
             ChangedMsg = MaybeChangedMsg#vmq_msg{acl_name = Name},
             case
@@ -1028,7 +1065,8 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
                 E ->
                     E
             end
-        end
+        end,
+        SessionId
     ).
 
 -spec on_publish_hook({ok, {integer(), integer()}} | {error, _}, list()) -> ok | {error, _}.
@@ -1069,7 +1107,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
         proto_ver = Proto,
         reg_view = RegView
     } = State,
-    case publish(RegView, User, SubscriberId, Msg) of
+    case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
@@ -1093,7 +1131,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         proto_ver = Proto,
         reg_view = RegView
     } = State,
-    case publish(RegView, User, SubscriberId, Msg) of
+    case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
         {ok, #vmq_msg{acl_name = AclName}, SessCtrl} ->
             {maybe_send_immediate_puback(AclName, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
@@ -1136,7 +1174,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
     } = State,
     case maps:get({qos2, MessageId}, WAcks, not_found) of
         not_found ->
-            case publish(RegView, User, SubscriberId, Msg) of
+            case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
                 {ok, _, SessCtrl} ->
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
@@ -1288,7 +1326,8 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
                 Payload,
                 IsRetained,
                 #matched_acl{name = Name},
-                Persisted
+                Persisted,
+                State#state.session_id
             )
         of
             {error, _} ->
@@ -1339,13 +1378,25 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
     end.
 
 -spec on_deliver_hook(
-    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    matched_acl(),
+    flag(),
+    session_id()
 ) -> any().
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted) ->
+on_deliver_hook(
+    User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted, SessionId
+) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload],
     case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
         {error, _} ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted],
+            HookArgs1 = [
+                User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, Persisted, SessionId
+            ],
             vmq_plugin:all_till_ok(on_deliver, HookArgs1);
         Other ->
             Other
@@ -1597,8 +1648,8 @@ prop_val(Key, Args, Default, Validator) ->
     end.
 
 -spec queue_opts(state(), [any()]) -> map().
-queue_opts(#state{clean_session = CleanSession}, Args) ->
-    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession} | Args]),
+queue_opts(#state{clean_session = CleanSession, session_id = SessionId}, Args) ->
+    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}, {session_id, SessionId} | Args]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
 -spec unflag(boolean() | 0 | 1) -> boolean().
@@ -1635,7 +1686,7 @@ info(Pid, Items) ->
     end.
 
 get_info_items([], State) ->
-    DefaultItems = [pid, client_id, user, peer_host, peer_port],
+    DefaultItems = [pid, client_id, session_id, user, peer_host, peer_port],
     get_info_items(DefaultItems, State);
 get_info_items(Items, State) ->
     get_info_items(Items, State, []).
@@ -1643,6 +1694,7 @@ get_info_items(Items, State) ->
 -spec get_info_items([any()], state(), [
     {
         'client_id'
+        | 'session_id'
         | 'mountpoint'
         | 'node'
         | 'peer_host'
@@ -1662,6 +1714,7 @@ get_info_items(Items, State) ->
     [
         {
             'client_id'
+            | 'session_id'
             | 'mountpoint'
             | 'node'
             | 'peer_host'
@@ -1679,6 +1732,8 @@ get_info_items([pid | Rest], State, Acc) ->
 get_info_items([client_id | Rest], State, Acc) ->
     #state{subscriber_id = {_, ClientId}} = State,
     get_info_items(Rest, State, [{client_id, ClientId} | Acc]);
+get_info_items([session_id | Rest], State, Acc) ->
+    get_info_items(Rest, State, [{session_id, State#state.session_id} | Acc]);
 get_info_items([mountpoint | Rest], State, Acc) ->
     #state{subscriber_id = {MountPoint, _}} = State,
     get_info_items(Rest, State, [{mountpoint, MountPoint} | Acc]);
@@ -1797,3 +1852,13 @@ should_send_puback(undefined) ->
     false;
 should_send_puback(AclName) ->
     ets:member(?DELAYED_PUBACK_TBL, AclName).
+
+-spec generate_session_id() -> binary().
+generate_session_id() ->
+    <<A:32, B:16, C:16, D:16, E:48>> = crypto:strong_rand_bytes(16),
+    iolist_to_binary(
+        io_lib:format(
+            "~8.16.0b-~4.16.0b-4~3.16.0b-~4.16.0b-~12.16.0b",
+            [A, B, C band 16#0fff, (D band 16#3fff) bor 16#8000, E]
+        )
+    ).

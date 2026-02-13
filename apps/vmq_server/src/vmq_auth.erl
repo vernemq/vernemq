@@ -19,7 +19,7 @@
 
 -export([register_hooks/0]).
 -export([
-    auth_on_register/5,
+    auth_on_register/6,
     auth_on_subscribe/3,
     auth_on_publish/6
 ]).
@@ -27,7 +27,7 @@
 -spec register_hooks() -> 'ok'.
 register_hooks() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-        ?MODULE, auth_on_register, 5
+        ?MODULE, auth_on_register, 6
     ),
     ok = vmq_plugin_mgr:enable_module_plugin(
         ?MODULE, auth_on_subscribe, 3
@@ -36,12 +36,12 @@ register_hooks() ->
         ?MODULE, auth_on_publish, 6
     ).
 
--spec auth_on_register(_, _, _, _, _) -> 'ok'.
-auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
+-spec auth_on_register(_, _, _, _, _, _) -> 'ok'.
+auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession, SessionId) ->
     lager:info(
         "auth subscriber ~p from ~p\n"
-        "              with username ~p and password ~p, cleansession: ~p",
-        [SubscriberId, SrcIp, User, Password, CleanSession]
+        "              with username ~p and password ~p, cleansession: ~p, session_id: ~p",
+        [SubscriberId, SrcIp, User, Password, CleanSession, SessionId]
     ),
     ok.
 

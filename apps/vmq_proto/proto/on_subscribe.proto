@@ -13,6 +13,7 @@ message OnSubscribe {
     string mountpoint = 3;
     string username = 4;
     repeated TopicInfo topics = 5;
+    string session_id = 6;
 }
 
 message TopicInfo {

@@ -21,18 +21,18 @@
 -behaviour(on_message_drop_hook).
 
 -export([
-    on_register/4,
-    on_publish/7,
-    on_subscribe/3,
-    on_unsubscribe/3,
-    on_deliver/8,
-    on_offline_message/5,
-    on_client_wakeup/1,
-    on_client_offline/3,
-    on_client_gone/3,
-    on_session_expired/1,
-    on_delivery_complete/8,
-    on_message_drop/3
+    on_register/5,
+    on_publish/8,
+    on_subscribe/4,
+    on_unsubscribe/4,
+    on_deliver/9,
+    on_offline_message/6,
+    on_client_wakeup/2,
+    on_client_offline/4,
+    on_client_gone/4,
+    on_session_expired/2,
+    on_delivery_complete/9,
+    on_message_drop/4
 ]).
 
 %% API
@@ -250,11 +250,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Hook functions
 %%%===================================================================
 %% called as an all_till_ok hook
--spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
-on_register(Peer, SubscriberId, UserName, Props) ->
+-spec on_register(peer(), subscriber_id(), username(), properties(), session_id()) -> 'next'.
+on_register(Peer, SubscriberId, UserName, Props, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_register, {MP, ClientId, PPeer, Port, normalise(UserName), Props}).
+    send_event(on_register, {MP, ClientId, PPeer, Port, normalise(UserName), Props, SessionId}).
 
 -spec on_publish(
     username(),
@@ -263,7 +263,8 @@ on_register(Peer, SubscriberId, UserName, Props) ->
     topic(),
     payload(),
     flag(),
-    matched_acl()
+    matched_acl(),
+    session_id()
 ) -> 'next'.
 on_publish(
     UserName,
@@ -272,34 +273,48 @@ on_publish(
     Topic,
     Payload,
     IsRetain,
-    #matched_acl{name = ACL} = MatchedAcl
+    #matched_acl{name = ACL} = MatchedAcl,
+    SessionId
 ) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_publish,
-        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl},
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
+            SessionId},
         ACL
     ).
 
--spec on_subscribe(username(), subscriber_id(), [topic()]) -> 'next'.
-on_subscribe(UserName, SubscriberId, Topics) ->
+-spec on_subscribe(username(), subscriber_id(), [topic()], session_id()) -> 'next'.
+on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_subscribe,
-        {MP, ClientId, normalise(UserName), [
-            [unword(T), from_internal_qos(QoS), MatchedAcl]
-         || {T, QoS, MatchedAcl} <- Topics
-        ]}
+        {MP, ClientId, normalise(UserName),
+            [
+                [unword(T), from_internal_qos(QoS), MatchedAcl]
+             || {T, QoS, MatchedAcl} <- Topics
+            ],
+            SessionId}
     ).
 
--spec on_unsubscribe(username(), subscriber_id(), [topic()]) ->
+-spec on_unsubscribe(username(), subscriber_id(), [topic()], session_id()) ->
     'next' | 'ok' | {'ok', on_unsubscribe_hook:unsub_modifiers()}.
-on_unsubscribe(UserName, SubscriberId, Topics) ->
+on_unsubscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_unsubscribe, {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics]}).
+    send_event(
+        on_unsubscribe, {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics], SessionId}
+    ).
 
 -spec on_deliver(
-    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    matched_acl(),
+    flag(),
+    session_id()
 ) ->
     'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
 on_deliver(
@@ -310,19 +325,28 @@ on_deliver(
     Payload,
     IsRetain,
     #matched_acl{name = ACL} = MatchedAcl,
-    Persisted
+    Persisted,
+    SessionId
 ) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_deliver,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            Persisted},
+            Persisted, SessionId},
         ACL
     ),
     next.
 
 -spec on_delivery_complete(
-    username(), subscriber_id(), qos(), topic(), payload(), flag(), matched_acl(), flag()
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    matched_acl(),
+    flag(),
+    session_id()
 ) ->
     'next'.
 on_delivery_complete(
@@ -333,48 +357,53 @@ on_delivery_complete(
     Payload,
     IsRetain,
     #matched_acl{name = ACL} = MatchedAcl,
-    Persisted
+    Persisted,
+    SessionId
 ) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_delivery_complete,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            Persisted},
+            Persisted, SessionId},
         ACL
     ).
 
--spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
-on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
+-spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag(), session_id()) ->
+    'next'.
+on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_offline_message, {MP, ClientId, QoS, unword(Topic), Payload, IsRetain}).
+    send_event(
+        on_offline_message, {MP, ClientId, QoS, unword(Topic), Payload, IsRetain, SessionId}
+    ).
 
--spec on_client_wakeup(subscriber_id()) -> 'next'.
-on_client_wakeup(SubscriberId) ->
+-spec on_client_wakeup(subscriber_id(), session_id()) -> 'next'.
+on_client_wakeup(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_client_wakeup, {MP, ClientId}).
+    send_event(on_client_wakeup, {MP, ClientId, SessionId}).
 
--spec on_client_offline(subscriber_id(), reason(), username()) -> 'next'.
-on_client_offline(SubscriberId, Reason, UserName) ->
+-spec on_client_offline(subscriber_id(), reason(), username(), session_id()) -> 'next'.
+on_client_offline(SubscriberId, Reason, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_client_offline, {MP, ClientId, Reason, UserName}).
+    send_event(on_client_offline, {MP, ClientId, Reason, UserName, SessionId}).
 
--spec on_client_gone(subscriber_id(), reason(), username()) -> 'next'.
-on_client_gone(SubscriberId, Reason, UserName) ->
+-spec on_client_gone(subscriber_id(), reason(), username(), session_id()) -> 'next'.
+on_client_gone(SubscriberId, Reason, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_client_gone, {MP, ClientId, Reason, UserName}).
+    send_event(on_client_gone, {MP, ClientId, Reason, UserName, SessionId}).
 
--spec on_session_expired(subscriber_id()) -> 'next'.
-on_session_expired(SubscriberId) ->
+-spec on_session_expired(subscriber_id(), session_id()) -> 'next'.
+on_session_expired(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_session_expired, {MP, ClientId}).
+    send_event(on_session_expired, {MP, ClientId, SessionId}).
 
--spec on_message_drop(subscriber_id(), fun(), reason()) -> 'next'.
-on_message_drop(SubscriberId, Fun, Reason) ->
+-spec on_message_drop(subscriber_id(), fun(), reason(), session_id()) -> 'next'.
+on_message_drop(SubscriberId, Fun, Reason, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     case Fun() of
         {Topic, QoS, Payload, _Props, MatchedAcl} ->
             send_event(
-                on_message_drop, {MP, ClientId, QoS, unword(Topic), Payload, Reason, MatchedAcl}
+                on_message_drop,
+                {MP, ClientId, QoS, unword(Topic), Payload, Reason, MatchedAcl, SessionId}
             );
         _ ->
             lager:error("unexpected pattern in on_message_drop hook for ~p due to reason ~p", [

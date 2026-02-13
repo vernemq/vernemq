@@ -96,7 +96,8 @@ on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
               username = BinPid,
               mountpoint = ?MOUNTPOINT_BIN,
               client_id = ?ALLOWED_CLIENT_ID,
-              user_properties =  [{<<"k3">>,<<"v3">>},{<<"k2">>,<<"v2">>},{<<"k1">>,<<"v1">>}]}) ->
+              user_properties =  [{<<"k3">>,<<"v3">>},{<<"k2">>,<<"v2">>},{<<"k1">>,<<"v1">>}],
+              session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_ok;
 
@@ -104,7 +105,8 @@ on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
   peer_port = ?PEERPORT,
   username = BinPid,
   mountpoint = ?MOUNTPOINT_BIN,
-  client_id = ?ALLOWED_CLIENT_ID}) ->
+  client_id = ?ALLOWED_CLIENT_ID,
+  session_id = ?SESSION_ID}) ->
   Pid = list_to_pid(binary_to_list(BinPid)),
   Pid ! on_register_ok.
     
@@ -116,7 +118,8 @@ on_publish(#'eventssidecar.v1.OnPublish'{username = BinPid,
              qos = 1,
              payload = ?PAYLOAD,
              retain = false,
-             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}
+             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN},
+             session_id = ?SESSION_ID
             }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_publish_ok.
@@ -126,13 +129,14 @@ on_subscribe(#'eventssidecar.v1.OnSubscribe'{username = BinPid,
                mountpoint = ?MOUNTPOINT_BIN,
                client_id = ?ALLOWED_CLIENT_ID,
                topics = [#'eventssidecar.v1.TopicInfo'{topic = ?TOPIC, qos = 1, matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}},
-                          #'eventssidecar.v1.TopicInfo'{topic = ?TOPIC, qos = 128, matched_acl = #'eventssidecar.v1.MatchedACL'{}}]
+                          #'eventssidecar.v1.TopicInfo'{topic = ?TOPIC, qos = 128, matched_acl = #'eventssidecar.v1.MatchedACL'{}}],
+               session_id = ?SESSION_ID
               }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_subscribe_ok.
     
 
-on_unsubscribe(#'eventssidecar.v1.OnUnsubscribe'{username = BinPid, client_id = ?ALLOWED_CLIENT_ID}) ->
+on_unsubscribe(#'eventssidecar.v1.OnUnsubscribe'{username = BinPid, client_id = ?ALLOWED_CLIENT_ID, session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_unsubscribe_ok.
 
@@ -144,7 +148,8 @@ on_deliver(#'eventssidecar.v1.OnDeliver'{username = BinPid,
              payload = ?PAYLOAD,
              is_retain = false,
              matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN},
-             persisted = true
+             persisted = true,
+             session_id = ?SESSION_ID
              }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_ok.
@@ -157,36 +162,40 @@ on_delivery_complete(#'eventssidecar.v1.OnDeliveryComplete'{username = BinPid,
                        payload = ?PAYLOAD,
                        is_retain = false,
                        matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN},
-                       persisted = true}) ->
+                       persisted = true,
+                       session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_delivery_complete_ok.
 
 on_offline_message(#'eventssidecar.v1.OnOfflineMessage'{mountpoint = ?MOUNTPOINT_BIN,
-                     client_id = BinPid}) ->
+                     client_id = BinPid,
+                     session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_offline_message_ok.
     
 
 on_client_wakeup(#'eventssidecar.v1.OnClientWakeUp'{mountpoint = ?MOUNTPOINT_BIN,
-                   client_id = BinPid}) ->
+                   client_id = BinPid,
+                   session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_wakeup_ok.
     
 
 on_client_offline(#'eventssidecar.v1.OnClientOffline'{mountpoint = ?MOUNTPOINT_BIN,
-                   client_id = ?ALLOWED_CLIENT_ID, reason = ?REASON, username = BinPid}) ->
+                   client_id = ?ALLOWED_CLIENT_ID, reason = ?REASON, username = BinPid, session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_offline_ok.
     
 
 on_client_gone(#'eventssidecar.v1.OnClientGone'{mountpoint = ?MOUNTPOINT_BIN,
-                 client_id = ?ALLOWED_CLIENT_ID, reason = ?REASON, username = BinPid}) ->
+                 client_id = ?ALLOWED_CLIENT_ID, reason = ?REASON, username = BinPid, session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_gone_ok.
     
 
 on_session_expired(#'eventssidecar.v1.OnSessionExpired'{mountpoint = ?MOUNTPOINT_BIN,
-                     client_id = BinPid}) ->
+                     client_id = BinPid,
+                     session_id = ?SESSION_ID}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_session_expired_ok.
 
@@ -197,7 +206,8 @@ on_message_drop(#'eventssidecar.v1.OnMessageDrop'{
              topic = ?TOPIC,
              payload = ?PAYLOAD,
              reason = ?MESSAGE_DROP_REASON,
-             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN}
+             matched_acl = #'eventssidecar.v1.MatchedACL'{name = ?LABEL, pattern = ?PATTERN},
+             session_id = ?SESSION_ID
             }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_message_drop_ok.

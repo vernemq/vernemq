@@ -30,7 +30,7 @@
 
 -export([
     auth_on_subscribe/3,
-    auth_on_publish/6,
+    auth_on_publish/7,
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
     change_config/1
@@ -93,7 +93,7 @@ auth_on_subscribe(User, SubscriberId, [{Topic, Qos} | Rest], Modifiers) ->
             auth_on_subscribe(User, SubscriberId, Rest, [ModTopic | Modifiers])
     end.
 
-auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
+auth_on_publish(User, SubscriberId, _, Topic, _, _, _SessionId) ->
     case check(write, Topic, User, SubscriberId) of
         true ->
             ok;

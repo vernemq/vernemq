@@ -22,7 +22,7 @@
 -spec encode(event()) -> iodata().
 encode(
     {on_register, Timestamp,
-        {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}}}
+        {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}, SessionId}}
 ) ->
     encode_envelope(
         "OnRegister",
@@ -33,10 +33,11 @@ encode(
             mountpoint = MP,
             client_id = ClientId,
             timestamp = convert_timestamp(Timestamp),
-            user_properties = Properties
+            user_properties = Properties,
+            session_id = SessionId
         })
     );
-encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{}}}) ->
+encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{}, SessionId}}) ->
     encode_envelope(
         "OnRegister",
         on_register_pb:encode_msg(#'eventssidecar.v1.OnRegister'{
@@ -45,14 +46,17 @@ encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{}}}) ->
             username = UserName,
             mountpoint = MP,
             client_id = ClientId,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
 encode(
     {on_publish, Timestamp,
-        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain, #matched_acl{
-            name = Name, pattern = Pattern
-        }}}
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{
+                name = Name, pattern = Pattern
+            },
+            SessionId}}
 ) ->
     encode_envelope(
         "OnPublish",
@@ -67,11 +71,12 @@ encode(
             timestamp = convert_timestamp(Timestamp),
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
-            }
+            },
+            session_id = SessionId
         })
     );
 encode(
-    {on_subscribe, Timestamp, {MP, ClientId, UserName, Topics}}
+    {on_subscribe, Timestamp, {MP, ClientId, UserName, Topics, SessionId}}
 ) ->
     encode_envelope(
         "OnSubscribe",
@@ -87,10 +92,11 @@ encode(
                 }
              || [T, QoS, #matched_acl{name = Name, pattern = Pattern}] <- Topics
             ],
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
-encode({on_unsubscribe, Timestamp, {MP, ClientId, UserName, Topics}}) ->
+encode({on_unsubscribe, Timestamp, {MP, ClientId, UserName, Topics, SessionId}}) ->
     encode_envelope(
         "OnUnsubscribe",
         on_unsubscribe_pb:encode_msg(#'eventssidecar.v1.OnUnsubscribe'{
@@ -98,13 +104,14 @@ encode({on_unsubscribe, Timestamp, {MP, ClientId, UserName, Topics}}) ->
             mountpoint = MP,
             username = UserName,
             topics = Topics,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
 encode(
     {on_deliver, Timestamp,
         {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
-            #matched_acl{name = Name, pattern = Pattern}, Persisted}}
+            #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId}}
 ) ->
     encode_envelope(
         "OnDeliver",
@@ -120,13 +127,14 @@ encode(
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
             },
-            persisted = Persisted
+            persisted = Persisted,
+            session_id = SessionId
         })
     );
 encode(
     {on_delivery_complete, Timestamp,
         {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
-            #matched_acl{name = Name, pattern = Pattern}, Persisted}}
+            #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId}}
 ) ->
     encode_envelope(
         "OnDeliveryComplete",
@@ -142,10 +150,11 @@ encode(
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
             },
-            persisted = Persisted
+            persisted = Persisted,
+            session_id = SessionId
         })
     );
-encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRetain}}) ->
+encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRetain, SessionId}}) ->
     encode_envelope(
         "OnOfflineMessage",
         on_offline_message_pb:encode_msg(#'eventssidecar.v1.OnOfflineMessage'{
@@ -155,14 +164,17 @@ encode({on_offline_message, Timestamp, {MP, ClientId, QoS, Topic, Payload, IsRet
             topic = Topic,
             payload = Payload,
             retain = IsRetain,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
 encode(
     {on_message_drop, Timestamp,
-        {MP, ClientId, QoS, Topic, Payload, Reason, #matched_acl{
-            name = Name, pattern = Pattern
-        }}}
+        {MP, ClientId, QoS, Topic, Payload, Reason,
+            #matched_acl{
+                name = Name, pattern = Pattern
+            },
+            SessionId}}
 ) ->
     encode_envelope(
         "OnMessageDrop",
@@ -176,19 +188,21 @@ encode(
             reason = atom_to_list(Reason),
             matched_acl = #'eventssidecar.v1.MatchedACL'{
                 name = Name, pattern = Pattern
-            }
+            },
+            session_id = SessionId
         })
     );
-encode({on_client_wakeup, Timestamp, {MP, ClientId}}) ->
+encode({on_client_wakeup, Timestamp, {MP, ClientId, SessionId}}) ->
     encode_envelope(
         "OnClientWakeUp",
         on_client_wakeup_pb:encode_msg(#'eventssidecar.v1.OnClientWakeUp'{
             client_id = ClientId,
             mountpoint = MP,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
-encode({on_client_offline, Timestamp, {MP, ClientId, Reason, UserName}}) ->
+encode({on_client_offline, Timestamp, {MP, ClientId, Reason, UserName, SessionId}}) ->
     encode_envelope(
         "OnClientOffline",
         on_client_offline_pb:encode_msg(#'eventssidecar.v1.OnClientOffline'{
@@ -196,10 +210,11 @@ encode({on_client_offline, Timestamp, {MP, ClientId, Reason, UserName}}) ->
             mountpoint = MP,
             timestamp = convert_timestamp(Timestamp),
             reason = Reason,
-            username = UserName
+            username = UserName,
+            session_id = SessionId
         })
     );
-encode({on_client_gone, Timestamp, {MP, ClientId, Reason, UserName}}) ->
+encode({on_client_gone, Timestamp, {MP, ClientId, Reason, UserName, SessionId}}) ->
     encode_envelope(
         "OnClientGone",
         on_client_gone_pb:encode_msg(#'eventssidecar.v1.OnClientGone'{
@@ -207,16 +222,18 @@ encode({on_client_gone, Timestamp, {MP, ClientId, Reason, UserName}}) ->
             mountpoint = MP,
             timestamp = convert_timestamp(Timestamp),
             reason = Reason,
-            username = UserName
+            username = UserName,
+            session_id = SessionId
         })
     );
-encode({on_session_expired, Timestamp, {MP, ClientId}}) ->
+encode({on_session_expired, Timestamp, {MP, ClientId, SessionId}}) ->
     encode_envelope(
         "OnSessionExpired",
         on_session_expired_pb:encode_msg(#'eventssidecar.v1.OnSessionExpired'{
             client_id = ClientId,
             mountpoint = MP,
-            timestamp = convert_timestamp(Timestamp)
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId
         })
     );
 encode(_) ->

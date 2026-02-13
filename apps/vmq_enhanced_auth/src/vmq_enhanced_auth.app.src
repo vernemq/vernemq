@@ -17,9 +17,9 @@
         {vmq_metrics_mfa, {vmq_enhanced_auth_metrics, metrics, []}},
         {vmq_plugin_hooks, [
             {vmq_enhanced_auth, change_config, 1, [internal]},
-            {vmq_enhanced_auth, auth_on_publish, 6, []},
+            {vmq_enhanced_auth, auth_on_publish, 7, []},
             {vmq_enhanced_auth, auth_on_subscribe, 3, []},
-            {vmq_enhanced_auth, auth_on_register, 5, []},
+            {vmq_enhanced_auth, auth_on_register, 6, []},
             {vmq_enhanced_auth, auth_on_publish_m5, 7, []},
             {vmq_enhanced_auth, auth_on_subscribe_m5, 4, []}
         ]}

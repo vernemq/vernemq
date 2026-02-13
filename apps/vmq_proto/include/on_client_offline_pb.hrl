@@ -40,7 +40,9 @@
             | integer()
             | undefined,
         % = 5, optional
-        username = <<>> :: unicode:chardata() | undefined
+        username = <<>> :: unicode:chardata() | undefined,
+        % = 6, optional
+        session_id = <<>> :: unicode:chardata() | undefined
     }
 ).
 -endif.

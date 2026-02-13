@@ -71,7 +71,7 @@ on_register_test(_) ->
     Self = pid_to_bin(self()),
     UserProps = [{"k1", "v1"}, {"k2","v2"}, {"k3","v3"}],
     [ok] = vmq_plugin:all(on_register,
-                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}]),
+                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}, ?SESSION_ID]),
     ok = exp_response(on_register_ok),
     disable_hook(on_register).
 
@@ -79,7 +79,7 @@ on_register_empty_properties_test(_) ->
   enable_hook(on_register),
   Self = pid_to_bin(self()),
   [ok] = vmq_plugin:all(on_register,
-    [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{}]),
+    [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{}, ?SESSION_ID]),
   ok = exp_response(on_register_ok),
   disable_hook(on_register).
 
@@ -87,7 +87,7 @@ on_publish_test(_) ->
     enable_hook(on_publish),
     Self = pid_to_bin(self()),
     [ok,ok] = vmq_plugin:all(on_publish,
-                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, ?SESSION_ID]),
     ok = exp_response(on_publish_ok),
     disable_hook(on_publish).
 
@@ -96,7 +96,7 @@ on_subscribe_test(_) ->
     Self = pid_to_bin(self()),
     [ok,ok] = vmq_plugin:all(on_subscribe,
                             [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}}, 
-                                                                       {?TOPIC, not_allowed, #matched_acl{}}]]),
+                                                                       {?TOPIC, not_allowed, #matched_acl{}}], ?SESSION_ID]),
     ok = exp_response(on_subscribe_ok),
     disable_hook(on_subscribe).
 
@@ -104,7 +104,7 @@ on_unsubscribe_test(_) ->
     enable_hook(on_unsubscribe),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_unsubscribe,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC]]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC], ?SESSION_ID]),
     ok = exp_response(on_unsubscribe_ok),
     disable_hook(on_unsubscribe).
 
@@ -112,56 +112,56 @@ on_deliver_test(_) ->
     enable_hook(on_deliver),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true, ?SESSION_ID]),
     ok = exp_response(on_deliver_ok),
     disable_hook(on_deliver).
 
 on_delivery_complete_test(_) ->
   enable_hook(on_delivery_complete),
   Self = pid_to_bin(self()),
-  [ok,ok] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true]),
+  [ok,ok] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true, ?SESSION_ID]),
   ok = exp_response(on_delivery_complete_ok),
   disable_hook(on_delivery_complete).
 
 on_offline_message_test(_) ->
     enable_hook(on_offline_message),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false]),
+    [ok] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false, ?SESSION_ID]),
     ok = exp_response(on_offline_message_ok),
     disable_hook(on_offline_message).
 
 on_client_wakeup_test(_) ->
     enable_hook(on_client_wakeup),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_client_wakeup, [{?MOUNTPOINT, Self}]),
+    [ok] = vmq_plugin:all(on_client_wakeup, [{?MOUNTPOINT, Self}, ?SESSION_ID]),
     ok = exp_response(on_client_wakeup_ok),
     disable_hook(on_client_wakeup).
 
 on_client_offline_test(_) ->
     enable_hook(on_client_offline),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self]),
+    [ok] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self, ?SESSION_ID]),
     ok = exp_response(on_client_offline_ok),
     disable_hook(on_client_offline).
 
 on_client_gone_test(_) ->
     enable_hook(on_client_gone),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self]),
+    [ok] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self, ?SESSION_ID]),
     ok = exp_response(on_client_gone_ok),
     disable_hook(on_client_gone).
 
 on_session_expired_test(_) ->
     enable_hook(on_session_expired),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    [ok] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}, ?SESSION_ID]),
     ok = exp_response(on_session_expired_ok),
     disable_hook(on_session_expired).
 
 on_message_drop_test(_) ->
     enable_hook(on_message_drop),
     Self = pid_to_bin(self()),
-    [ok,ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
+    [ok,ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON), ?SESSION_ID]),
     ok = exp_response(on_message_drop_ok),
     disable_hook(on_message_drop).
 

@@ -10,4 +10,5 @@ message OnClientWakeUp {
     google.protobuf.Timestamp timestamp = 1;
     string client_id = 2;
     string mountpoint = 3;
+    string session_id = 4;
 }

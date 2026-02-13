@@ -11,11 +11,11 @@
     {env, [
         {vmq_metrics_mfa, {vmq_metrics_plus, metrics, []}},
         {vmq_plugin_hooks, [
-            {vmq_metrics_plus_plugin, on_subscribe, 3, []},
-            {vmq_metrics_plus_plugin, on_publish, 7, []},
-            {vmq_metrics_plus_plugin, on_deliver, 8, []},
-            {vmq_metrics_plus_plugin, on_delivery_complete, 8, []},
-            {vmq_metrics_plus_plugin, on_message_drop, 3, []}
+            {vmq_metrics_plus_plugin, on_subscribe, 4, []},
+            {vmq_metrics_plus_plugin, on_publish, 8, []},
+            {vmq_metrics_plus_plugin, on_deliver, 9, []},
+            {vmq_metrics_plus_plugin, on_delivery_complete, 9, []},
+            {vmq_metrics_plus_plugin, on_message_drop, 4, []}
         ]}
     ]},
     {modules, []},

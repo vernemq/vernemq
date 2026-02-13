@@ -28,7 +28,7 @@
 ]).
 -export([
     change_config/1,
-    auth_on_register/5,
+    auth_on_register/6,
     auth_on_register_m5/6
 ]).
 
@@ -57,7 +57,7 @@ change_config(Configs) ->
             vmq_passwd_reloader:change_config_now()
     end.
 
-auth_on_register(_Peer, _SubscriberId, User, Password, _CleanSession) ->
+auth_on_register(_Peer, _SubscriberId, User, Password, _CleanSession, _SessionId) ->
     check(User, Password).
 
 auth_on_register_m5(_Peer, _SubscriberId, User, Password, _CleanStart, _Properties) ->

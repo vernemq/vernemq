@@ -41,20 +41,20 @@
 -behaviour(on_auth_m5_hook).
 
 -export([
-    auth_on_register/5,
-    auth_on_publish/6,
+    auth_on_register/6,
+    auth_on_publish/7,
     auth_on_subscribe/3,
-    on_register/4,
-    on_publish/7,
-    on_subscribe/3,
-    on_unsubscribe/3,
-    on_deliver/8,
-    on_offline_message/5,
-    on_client_wakeup/1,
-    on_client_offline/3,
-    on_client_gone/3,
-    on_session_expired/1,
-    on_delivery_complete/8,
+    on_register/5,
+    on_publish/8,
+    on_subscribe/4,
+    on_unsubscribe/4,
+    on_deliver/9,
+    on_offline_message/6,
+    on_client_wakeup/2,
+    on_client_offline/4,
+    on_client_gone/4,
+    on_session_expired/2,
+    on_delivery_complete/9,
     auth_on_register_m5/6,
     on_register_m5/4,
     auth_on_publish_m5/7,
@@ -223,7 +223,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Hook functions
 %%%===================================================================
 %% called as an all_till_ok hook
-auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
+auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     Res = all_till_ok(auth_on_register, [
@@ -233,7 +233,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
         {client_id, ClientId},
         {username, nilify(UserName)},
         {password, nilify(Password)},
-        {clean_session, CleanSession}
+        {clean_session, CleanSession},
+        {session_id, SessionId}
     ]),
     conv_res(auth_on_reg, Res).
 
@@ -264,7 +265,7 @@ on_register_m5(Peer, SubscriberId, Username, Props) ->
         {properties, conv_args_props(Props)}
     ]).
 
-auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
         true ->
@@ -284,7 +285,8 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                 {qos, QoS},
                 {topic, unword(Topic)},
                 {payload, Payload},
-                {retain, IsRetain}
+                {retain, IsRetain},
+                {session_id, SessionId}
             ]),
             conv_res(auth_on_pub, Res)
     end.
@@ -503,7 +505,7 @@ on_auth_m5(Username, SubscriberId, Props) ->
         {properties, conv_args_props(Props)}
     ]).
 
-on_register(Peer, SubscriberId, UserName, UserProperties) ->
+on_register(Peer, SubscriberId, UserName, UserProperties, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register, [
@@ -512,10 +514,11 @@ on_register(Peer, SubscriberId, UserName, UserProperties) ->
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(UserName)},
-        {properties, conv_args_props(UserProperties)}
+        {properties, conv_args_props(UserProperties)},
+        {session_id, SessionId}
     ]).
 
-on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
+on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish, [
         {username, nilify(UserName)},
@@ -524,10 +527,11 @@ on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
-on_subscribe(UserName, SubscriberId, Topics) ->
+on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_subscribe, [
         {username, nilify(UserName)},
@@ -536,10 +540,11 @@ on_subscribe(UserName, SubscriberId, Topics) ->
         {topics, [
             [unword(T), QoS]
          || {T, QoS, _} <- Topics
-        ]}
+        ]},
+        {session_id, SessionId}
     ]).
 
-on_unsubscribe(UserName, SubscriberId, Topics) ->
+on_unsubscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
         lists:foldl(
@@ -578,11 +583,12 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
                 {topics, [
                     unword(T)
                  || T <- Topics
-                ]}
+                ]},
+                {session_id, SessionId}
             ])
     end.
 
-on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [
         {username, nilify(UserName)},
@@ -591,10 +597,11 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
-on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _) ->
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_delivery_complete, [
         {username, nilify(UserName)},
@@ -603,10 +610,11 @@ on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, IsRetain}
+        {retain, IsRetain},
+        {session_id, SessionId}
     ]).
 
-on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
+on_offline_message(SubscriberId, QoS, Topic, Payload, Retain, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [
         {mountpoint, MP},
@@ -614,40 +622,45 @@ on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
         {qos, QoS},
         {topic, unword(Topic)},
         {payload, Payload},
-        {retain, Retain}
+        {retain, Retain},
+        {session_id, SessionId}
     ]).
 
-on_client_wakeup(SubscriberId) ->
+on_client_wakeup(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_wakeup, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {session_id, SessionId}
     ]).
 
-on_client_offline(SubscriberId, _, UserName) ->
+on_client_offline(SubscriberId, _, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_offline, [
         {mountpoint, MP},
         {client_id, ClientId},
-        {username, nilify(UserName)}
+        {username, nilify(UserName)},
+        {session_id, SessionId}
     ]).
 
-on_client_gone(SubscriberId, _, UserName) ->
+on_client_gone(SubscriberId, _, UserName, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_gone, [
         {mountpoint, MP},
         {client_id, ClientId},
-        {username, nilify(UserName)}
+        {username, nilify(UserName)},
+        {session_id, SessionId}
     ]).
 
-on_session_expired(SubscriberId) ->
+on_session_expired(SubscriberId, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_session_expired, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {session_id, SessionId}
     ]).
 
 %%%===================================================================

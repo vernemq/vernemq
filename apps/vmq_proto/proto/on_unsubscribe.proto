@@ -12,4 +12,5 @@ message OnUnsubscribe {
     string client_id = 3;
     string mountpoint = 4;
     repeated string topics = 5;
+    string session_id = 6;
 }

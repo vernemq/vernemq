@@ -121,7 +121,7 @@ encode_msg(Msg, MsgName, Opts) ->
 
 'encode_msg_eventssidecar.v1.OnClientOffline'(
     #'eventssidecar.v1.OnClientOffline'{
-        timestamp = F1, client_id = F2, mountpoint = F3, reason = F4, username = F5
+        timestamp = F1, client_id = F2, mountpoint = F3, reason = F4, username = F5, session_id = F6
     },
     Bin,
     TrUserData
@@ -184,15 +184,28 @@ encode_msg(Msg, MsgName, Opts) ->
                     end
                 end
         end,
+    B5 =
+        if
+            F5 == undefined ->
+                B4;
+            true ->
+                begin
+                    TrF5 = id(F5, TrUserData),
+                    case is_empty_string(TrF5) of
+                        true -> B4;
+                        false -> e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
+                    end
+                end
+        end,
     if
-        F5 == undefined ->
-            B4;
+        F6 == undefined ->
+            B5;
         true ->
             begin
-                TrF5 = id(F5, TrUserData),
-                case is_empty_string(TrF5) of
-                    true -> B4;
-                    false -> e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
+                TrF6 = id(F6, TrUserData),
+                case is_empty_string(TrF6) of
+                    true -> B5;
+                    false -> e_type_string(TrF6, <<B5/binary, 50>>, TrUserData)
                 end
             end
     end.
@@ -436,122 +449,143 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         id(<<>>, TrUserData),
         id('REASON_UNSPECIFIED', TrUserData),
         id(<<>>, TrUserData),
+        id(<<>>, TrUserData),
         TrUserData
     ).
 
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnClientOffline_timestamp'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnClientOffline_client_id'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnClientOffline_mountpoint'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnClientOffline_reason'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'd_field_eventssidecar.v1.OnClientOffline_username'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, _
+    <<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnClientOffline_session_id'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _
 ) ->
     #'eventssidecar.v1.OnClientOffline'{
-        timestamp = F@_1, client_id = F@_2, mountpoint = F@_3, reason = F@_4, username = F@_5
+        timestamp = F@_1,
+        client_id = F@_2,
+        mountpoint = F@_3,
+        reason = F@_4,
+        username = F@_5,
+        session_id = F@_6
     };
 'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'dg_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'dg_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 32 - 7 ->
     'dg_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'dg_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     Key = X bsl N + Acc,
     case Key of
         10 ->
             'd_field_eventssidecar.v1.OnClientOffline_timestamp'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
             );
         18 ->
             'd_field_eventssidecar.v1.OnClientOffline_client_id'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
             );
         26 ->
             'd_field_eventssidecar.v1.OnClientOffline_mountpoint'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
             );
         32 ->
             'd_field_eventssidecar.v1.OnClientOffline_reason'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
             );
         42 ->
             'd_field_eventssidecar.v1.OnClientOffline_username'(
-                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
+            );
+        50 ->
+            'd_field_eventssidecar.v1.OnClientOffline_session_id'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
             );
         _ ->
             case Key band 7 of
                 0 ->
                     'skip_varint_eventssidecar.v1.OnClientOffline'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
                     );
                 1 ->
                     'skip_64_eventssidecar.v1.OnClientOffline'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
                     );
                 2 ->
                     'skip_length_delimited_eventssidecar.v1.OnClientOffline'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
                     );
                 3 ->
                     'skip_group_eventssidecar.v1.OnClientOffline'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
                     );
                 5 ->
                     'skip_32_eventssidecar.v1.OnClientOffline'(
-                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
                     )
             end
     end;
 'dg_read_field_def_eventssidecar.v1.OnClientOffline'(
-    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, _
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _
 ) ->
     #'eventssidecar.v1.OnClientOffline'{
-        timestamp = F@_1, client_id = F@_2, mountpoint = F@_3, reason = F@_4, username = F@_5
+        timestamp = F@_1,
+        client_id = F@_2,
+        mountpoint = F@_3,
+        reason = F@_4,
+        username = F@_5,
+        session_id = F@_6
     }.
 
 'd_field_eventssidecar.v1.OnClientOffline_timestamp'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnClientOffline_timestamp'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'd_field_eventssidecar.v1.OnClientOffline_timestamp'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -571,17 +605,18 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         F@_3,
         F@_4,
         F@_5,
+        F@_6,
         TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnClientOffline_client_id'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnClientOffline_client_id'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'd_field_eventssidecar.v1.OnClientOffline_client_id'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -590,17 +625,17 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, TrUserData
+        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnClientOffline_mountpoint'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnClientOffline_mountpoint'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'd_field_eventssidecar.v1.OnClientOffline_mountpoint'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -609,17 +644,17 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnClientOffline_reason'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnClientOffline_reason'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'd_field_eventssidecar.v1.OnClientOffline_reason'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, TrUserData
 ) ->
     {NewFValue, RestF} = {
         id(
@@ -632,17 +667,17 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         Rest
     },
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, TrUserData
     ).
 
 'd_field_eventssidecar.v1.OnClientOffline_username'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'd_field_eventssidecar.v1.OnClientOffline_username'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'd_field_eventssidecar.v1.OnClientOffline_username'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, TrUserData
 ) ->
     {NewFValue, RestF} = begin
         Len = X bsl N + Acc,
@@ -651,57 +686,76 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
         {id(Bytes2, TrUserData), Rest2}
     end,
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, TrUserData
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, TrUserData
+    ).
+
+'d_field_eventssidecar.v1.OnClientOffline_session_id'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnClientOffline_session_id'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
+    );
+'d_field_eventssidecar.v1.OnClientOffline_session_id'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, TrUserData
     ).
 
 'skip_varint_eventssidecar.v1.OnClientOffline'(
-    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'skip_varint_eventssidecar.v1.OnClientOffline'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'skip_varint_eventssidecar.v1.OnClientOffline'(
-    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'skip_length_delimited_eventssidecar.v1.OnClientOffline'(
-    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) when N < 57 ->
     'skip_length_delimited_eventssidecar.v1.OnClientOffline'(
-        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     );
 'skip_length_delimited_eventssidecar.v1.OnClientOffline'(
-    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'skip_group_eventssidecar.v1.OnClientOffline'(
-    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'skip_32_eventssidecar.v1.OnClientOffline'(
-    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'skip_64_eventssidecar.v1.OnClientOffline'(
-    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
 ) ->
     'dfp_read_field_def_eventssidecar.v1.OnClientOffline'(
-        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, TrUserData
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, TrUserData
     ).
 
 'decode_msg_google.protobuf.Timestamp'(Bin, TrUserData) ->
@@ -949,14 +1003,16 @@ merge_msgs(Prev, New, MsgName, Opts) ->
         client_id = PFclient_id,
         mountpoint = PFmountpoint,
         reason = PFreason,
-        username = PFusername
+        username = PFusername,
+        session_id = PFsession_id
     },
     #'eventssidecar.v1.OnClientOffline'{
         timestamp = NFtimestamp,
         client_id = NFclient_id,
         mountpoint = NFmountpoint,
         reason = NFreason,
-        username = NFusername
+        username = NFusername,
+        session_id = NFsession_id
     },
     TrUserData
 ) ->
@@ -989,6 +1045,11 @@ merge_msgs(Prev, New, MsgName, Opts) ->
             if
                 NFusername =:= undefined -> PFusername;
                 true -> NFusername
+            end,
+        session_id =
+            if
+                NFsession_id =:= undefined -> PFsession_id;
+                true -> NFsession_id
             end
     }.
 
@@ -1033,7 +1094,7 @@ verify_msg(Msg, MsgName, Opts) ->
 -dialyzer({nowarn_function, 'v_msg_eventssidecar.v1.OnClientOffline'/3}).
 'v_msg_eventssidecar.v1.OnClientOffline'(
     #'eventssidecar.v1.OnClientOffline'{
-        timestamp = F1, client_id = F2, mountpoint = F3, reason = F4, username = F5
+        timestamp = F1, client_id = F2, mountpoint = F3, reason = F4, username = F5, session_id = F6
     },
     Path,
     TrUserData
@@ -1057,6 +1118,10 @@ verify_msg(Msg, MsgName, Opts) ->
     if
         F5 == undefined -> ok;
         true -> v_type_string(F5, [username | Path], TrUserData)
+    end,
+    if
+        F6 == undefined -> ok;
+        true -> v_type_string(F6, [session_id | Path], TrUserData)
     end,
     ok;
 'v_msg_eventssidecar.v1.OnClientOffline'(X, Path, _TrUserData) ->
@@ -1253,6 +1318,14 @@ get_msg_defs() ->
             },
             #field{
                 name = username, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []
+            },
+            #field{
+                name = session_id,
+                fnum = 6,
+                rnum = 7,
+                type = string,
+                occurrence = optional,
+                opts = []
             }
         ]},
         {{msg, 'google.protobuf.Timestamp'}, [
@@ -1307,7 +1380,12 @@ find_msg_def('eventssidecar.v1.OnClientOffline') ->
             occurrence = optional,
             opts = []
         },
-        #field{name = username, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []}
+        #field{
+            name = username, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []
+        },
+        #field{
+            name = session_id, fnum = 6, rnum = 7, type = string, occurrence = optional, opts = []
+        }
     ];
 find_msg_def('google.protobuf.Timestamp') ->
     [
