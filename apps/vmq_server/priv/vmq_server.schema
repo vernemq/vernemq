@@ -314,6 +314,23 @@
                                                                                             hidden
                                                                                            ]}.
 
+%% @doc The initial reconnect delay in milliseconds when a cluster node
+%% connection fails. Subsequent attempts use exponential backoff up to the
+%% maximum defined by outgoing_clustering_reconnect_max_delay.
+{mapping, "outgoing_clustering_reconnect_base_delay", "vmq_server.outgoing_clustering_reconnect_base_delay", [
+                                                                                                               {default, 1000},
+                                                                                                               {datatype, integer},
+                                                                                                               hidden
+                                                                                                              ]}.
+
+%% @doc The maximum reconnect delay in milliseconds when a cluster node
+%% connection fails. The exponential backoff will not exceed this value.
+{mapping, "outgoing_clustering_reconnect_max_delay", "vmq_server.outgoing_clustering_reconnect_max_delay", [
+                                                                                                             {default, 10000},
+                                                                                                             {datatype, integer},
+                                                                                                             hidden
+                                                                                                            ]}.
+
 %% @doc specifies the timeout for enqueuing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
@@ -2105,7 +2122,7 @@
 %% will be given to gen_tcp:connect/4 or ssl:connect/4. Note that
 %% "binary" and "{active, true}" are hard-coded options.
 {mapping, "outgoing_connect_options", "vmq_server.outgoing_connect_options", [
-                                                                  {default, "[{keepalive, true}, {send_timeout, 0}]"},
+                                                                  {default, "[{keepalive, true}, {send_timeout, 5000}]"},
                                                                   {datatype, string},
                                                                   hidden
                                                                  ]}.
