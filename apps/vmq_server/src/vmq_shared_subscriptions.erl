@@ -37,8 +37,10 @@ publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
     %% Randomize subscribers by picking a random starting point and rotating.
     RandSubscribers =
         case length(Subscribers) of
-            0 -> [];
-            1 -> Subscribers;
+            0 ->
+                [];
+            1 ->
+                Subscribers;
             Len ->
                 Start = rand:uniform(Len),
                 {Tail, Head} = lists:split(Start, Subscribers),
