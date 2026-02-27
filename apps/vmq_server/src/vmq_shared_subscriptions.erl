@@ -34,8 +34,16 @@ publish(Msg, Policy, [{Group, []} | Rest], Acc) ->
     publish(Msg, Policy, Rest, Acc);
 publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
-    %% Randomize subscribers once.
-    RandSubscribers = [S || {_, S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
+    %% Randomize subscribers by picking a random starting point and rotating.
+    RandSubscribers =
+        case length(Subscribers) of
+            0 -> [];
+            1 -> Subscribers;
+            Len ->
+                Start = rand:uniform(Len),
+                {Tail, Head} = lists:split(Start, Subscribers),
+                Head ++ Tail
+        end,
     case publish_to_group(Msg, RandSubscribers, Acc0) of
         {ok, Acc1} ->
             publish(Msg, Policy, Rest, Acc1);
