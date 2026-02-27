@@ -69,6 +69,7 @@ register_cli() ->
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
+    vmq_balance_show_cmd(),
 
     vmq_mgmt_add_api_key_cmd(),
     vmq_mgmt_create_api_key_cmd(),
@@ -106,6 +107,9 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "create"], api_create_key_usage()),
+
+    clique:register_usage(["vmq-admin", "balance"], balance_usage()),
+    clique:register_usage(["vmq-admin", "balance", "show"], balance_show_usage()),
 
     ok.
 
@@ -597,6 +601,56 @@ vmq_mgmt_create_api_key_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+vmq_balance_show_cmd() ->
+    Cmd = ["vmq-admin", "balance", "show"],
+    Callback = fun(_, _, _) ->
+        Info = vmq_balance_srv:info(),
+        case Info of
+            #{error := Reason} ->
+                Text = io_lib:format("vmq_balance_srv unavailable: ~p", [Reason]),
+                [clique_status:alert([clique_status:text(Text)])];
+            _ ->
+                #{
+                    enabled := Enabled,
+                    accepting := Accepting,
+                    local_count := LocalCount,
+                    cluster_avg := ClusterAvg,
+                    node_counts := NodeCounts,
+                    num_visible_nodes := NumVisible,
+                    threshold := Threshold,
+                    hysteresis := Hysteresis,
+                    min_connections := MinConnections,
+                    min_visible_nodes := MinVisibleNodes,
+                    check_interval := CheckInterval,
+                    last_tick_ms := LastTickMs,
+                    rpc_failures_total := RpcFailures
+                } = Info,
+                Summary = [
+                    [{'Setting', enabled}, {'Value', Enabled}],
+                    [{'Setting', accepting}, {'Value', Accepting}],
+                    [{'Setting', local_count}, {'Value', LocalCount}],
+                    [{'Setting', cluster_avg}, {'Value', ClusterAvg}],
+                    [{'Setting', num_visible_nodes}, {'Value', NumVisible}],
+                    [{'Setting', threshold}, {'Value', Threshold}],
+                    [{'Setting', hysteresis}, {'Value', Hysteresis}],
+                    [{'Setting', min_connections}, {'Value', MinConnections}],
+                    [{'Setting', min_visible_nodes}, {'Value', MinVisibleNodes}],
+                    [{'Setting', 'check_interval_ms'}, {'Value', CheckInterval}],
+                    [{'Setting', 'last_tick_ms'}, {'Value', LastTickMs}],
+                    [{'Setting', rpc_failures_total}, {'Value', RpcFailures}]
+                ],
+                Peers = [
+                    [{'Node', Node}, {'Connections', Count}]
+                 || {Node, Count} <- maps:to_list(NodeCounts)
+                ],
+                [
+                    clique_status:table(Summary),
+                    clique_status:table(Peers)
+                ]
+        end
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
 vmq_mgmt_add_api_key_cmd() ->
     Cmd = ["vmq-admin", "api-key", "add"],
     KeySpecs = [
@@ -834,6 +888,26 @@ metrics_usage() ->
         "  Interact with the metrics subsystem.\n\n",
         "  Sub-commands:\n",
         "    show        Prints all available metrics for this VerneMQ node.\n"
+    ].
+
+balance_usage() ->
+    [
+        "vmq-admin balance <sub-command>\n\n",
+        "  Inspect cluster auto-balance state on this node.\n\n",
+        "  Sub-commands:\n",
+        "    show        Prints current balance settings, decision state,\n",
+        "                per-peer connection counts seen this tick, and\n",
+        "                cumulative RPC failure count.\n\n",
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+balance_show_usage() ->
+    [
+        "vmq-admin balance show\n\n",
+        "  Show the cluster auto-balance state on this node, including:\n",
+        "  enabled flag, current accepting/rejecting decision, local connection\n",
+        "  count, cluster average, per-peer counts gathered on the last tick,\n",
+        "  active thresholds, and cumulative RPC failure count.\n"
     ].
 
 metrics_show_usage() ->
