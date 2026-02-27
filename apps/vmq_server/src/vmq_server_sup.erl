@@ -70,6 +70,7 @@ init([]) ->
             ?CHILD(vmq_reg_sup, supervisor, []),
             ?CHILD(vmq_cluster_node_sup, supervisor, []),
             ?CHILD(vmq_sysmon, worker, []),
+            ?CHILD(vmq_balance_srv, worker, []),
             ?CHILD(vmq_ranch_sup, supervisor, [])
         ]}}.
 

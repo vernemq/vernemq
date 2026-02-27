@@ -95,6 +95,7 @@
             ]}
         ]},
         {http_modules, [
+            vmq_balance_http,
             vmq_metrics_http,
             vmq_http_mgmt_api,
             vmq_status_http,
@@ -124,6 +125,13 @@
         %{graphite_interval, 20000},
         %{graphite_api_key, ""},
         %{graphite_prefix, ""}
+
+        % Cluster Auto-Balance
+        {balance_enabled, false},
+        {balance_threshold, "1.2"},
+        {balance_hysteresis, "0.1"},
+        {balance_min_connections, 100},
+        {balance_check_interval, 5000},
 
         % Systree
         {systree_enabled, true}

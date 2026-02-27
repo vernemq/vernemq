@@ -2331,3 +2331,48 @@
                                                              {commented, 60},
                                                              {datatype, integer}
                                                             ]}.
+
+%% @doc Enable cluster auto-balancing. When enabled, VerneMQ monitors
+%% connection distribution across cluster nodes and can reject new
+%% connections on overloaded nodes via the /api/balance-health HTTP endpoint.
+%% Default is off — no behavioral change for existing deployments.
+{mapping, "balance_enabled", "vmq_server.balance_enabled", [
+    {default, off},
+    {datatype, flag}
+]}.
+
+%% @doc Threshold above cluster average before rejecting new connections.
+%% A value of 1.2 means a node will stop accepting when it has 20% more
+%% connections than the cluster average. Specified as a string to support
+%% decimal values (e.g. "1.2").
+{mapping, "balance_threshold", "vmq_server.balance_threshold", [
+    {default, "1.2"},
+    {datatype, string}
+]}.
+
+%% @doc Hysteresis to prevent readiness flapping. Node re-accepts when
+%% connections drop below avg * (threshold - hysteresis). Specified as
+%% a string to support decimal values (e.g. "0.1").
+{mapping, "balance_hysteresis", "vmq_server.balance_hysteresis", [
+    {default, "0.1"},
+    {datatype, string}
+]}.
+
+%% @doc Minimum total cluster connections before balancing activates.
+%% Below this, all nodes accept regardless of distribution.
+{mapping, "balance_min_connections", "vmq_server.balance_min_connections", [
+    {default, 100},
+    {datatype, integer}
+]}.
+
+%% @doc Interval in milliseconds between balance checks.
+{mapping, "balance_check_interval", "vmq_server.balance_check_interval", [
+    {default, 5000},
+    {datatype, integer},
+    {validators, ["positive-integer"]}
+]}.
+
+{validator, "positive-integer", "must be a positive integer",
+ fun(Integer) ->
+         Integer > 0
+ end}.
