@@ -7,6 +7,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- Bugfix: vmq_reg: Fix message loss window during queue migration when client reconnects to a different node. Metadata is now written after the old queue starts draining instead of before, preventing out-of-order delivery.
 
 
 ## VerneMQ 2.1.1
