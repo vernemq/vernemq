@@ -7,7 +7,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
-
+- Bugfix: Fix silent subscription loss during concurrent subscribes across cluster nodes by using set-union merge instead of LWW for subscriber metadata conflict resolution.
 
 ## VerneMQ 2.1.1
 
@@ -59,13 +59,13 @@
 - Breaking on-disk format enhancement: separate metadata stores into DKM store and object store.
 - Bugfix: Configuration parsing for domain sockets (#2372)
 - Dependency: Update Cuttlefish to 3.4.0
-- Retain Cache/Server: Add setting (`expire_retain_cache`) for automatic removal of expired retained messages (#2373) 
+- Retain Cache/Server: Add setting (`expire_retain_cache`) for automatic removal of expired retained messages (#2373)
 - vmq_diversity (PostGreSQL): Add method parameter to validate_result_client_side (#2361)
 - vmq_diversity: change mongodb-erlang dep to fork supporting MongoDB 6 (#2358)
 - Add NULL check in ensure_utf8 (#2356)
 - Enhancement: tighten max_packet_size checks in parsers (#2352)
 - Enhancement: Do not load non-persistent subscriptions into routing tables at boot (#2351)
-- Remove vmq_pulse (deprecated remote diagnostics plugin) (#2329) 
+- Remove vmq_pulse (deprecated remote diagnostics plugin) (#2329)
 - vmq_diversity: set SSL to 'off' as a default in MySQL2 plugin (#2340)
 - vmq_diversity: extend SSL options for MongoDB (#2324)
 - Initial support for compile with OTP-27 (#2293)
@@ -79,7 +79,7 @@
 - Bugfix: Client Pub Messages should not accept subscription identifier (#2283)
 - Enhancement: Support JSON Logformat on Console (#2295)
 - Bugfix: Ensure that client_id, username and topics are well-formed UTF8 strings (#2283)
-- Bugfix: Fix an auth issue with vmq_http_pub when using vmq_diversity (#2308) 
+- Bugfix: Fix an auth issue with vmq_http_pub when using vmq_diversity (#2308)
 - Bugfix: Correct SWC summary for empty Nodeclocks that prevented cluster joins in some situations
 - Enhancement (vmq_diversity): add "depth", "verify", "use_system_cas" and "customize_hostname_check" SSL settings to Postgres settings. Set server name indication to configured host automatically.
 - Bugfix: Per MQTT v5 protocol spec authentication data without authentication method is a protocol error.
@@ -100,7 +100,7 @@
 - Remove deprecated subscriber format (#2247)
 - Protect against empty XFF CN/Username
 - Add simple options to HTTP health listener (health/ping)
-- Remove deprecated allow_multiple_sessions 
+- Remove deprecated allow_multiple_sessions
 - Improve systemd support: Add support of systemd-notify
 - New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
 - Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
@@ -125,7 +125,7 @@
 - New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface
 - Allow configuration of `max_request_line_length` for HTTP(S) listeners
 - Improve memory footprint and performance of sessions that subscribe to many topics (new configurable `vmq_reg_ordered_trie` module, the old `vmq_reg_trie` is kept as default)
-- Bugfix: Use default regview as information source for status page 
+- Bugfix: Use default regview as information source for status page
 - Add support for x-forward-for (XFF) header (Websockets) (#1783)
 - Bugfix: QoS0 message shall ignore receive maximum setting (#2150)
 - Offline queues to online queue transition can (temporarily) override the max online queue size (#1663)
@@ -141,7 +141,7 @@
 - Add 'keypasswd': Allows setting password for pem keyfile (#1676)
 - Bugfix: Improve warning messages for unexpected frame type error to track origin (#1671)
 - Bugfix: Remove special chars in auto-generated client id (#1673)
-- Bugfix: Websocket returned error 500 and wrote to log, instead of returning 426 (protocol upgrade) #1983 
+- Bugfix: Websocket returned error 500 and wrote to log, instead of returning 426 (protocol upgrade) #1983
 - Allow to specify a maximum connection lifetime (per listener). The lifetime can be overwriten by on_register hooks.
 - Improve TLSv1.3 support (Documentation, CLI, Testsuite)
 - Improve HTTP/2 support for HTTPS listeners (#2117)

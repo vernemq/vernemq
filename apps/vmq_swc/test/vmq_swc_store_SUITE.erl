@@ -81,6 +81,7 @@ groups() ->
                 partitioned_cluster_test,
                 partitioned_delete_test,
                 siblings_test,
+                subscription_siblings_test,
                 cluster_leave_test,
                 cluster_join_test,
                 events_test,
@@ -256,6 +257,57 @@ siblings_test(Config) ->
     spork = get_metadata(Node1, {foo, bar}, baz, [{resolver, ResolverFun}, {allow_put, true}]),
     %% check all the nodes see the resolution
     ok = wait_until_converged(Nodes, {foo, bar}, baz, spork),
+    ok.
+
+subscription_siblings_test(Config) ->
+    %% Verifies that the set-union resolver merges subscription siblings
+    %% created by concurrent writes during a network partition.
+    [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
+     || Node <- OtherNodes],
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+
+    SubPrefix = {vmq, subscriber},
+    SubKey = {"", <<"test-client">>},
+
+    %% Use canary key to track convergence (simple values, no timestamp wrapping)
+    ok = put_metadata(Node1, {foo, bar}, sub_canary, 1, []),
+    ok = wait_until_converged(Nodes, {foo, bar}, sub_canary, 1),
+
+    %% Partition the cluster
+    {ANodes, BNodes} = lists:split(2, Nodes),
+    vmq_swc_test_utils:partition_cluster(ANodes, BNodes),
+
+    %% Write different subscriptions to each side (timestamped like metadata_put)
+    SubsA = [{node1, true, [{<<"topic/b">>, {0, 0}}]}],
+    ok = put_metadata(hd(ANodes), SubPrefix, SubKey, {os:timestamp(), SubsA}, []),
+    ok = put_metadata(hd(ANodes), {foo, bar}, sub_canary, 2, []),
+    ok = wait_until_converged(ANodes, {foo, bar}, sub_canary, 2),
+
+    timer:sleep(10),
+    SubsB = [{node1, true, [{<<"topic/c">>, {2, 0}}]}],
+    ok = put_metadata(hd(BNodes), SubPrefix, SubKey, {os:timestamp(), SubsB}, []),
+
+    %% Heal partition
+    vmq_swc_test_utils:heal_cluster(ANodes, BNodes),
+    ok = wait_until_converged(Nodes, {foo, bar}, sub_canary, 2),
+
+    %% Wait for siblings to appear
+    ok = wait_until_sibling(Nodes, SubPrefix, SubKey),
+
+    %% Resolve with the subscription resolver -- should set-union merge
+    ResolverFun = fun vmq_swc_plugin:subscription_resolver/1,
+    {_Ts, MergedSubs} = get_metadata(
+        Node1, SubPrefix, SubKey,
+        [{resolver, ResolverFun}, {allow_put, true}]
+    ),
+    [{node1, true, Topics}] = MergedSubs,
+    TopicNames = lists:sort([T || {T, _} <- Topics]),
+    ?assertEqual([<<"topic/b">>, <<"topic/c">>], TopicNames),
+
+    %% Verify the resolved value propagated (no more siblings)
+    ok = wait_until_no_sibling(Nodes, SubPrefix, SubKey),
     ok.
 
 cluster_join_test(Config) ->
@@ -463,6 +515,18 @@ wait_until_sibling(Nodes, Prefix, Key) ->
                                 end
                         end, Nodes))
 end, 60*2, 500).
+
+wait_until_no_sibling(Nodes, Prefix, Key) ->
+    vmq_swc_test_utils:wait_until(fun() ->
+                lists:all(fun(X) -> X == true end,
+                          vmq_swc_test_utils:pmap(fun(Node) ->
+                                case read(Node, Prefix, Key) of
+                                    undefined -> true;
+                                    {[_Single], _Context} -> true;
+                                    {Values, _Context} when length(Values) > 1 -> false
+                                end
+                        end, Nodes))
+    end, 60*2, 500).
 
 wait_until_log_gc(Nodes) ->
     vmq_swc_test_utils:wait_until(

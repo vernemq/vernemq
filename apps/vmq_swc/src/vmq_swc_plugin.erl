@@ -34,10 +34,15 @@
     plugin_start/0, plugin_start/1,
     plugin_stop/0,
     summary/0, summary/1,
-    history/0, history/1
+    history/0, history/1,
+
+    resolver_for_prefix/1,
+    subscription_resolver/1,
+    merge_subs/2
 ]).
 
 -define(METRIC, metadata).
+-define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(INFO_KEY, {?MODULE, swc}).
 -define(NR_OF_GROUPS, (application:get_env(vmq_swc, swc_groups, 10))).
 -define(SWC_GROUPS, (persistent_term:get(?INFO_KEY))).
@@ -133,7 +138,7 @@ metadata_put(FullPrefix, Key, Value) ->
     ).
 
 metadata_get(FullPrefix, Key) ->
-    metadata_get(FullPrefix, Key, [{resolver, fun lww_resolver/1}]).
+    metadata_get(FullPrefix, Key, [{resolver, resolver_for_prefix(FullPrefix)}]).
 
 metadata_get(FullPrefix, Key, Opts) ->
     case
@@ -173,7 +178,7 @@ metadata_fold(FullPrefix, Fun, Acc) ->
                     end,
                     AccAcc,
                     FullPrefix,
-                    [{resolver, fun lww_resolver/1}]
+                    [{resolver, resolver_for_prefix(FullPrefix)}]
                 )
             end,
             Acc,
@@ -183,12 +188,12 @@ metadata_fold(FullPrefix, Fun, Acc) ->
 
 metadata_subscribe(FullPrefix) ->
     {_, SWCGroups} = ?SWC_GROUPS,
+    Resolver = resolver_for_prefix(FullPrefix),
     ConvertFun = fun
         ({deleted, FP, Key, OldValues}) ->
-            {deleted, FP, Key, extract_val(lww_resolver(OldValues))};
+            {deleted, FP, Key, extract_val(Resolver(OldValues))};
         ({updated, FP, Key, OldValues, Values}) ->
-            {updated, FP, Key, extract_val(lww_resolver(OldValues)),
-                extract_val(lww_resolver(Values))}
+            {updated, FP, Key, extract_val(Resolver(OldValues)), extract_val(Resolver(Values))}
     end,
     lists:foreach(
         fun(Group) ->
@@ -207,6 +212,50 @@ lww_resolver(TimestampedVals) ->
 
 extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
+
+resolver_for_prefix(?SUBSCRIBER_DB) ->
+    case application:get_env(vmq_swc, subscription_resolver, set_union) of
+        set_union -> fun subscription_resolver/1;
+        lww -> fun lww_resolver/1
+    end;
+resolver_for_prefix(_) ->
+    fun lww_resolver/1.
+
+subscription_resolver([]) ->
+    undefined;
+subscription_resolver([V]) ->
+    V;
+subscription_resolver(TimestampedVals) ->
+    LiveVals = [{Ts, Subs} || {Ts, Subs} <- TimestampedVals, is_list(Subs)],
+    case LiveVals of
+        [] ->
+            lww_resolver(TimestampedVals);
+        _ ->
+            {NewestTs, _} = lists:last(lists:keysort(1, LiveVals)),
+            MergedSubs = lists:foldl(
+                fun({_Ts, Subs}, Acc) -> merge_subs(Subs, Acc) end,
+                [],
+                LiveVals
+            ),
+            {NewestTs, MergedSubs}
+    end.
+
+%% subs() = [{Node, CleanSession, [{Topic, SubInfo}]}]
+merge_subs([], Acc) -> Acc;
+merge_subs(Subs, []) -> Subs;
+merge_subs(Subs1, Subs2) -> merge_node_subs(lists:keysort(1, Subs1), lists:keysort(1, Subs2), []).
+
+merge_node_subs([], Rest, Acc) ->
+    lists:reverse(Acc) ++ Rest;
+merge_node_subs(Rest, [], Acc) ->
+    lists:reverse(Acc) ++ Rest;
+merge_node_subs([{N, CS1, T1} | R1], [{N, CS2, T2} | R2], Acc) ->
+    MergedTopics = lists:ukeymerge(1, lists:ukeysort(1, T1), lists:ukeysort(1, T2)),
+    merge_node_subs(R1, R2, [{N, CS1 andalso CS2, MergedTopics} | Acc]);
+merge_node_subs([{N1, _, _} = H1 | R1], [{N2, _, _} | _] = L2, Acc) when N1 < N2 ->
+    merge_node_subs(R1, L2, [H1 | Acc]);
+merge_node_subs(L1, [H2 | R2], Acc) ->
+    merge_node_subs(L1, R2, [H2 | Acc]).
 
 summary() ->
     {_, Groups} = ?SWC_GROUPS,
