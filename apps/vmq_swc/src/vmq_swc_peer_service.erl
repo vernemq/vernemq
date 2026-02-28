@@ -90,6 +90,10 @@ attempt_join(Node, Local) ->
         gen_server:cast({vmq_swc_peer_service_gossip, P}, {receive_state, Merged})
      || P <- Members
     ],
+    _ = [
+        gen_server:cast({vmq_swc_peer_service_gossip, P}, trigger_fast_gossip)
+     || P <- Members
+    ],
     ok.
 
 leave(_Args) when is_list(_Args) ->

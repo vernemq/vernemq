@@ -7,6 +7,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- vmq_swc: Add adaptive fast gossip mode for faster membership convergence after cluster changes
 
 
 ## VerneMQ 2.1.1
