@@ -246,27 +246,39 @@ handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
     end.
 
 migrate_queue(SubscriberId, QPid, Node) ->
-    %% we use the Node of the 'new' Queue as SyncNode.
-    vmq_reg_sync:async(
-        {migrate, SubscriberId},
-        fun() ->
-            case
-                rpc:call(
-                    Node,
-                    vmq_queue_sup_sup,
-                    start_queue,
-                    [SubscriberId]
-                )
-            of
-                {ok, _, RemoteQPid} ->
-                    vmq_queue:migrate(QPid, RemoteQPid);
-                {E, Reason} when (E == error) or (E == badrpc) ->
-                    exit({cant_start_queue, Node, SubscriberId, Reason})
-            end
-        end,
-        Node,
-        60000
-    ).
+    %% Check if the queue is already migrating (e.g., initiated by
+    %% direct migration in vmq_reg:register_subscriber_). Skip if so.
+    case vmq_queue:info(QPid) of
+        #{statename := drain} ->
+            ok;
+        #{statename := wait_for_offline} ->
+            ok;
+        {error, noproc} ->
+            %% Queue process already dead, nothing to migrate
+            ok;
+        _ ->
+            %% we use the Node of the 'new' Queue as SyncNode.
+            vmq_reg_sync:async(
+                {migrate, SubscriberId},
+                fun() ->
+                    case
+                        rpc:call(
+                            Node,
+                            vmq_queue_sup_sup,
+                            start_queue,
+                            [SubscriberId]
+                        )
+                    of
+                        {ok, _, RemoteQPid} ->
+                            vmq_queue:migrate(QPid, RemoteQPid);
+                        {E, Reason} when (E == error) or (E == badrpc) ->
+                            exit({cant_start_queue, Node, SubscriberId, Reason})
+                    end
+                end,
+                Node,
+                60000
+            )
+    end.
 
 cleanup_queue(SubscriberId, Reason, QPid) ->
     vmq_reg_sync:async(
