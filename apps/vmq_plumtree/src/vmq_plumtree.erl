@@ -35,6 +35,7 @@
 ]).
 
 -define(TOMBSTONE, '$deleted').
+-define(SUBSCRIBER_DB, {vmq, subscriber}).
 
 start() ->
     application:ensure_all_started(vmq_plumtree).
@@ -104,13 +105,45 @@ metadata_put(FullPrefix, Key, Value) ->
     plumtree_metadata:put(FullPrefix, Key, Value).
 
 metadata_get(FullPrefix, Key) ->
-    plumtree_metadata:get(FullPrefix, Key).
+    plumtree_metadata:get(FullPrefix, Key, [{resolver, resolver_for_prefix(FullPrefix)}]).
 
 metadata_delete(FullPrefix, Key) ->
     plumtree_metadata:delete(FullPrefix, Key).
 
 metadata_fold(FullPrefix, Fun, Acc) ->
-    plumtree_metadata:fold(Fun, Acc, FullPrefix, [{resolver, lww}]).
+    plumtree_metadata:fold(Fun, Acc, FullPrefix, [{resolver, resolver_for_prefix(FullPrefix)}]).
 
 metadata_subscribe(FullPrefix) ->
     plumtree_metadata_manager:subscribe(FullPrefix).
+
+resolver_for_prefix(?SUBSCRIBER_DB) ->
+    case application:get_env(vmq_plumtree, subscription_resolver, set_union) of
+        set_union -> fun subscription_merge/2;
+        lww -> lww
+    end;
+resolver_for_prefix(_) ->
+    lww.
+
+subscription_merge(Subs1, Subs2) when is_list(Subs1), is_list(Subs2) ->
+    merge_subs(Subs1, Subs2);
+subscription_merge(Subs1, _Subs2) when is_list(Subs1) ->
+    Subs1;
+subscription_merge(_Subs1, Subs2) ->
+    Subs2.
+
+%% subs() = [{Node, CleanSession, [{Topic, SubInfo}]}]
+merge_subs([], Acc) -> Acc;
+merge_subs(Subs, []) -> Subs;
+merge_subs(Subs1, Subs2) -> merge_node_subs(lists:keysort(1, Subs1), lists:keysort(1, Subs2), []).
+
+merge_node_subs([], Rest, Acc) ->
+    lists:reverse(Acc) ++ Rest;
+merge_node_subs(Rest, [], Acc) ->
+    lists:reverse(Acc) ++ Rest;
+merge_node_subs([{N, CS1, T1} | R1], [{N, CS2, T2} | R2], Acc) ->
+    MergedTopics = lists:ukeymerge(1, lists:ukeysort(1, T1), lists:ukeysort(1, T2)),
+    merge_node_subs(R1, R2, [{N, CS1 andalso CS2, MergedTopics} | Acc]);
+merge_node_subs([{N1, _, _} = H1 | R1], [{N2, _, _} | _] = L2, Acc) when N1 < N2 ->
+    merge_node_subs(R1, L2, [H1 | Acc]);
+merge_node_subs(L1, [H2 | R2], Acc) ->
+    merge_node_subs(L1, R2, [H2 | Acc]).
