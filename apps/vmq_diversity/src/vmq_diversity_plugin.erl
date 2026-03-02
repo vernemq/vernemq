@@ -43,7 +43,7 @@
 -export([
     auth_on_register/6,
     auth_on_publish/7,
-    auth_on_subscribe/3,
+    auth_on_subscribe/4,
     on_register/5,
     on_publish/8,
     on_subscribe/4,
@@ -343,7 +343,7 @@ on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
         {properties, conv_args_props(Props)}
     ]).
 
-auth_on_subscribe(UserName, SubscriberId, Topics) ->
+auth_on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
         lists:foldl(
@@ -382,7 +382,8 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
                 {topics, [
                     [unword(T), QoS]
                  || {T, QoS} <- Topics
-                ]}
+                ]},
+                {session_id, SessionId}
             ]),
             conv_res(auth_on_sub, Res)
     end.

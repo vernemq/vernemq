@@ -44,7 +44,7 @@
 -export([
     auth_on_register/6,
     auth_on_publish/7,
-    auth_on_subscribe/3,
+    auth_on_subscribe/4,
     on_register/5,
     on_publish/8,
     on_subscribe/4,
@@ -339,9 +339,9 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
         {properties, Props}
     ]).
 
--spec auth_on_subscribe(username(), subscriber_id(), [topic()]) ->
+-spec auth_on_subscribe(username(), subscriber_id(), [topic()], session_id()) ->
     'next' | 'ok' | {'error', any()} | {'ok', auth_on_subscribe_hook:sub_modifiers()}.
-auth_on_subscribe(UserName, SubscriberId, Topics) ->
+auth_on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_subscribe, [
         {username, nullify(UserName)},
@@ -350,7 +350,8 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
         {topics, [
             [unword(T), QoS]
          || {T, QoS} <- Topics
-        ]}
+        ]},
+        {session_id, SessionId}
     ]).
 
 -spec auth_on_subscribe_m5(username(), subscriber_id(), [topic()], properties()) ->

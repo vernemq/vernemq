@@ -20,8 +20,8 @@
 -export([register_hooks/0]).
 -export([
     auth_on_register/6,
-    auth_on_subscribe/3,
-    auth_on_publish/6
+    auth_on_subscribe/4,
+    auth_on_publish/7
 ]).
 
 -spec register_hooks() -> 'ok'.
@@ -30,10 +30,10 @@ register_hooks() ->
         ?MODULE, auth_on_register, 6
     ),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        ?MODULE, auth_on_subscribe, 3
+        ?MODULE, auth_on_subscribe, 4
     ),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        ?MODULE, auth_on_publish, 6
+        ?MODULE, auth_on_publish, 7
     ).
 
 -spec auth_on_register(_, _, _, _, _, _) -> 'ok'.
@@ -45,20 +45,20 @@ auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession, SessionId) -
     ),
     ok.
 
--spec auth_on_subscribe(_, _, _) -> 'ok'.
-auth_on_subscribe(User, SubscriberId, Topics) ->
+-spec auth_on_subscribe(_, _, _, _) -> 'ok'.
+auth_on_subscribe(User, SubscriberId, Topics, SessionId) ->
     lager:info(
         "auth subscriber subscriptions ~p\n"
-        "              from ~p with username ~p",
-        [Topics, SubscriberId, User]
+        "              from ~p with username ~p, session_id: ~p",
+        [Topics, SubscriberId, User, SessionId]
     ),
     ok.
 
--spec auth_on_publish(_, _, _, _, _, _) -> 'ok'.
-auth_on_publish(User, SubscriberId, MsgRef, Topic, _Payload, _IsRetain) ->
+-spec auth_on_publish(_, _, _, _, _, _, _) -> 'ok'.
+auth_on_publish(User, SubscriberId, MsgRef, Topic, _Payload, _IsRetain, SessionId) ->
     lager:debug(
         "auth subscriber publish ~p with\n"
-        "             topic ~p from ~p with username ~p",
-        [MsgRef, Topic, SubscriberId, User]
+        "             topic ~p from ~p with username ~p, session_id: ~p",
+        [MsgRef, Topic, SubscriberId, User, SessionId]
     ),
     ok.
