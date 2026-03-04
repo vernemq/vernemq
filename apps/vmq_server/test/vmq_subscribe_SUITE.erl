@@ -521,17 +521,17 @@ shared_subs_topic_not_allowed_test(Config) ->
 hook_auth_on_subscribe(_,{"", <<"subscribe-multi1-test">>},
                        [{[<<"qos0">>,<<"test">>], {0,_}=QoS0},
                         {[<<"qos1">>,<<"test">>], {1,_}},
-                        {[<<"qos2">>,<<"test">>], {2,_}=QoS2}]) ->
+                        {[<<"qos2">>,<<"test">>], {2,_}=QoS2}], _) ->
     {ok, [{[<<"qos0">>,<<"test">>], QoS0},
           {[<<"qos1">>,<<"test">>], not_allowed},
           {[<<"qos2">>,<<"test">>], QoS2}]};
 hook_auth_on_subscribe(_,{"", <<"subscribe-multi2-test">>},
                        [{[<<"qos0">>,<<"test">>], _},
                         {[<<"qos1">>,<<"test">>], _},
-                        {[<<"qos2">>,<<"test">>], _}]) ->
+                        {[<<"qos2">>,<<"test">>], _}], _) ->
     {error, not_allowed};
 hook_auth_on_subscribe(_,{"", <<"shared-sub-not-allowed-test">>},
-                       [{[<<"$share">>,_,<<"shared-topic-not-allowed">>] = Topic, _}]) ->
+                       [{[<<"$share">>,_,<<"shared-topic-not-allowed">>] = Topic, _}], _) ->
     {ok, [{Topic, not_allowed}]};
 hook_auth_on_subscribe(_,_,_, _) -> ok.
 
