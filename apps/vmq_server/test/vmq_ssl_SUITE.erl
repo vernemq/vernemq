@@ -18,7 +18,7 @@
          connect_identity_test/1,
          connect_no_identity_test/1]).
 
--export([hook_preauth_success/5]).
+-export([hook_preauth_success/6]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -75,7 +75,7 @@ init_per_testcase(Case, Config) ->
                                                            {crlfile, ssl_path("crl.pem")},
                                                            {use_identity_as_username, true}]),
             vmq_plugin_mgr:enable_module_plugin(
-              auth_on_register, ?MODULE, hook_preauth_success, 5)
+              auth_on_register, ?MODULE, hook_preauth_success, 6)
     end,
     Config.
 
@@ -237,7 +237,7 @@ connect_no_identity_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, undefined, _) -> ok.
+hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, undefined, _, _) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

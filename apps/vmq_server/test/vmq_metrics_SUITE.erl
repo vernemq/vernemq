@@ -15,7 +15,7 @@
          simple_prometheus_test/1,
          simple_cli_test/1]).
 
--export([hook_auth_on_subscribe/3]).
+-export([hook_auth_on_subscribe/4]).
 -export([plugin_metrics/0]).
 
 init_per_suite(Config) ->
@@ -198,12 +198,12 @@ plugin_metrics() ->
 
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 disable_on_subscribe() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 
-hook_auth_on_subscribe(_, _, _) -> ok.
+hook_auth_on_subscribe(_, _, _, _) -> ok.
 
 sample_subscribe() ->
     %% let the metrics system do some increments

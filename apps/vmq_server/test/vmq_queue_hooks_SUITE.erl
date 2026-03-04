@@ -15,8 +15,8 @@
          queue_hooks_lifecycle_test5/1,
          queue_hooks_lifecycle_test6/1]).
 
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6,
+-export([hook_auth_on_subscribe/4,
+         hook_auth_on_publish/7,
          hook_on_client_gone/3,
          hook_on_client_offline/3,
          hook_on_client_wakeup/1,
@@ -169,9 +169,9 @@ hook_called(Hook) ->
         [{Hook, true}] -> ok
     end.
 
-hook_auth_on_subscribe(_, _, _) -> ok.
+hook_auth_on_subscribe(_, _, _, _) -> ok.
 
-hook_auth_on_publish(_, _, _, _, _, _) -> ok.
+hook_auth_on_publish(_, _, _, _, _, _, _) -> ok.
 
 hook_on_client_wakeup({"", <<"queue-client">>}) ->
     ets:insert(?MODULE, {on_client_wakeup, true});
@@ -209,16 +209,16 @@ hook_on_topic_unsubscribed(_, _) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 enable_on_publish() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7).
 disable_on_subscribe() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 disable_on_publish() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7).
 
 enable_queue_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(

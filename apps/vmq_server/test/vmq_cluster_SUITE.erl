@@ -34,9 +34,9 @@
 ]).
 
 -export([
-    hook_uname_password_success/5,
-    hook_auth_on_publish/6,
-    hook_auth_on_subscribe/3
+    hook_uname_password_success/6,
+    hook_auth_on_publish/7,
+    hook_auth_on_subscribe/4
 ]).
 
 -define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
@@ -1364,9 +1364,9 @@ ensure_cluster(Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_uname_password_success(_, _, _, _, _) -> {ok, [{max_inflight_messages, 1}]}.
-hook_auth_on_publish(_, _, _, _, _, _) -> ok.
-hook_auth_on_subscribe(_, _, _) -> ok.
+hook_uname_password_success(_, _, _, _, _, _) -> {ok, [{max_inflight_messages, 1}]}.
+hook_auth_on_publish(_, _, _, _, _, _, _) -> ok.
+hook_auth_on_subscribe(_, _, _, _) -> ok.
 
 random_node(Nodes) ->
     lists:nth(rand:uniform(length(Nodes)), Nodes).

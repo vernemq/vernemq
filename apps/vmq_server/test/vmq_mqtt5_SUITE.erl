@@ -132,10 +132,10 @@ uname_no_password_success(_Config) ->
     %% Connect = packet:gen_connect("connect-uname-test-", [{keepalive,10}, {username, "user"}]),
     %% Connack = packet:gen_connack(4),
     %% ok = vmq_plugin_mgr:enable_module_plugin(
-    %%   auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
+    %%   auth_on_register, ?MODULE, hook_uname_no_password_denied, 6),
     %% {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     %% ok = vmq_plugin_mgr:disable_module_plugin(
-    %%   auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
+    %%   auth_on_register, ?MODULE, hook_uname_no_password_denied, 6),
     %% ok = gen_tcp:close(Socket).
     {skip, not_implemented}.
 

@@ -13,9 +13,9 @@
          proxy_use_cn_as_username_on/1,
          proxy_use_cn_as_username_off/1]).
 
--export([hook_proxy_register/5,
-         hook_proxy_register_use_identity_as_username_on/5,
-         hook_proxy_register_use_identity_as_username_off/5]).
+-export([hook_proxy_register/6,
+         hook_proxy_register_use_identity_as_username_on/6,
+         hook_proxy_register_use_identity_as_username_off/6]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -62,7 +62,7 @@ proxy_test(_) ->
     Host = {127,0,0,1},
     Port = 1888,
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register, 5),
+      auth_on_register, ?MODULE, hook_proxy_register, 6),
     ProxyInfo =
         #{version => 2,
           src_address => {1,1,1,1},
@@ -78,7 +78,7 @@ proxy_test(_) ->
     ok = gen_tcp:send(Socket, Connect),
     ok = packet:expect_packet(Socket, connack, Connack),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register, 5),
+      auth_on_register, ?MODULE, hook_proxy_register, 6),
     ok = gen_tcp:close(Socket).
 
 proxy_local_command_test(_) ->
@@ -86,7 +86,7 @@ proxy_local_command_test(_) ->
     Host = {127,0,0,1},
     Port = 1888,
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register, 5),
+      auth_on_register, ?MODULE, hook_proxy_register, 6),
     ProxyInfo =
         #{version => 2,
           src_address => {1,1,1,1},
@@ -102,7 +102,7 @@ proxy_local_command_test(_) ->
     ok = gen_tcp:send(Socket, Connect),
     % don't wait for a Connack here, as this doesn't go up to MQTT level
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register, 5),
+      auth_on_register, ?MODULE, hook_proxy_register, 6),
     ok = gen_tcp:close(Socket).
 
 proxy_use_cn_as_username_on(_) ->
@@ -113,7 +113,7 @@ proxy_use_cn_as_username_on(_) ->
     Host = {127,0,0,1},
     Port = 1889,
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_on, 5),
+      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_on, 6),
     {ok, Socket} = gen_tcp:connect(Host, Port,
                                    [binary, {active, false}, {packet, raw}]),
     ProxyInfo =
@@ -134,7 +134,7 @@ proxy_use_cn_as_username_on(_) ->
     gen_tcp:send(Socket, Connect),
     ok = packet:expect_packet(Socket, connack, Connack),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_on, 5),
+      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_on, 6),
     ok = gen_tcp:close(Socket).
 
 proxy_use_cn_as_username_off(_) ->
@@ -145,7 +145,7 @@ proxy_use_cn_as_username_off(_) ->
     Host = {127,0,0,1},
     Port = 1888,
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_off, 5),
+      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_off, 6),
     {ok, Socket} = gen_tcp:connect(Host, Port,
                                    [binary, {active, false}, {packet, raw}]),
     ProxyInfo =
@@ -166,16 +166,16 @@ proxy_use_cn_as_username_off(_) ->
     gen_tcp:send(Socket, Connect),
     ok = packet:expect_packet(Socket, connack, Connack),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_off, 5),
+      auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_off, 6),
     ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_proxy_register({{1,1,1,1}, 1234}, _, _, _, _) -> ok.
+hook_proxy_register({{1,1,1,1}, 1234}, _, _, _, _, _) -> ok.
 
-hook_proxy_register_use_identity_as_username_on({{1,2,3,4},5555},{[], <<"connect-proxy-test">>},<<"sni_hostname">>,_,_) ->
+hook_proxy_register_use_identity_as_username_on({{1,2,3,4},5555},{[], <<"connect-proxy-test">>},<<"sni_hostname">>,_,_,_) ->
     ok.
 
-hook_proxy_register_use_identity_as_username_off({{2,3,4,5},6666},{[], <<"connect-proxy-test">>},<<"username">>,_,_) ->
+hook_proxy_register_use_identity_as_username_off({{2,3,4,5},6666},{[], <<"connect-proxy-test">>},<<"username">>,_,_,_) ->
     ok.

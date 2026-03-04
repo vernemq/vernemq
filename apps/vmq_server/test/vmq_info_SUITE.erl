@@ -196,18 +196,18 @@ execute(Cmd) ->
 
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 disable_on_subscribe() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
 
 enable_on_publish() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7).
 disable_on_publish() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7).
 
-hook_auth_on_subscribe(_, _, _) -> ok.
-hook_auth_on_publish(_,_,_,_,_,_) ->
+hook_auth_on_subscribe(_, _, _, _) -> ok.
+hook_auth_on_publish(_,_,_,_,_,_,_) ->
     ok.

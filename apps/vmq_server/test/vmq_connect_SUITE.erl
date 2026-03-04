@@ -103,10 +103,10 @@ invalid_id_0_311_test(Config) ->
     Connect = packet:gen_connect(empty, [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 6),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 6),
     ok = close(Socket, Config).
 
 invalid_id_missing_test(Config) ->
@@ -132,10 +132,10 @@ uname_no_password_denied_test(Config) ->
     Connect = packet:gen_connect("connect-uname-test-", [{keepalive,10}, {username, "user"}]),
     Connack = packet:gen_connack(4),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 6),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 6),
     ok = close(Socket, Config).
 
 uname_password_denied_test(Config) ->
@@ -143,10 +143,10 @@ uname_password_denied_test(Config) ->
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(4),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_denied, 5),
+      auth_on_register, ?MODULE, hook_uname_password_denied, 6),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_denied, 5),
+      auth_on_register, ?MODULE, hook_uname_password_denied, 6),
     ok = close(Socket, Config).
 
 uname_password_success_test(Config) ->
@@ -154,10 +154,10 @@ uname_password_success_test(Config) ->
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(0),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_success, 5),
+      auth_on_register, ?MODULE, hook_uname_password_success, 6),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_success, 5),
+      auth_on_register, ?MODULE, hook_uname_password_success, 6),
     ok = close(Socket, Config).
 
 change_subscriber_id_test(Config) ->
@@ -166,14 +166,14 @@ change_subscriber_id_test(Config) ->
                                   {password, "whatever"}]),
     Connack = packet:gen_connack(0),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
+      auth_on_register, ?MODULE, hook_change_subscriber_id, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
       on_register, ?MODULE, hook_on_register_changed_subscriber_id, 3),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
       on_register, ?MODULE, hook_on_register_changed_subscriber_id, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
+      auth_on_register, ?MODULE, hook_change_subscriber_id, 6),
     ok = close(Socket, Config).
 
 auth_on_register_change_username_test(Config) ->
@@ -182,7 +182,7 @@ auth_on_register_change_username_test(Config) ->
                                           {password, "whatever"}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_change_username, 5),
+      auth_on_register, ?MODULE, hook_change_username, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
       on_register, ?MODULE, hook_on_register_changed_username, 3),
 
@@ -201,7 +201,7 @@ auth_on_register_change_username_test(Config) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
       on_register, ?MODULE, hook_on_register_changed_username, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_change_username, 5),
+      auth_on_register, ?MODULE, hook_change_username, 6),
     ok = close(Socket, Config).
 
 ws_protocols_list_test(Config) ->
@@ -223,16 +223,16 @@ ws_no_known_protocols_test(Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_empty_client_id_proto_4(_, _RandomId, _, _, _) -> ok.
-hook_uname_no_password_denied(_, {"", <<"connect-uname-test-">>}, <<"user">>, undefined, _) -> {error, invalid_credentials}.
-hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> {error, invalid_credentials}.
-hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> ok.
-hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
+hook_empty_client_id_proto_4(_, _RandomId, _, _, _, _) -> ok.
+hook_uname_no_password_denied(_, {"", <<"connect-uname-test-">>}, <<"user">>, undefined, _, _) -> {error, invalid_credentials}.
+hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _, _) -> {error, invalid_credentials}.
+hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _, _) -> ok.
+hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
 hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
     ok.
 
-hook_change_username(_, _, <<"old_username">>, _, _) ->
+hook_change_username(_, _, <<"old_username">>, _, _, _) ->
     {ok, [{username, <<"new_username">>}]}.
 hook_on_register_changed_username(_, _, <<"new_username">>) ->
     ok.

@@ -69,28 +69,28 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 auth_on_register_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), allowed_subscriber_id(), username(), password(), true]),
+                      [peer(), allowed_subscriber_id(), username(), password(), true, session_id()]),
     {error,invalid_credentials} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), not_allowed_subscriber_id(), username(), password(), true]),
+                      [peer(), not_allowed_subscriber_id(), username(), password(), true, session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), ignored_subscriber_id(), username(), password(), true]),
+                      [peer(), ignored_subscriber_id(), username(), password(), true, session_id()]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), changed_subscriber_id(), username(), password(), true]),
+                      [peer(), changed_subscriber_id(), username(), password(), true, session_id()]),
     {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), changed_username(), username(), password(), true]).
+                      [peer(), changed_username(), username(), password(), true, session_id()]).
 
 props() ->
     #{p_user_property => [{<<"key1">>, <<"val1">>}]}.
 
 auth_on_publish_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_publish,
-                      [username(), allowed_subscriber_id(), 1, topic(), payload(), false]),
+                      [username(), allowed_subscriber_id(), 1, topic(), payload(), false, session_id()]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false]),
+                      [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false, session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [username(), ignored_subscriber_id(), 1, topic(), payload(), false]),
+                      [username(), ignored_subscriber_id(), 1, topic(), payload(), false, session_id()]),
     {ok, [{topic, [<<"hello">>, <<"world">>]}]} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [username(), changed_subscriber_id(), 1, topic(), payload(), false]).
+                      [username(), changed_subscriber_id(), 1, topic(), payload(), false, session_id()]).
 
 invalid_modifiers_test(_) ->
     {error,{invalid_modifiers,#{topic := 5}}} =
@@ -102,52 +102,52 @@ invalid_modifiers_test(_) ->
 
 auth_on_subscribe_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [username(), allowed_subscriber_id(), [{topic(), 1}]]),
+                      [username(), allowed_subscriber_id(), [{topic(), 1}], session_id()]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [username(), not_allowed_subscriber_id(), [{topic(), 1}]]),
+                      [username(), not_allowed_subscriber_id(), [{topic(), 1}], session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [username(), ignored_subscriber_id(), [{topic(), 1}]]),
+                      [username(), ignored_subscriber_id(), [{topic(), 1}], session_id()]),
     {ok, [{[<<"hello">>, <<"world">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [username(), changed_subscriber_id(), [{topic(), 1}]]).
+                      [username(), changed_subscriber_id(), [{topic(), 1}], session_id()]).
 
 on_register_test(_) ->
     UserProps = [{<<"k1">>, <<"v1">>}, {<<"k2">>, <<"v2">>}, {<<"k3">>, <<"v3">>}],
     [next] = vmq_plugin:all(on_register,
-                            [peer(), allowed_subscriber_id(), username(), #{?P_USER_PROPERTY => UserProps}]).
+                            [peer(), allowed_subscriber_id(), username(), #{?P_USER_PROPERTY => UserProps}, session_id()]).
 on_publish_test(_) ->
     [next] = vmq_plugin:all(on_publish,
-                            [username(), allowed_subscriber_id(), 1, topic(), payload(), false, matched_acl()]).
+                            [username(), allowed_subscriber_id(), 1, topic(), payload(), false, matched_acl(), session_id()]).
 on_subscribe_test(_) ->
     [next] = vmq_plugin:all(on_subscribe,
-                            [username(), allowed_subscriber_id(), [{topic(), 1, matched_acl()}]]).
+                            [username(), allowed_subscriber_id(), [{topic(), 1, matched_acl()}], session_id()]).
 
 on_unsubscribe_test(_) ->
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(on_unsubscribe,
-                                             [username(), allowed_subscriber_id(), [topic()]]),
+                                             [username(), allowed_subscriber_id(), [topic()], session_id()]),
     {ok, [[<<"hello">>, <<"world">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
-                      [username(), changed_subscriber_id(), [topic()]]).
+                      [username(), changed_subscriber_id(), [topic()], session_id()]).
 
 on_deliver_test(_) ->
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false, matched_acl(), false]).
+                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false, matched_acl(), false, session_id()]).
 
 on_offline_message_test(_) ->
     [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id(), 2,
-                                                 topic(), payload(), false]).
+                                                 topic(), payload(), false, session_id()]).
 on_client_wakeup_test(_) ->
-    [next] = vmq_plugin:all(on_client_wakeup, [allowed_subscriber_id()]).
+    [next] = vmq_plugin:all(on_client_wakeup, [allowed_subscriber_id(), session_id()]).
 on_client_offline_test(_) ->
-    [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason(), username()]).
+    [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason(), username(), session_id()]).
 on_client_gone_test(_) ->
-    [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id(), reason(), username()]).
+    [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id(), reason(), username(), session_id()]).
 on_session_expired_test(_) ->
-    [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id()]).
+    [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id(), session_id()]).
 
 auth_on_register_undefined_creds_test(_) ->
     Username = undefined,
     Password = undefined,
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), {"", <<"undefined_creds">>}, Username, Password, true]).
+                      [peer(), {"", <<"undefined_creds">>}, Username, Password, true, session_id()]).
 
 auth_on_publish_m5_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_publish_m5,
@@ -315,3 +315,4 @@ subopts() ->
       no_local => false}.
 reason() -> normal_disconnect.
 matched_acl() -> #matched_acl{name= <<"test-label">>, pattern= <<"test/pattern">>}.
+session_id() -> <<"test-session-id">>.

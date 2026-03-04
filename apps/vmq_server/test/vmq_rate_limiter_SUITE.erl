@@ -129,8 +129,8 @@ publish_throttle_test(Cfg) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_register(_Peer, _, <<"throttle-user">>, _Password, _Clean) -> ok;
-hook_auth_on_register(_Peer, _, <<"rate-limit-test">>, _Password, _Clean) ->
+hook_auth_on_register(_Peer, _, <<"throttle-user">>, _Password, _Clean, _) -> ok;
+hook_auth_on_register(_Peer, _, <<"rate-limit-test">>, _Password, _Clean, _) ->
     %% this will limit the publisher to 1 message/sec
     {ok, [{max_message_rate, 1}]}.
 
@@ -139,8 +139,8 @@ hook_auth_on_register_m5(_Peer, _, <<"rate-limit-test">>, _Password, _CleanStart
     %% this will limit the publisher to 1 message/sec
     {ok, #{max_message_rate => 1}}.
 
-hook_auth_on_publish(<<"throttle-user">>, _, _MsgId, _, <<"throttlenext">>, _) ->  {ok, [{throttle, ?THROTTLEMS}]};
-hook_auth_on_publish(_, _, _MsgId, _, _, _) -> ok.
+hook_auth_on_publish(<<"throttle-user">>, _, _MsgId, _, <<"throttlenext">>, _, _) ->  {ok, [{throttle, ?THROTTLEMS}]};
+hook_auth_on_publish(_, _, _MsgId, _, _, _, _) -> ok.
 hook_auth_on_publish_m5(<<"throttle-user">>, _, _MsgId, _, <<"throttlenext">>, _, _) -> {ok, #{throttle => ?THROTTLEMS}};
 hook_auth_on_publish_m5(_, _, _MsgId, _, _, _, _) -> ok.
 
@@ -151,9 +151,9 @@ hook_auth_on_publish_m5(_, _, _MsgId, _, _, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_auth_on_register, 5),
+      auth_on_register, ?MODULE, hook_auth_on_register, 6),
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
 
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_register_m5, ?MODULE, hook_auth_on_register_m5, 6),
@@ -164,9 +164,9 @@ enable_hooks() ->
 
 disable_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_auth_on_register, 5),
+      auth_on_register, ?MODULE, hook_auth_on_register, 6),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
 
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_register_m5, ?MODULE, hook_auth_on_register_m5, 6),
