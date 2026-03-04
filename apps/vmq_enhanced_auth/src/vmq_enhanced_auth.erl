@@ -96,46 +96,54 @@ change_config(Configs) ->
             vmq_enhanced_auth_reloader:change_config_now()
     end.
 
-auth_on_subscribe(_User, _SubscriberId, _TopicList, _SessionId) ->
-    %% For testing: allow all subscriptions
-    ok.
+auth_on_subscribe(User, SubscriberId, TopicList, _SessionId) ->
+    auth_on_subscribe(User, SubscriberId, TopicList, _SessionId, []).
 
-%% Commented out for testing - original implementation
-%% auth_on_subscribe(_, _, [], _SessionId, Modifiers) ->
-%%     {ok, lists:reverse(Modifiers)};
-%% auth_on_subscribe(User, SubscriberId, TopicList, SessionId, Modifiers) ->
-%%     auth_on_subscribe(?RegView, User, SubscriberId, TopicList, SessionId, Modifiers).
-%%
-%% auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], SessionId, Modifiers) ->
-%%     D = is_topic_invalid(RegView, Topic) orelse is_acl_auth_disabled(),
-%%     if
-%%         D ->
-%%             next;
-%%         true ->
-%%             case check(read, Topic, User, SubscriberId) of
-%%                 {true, MatchedAcl} ->
-%%                     auth_on_subscribe(
-%%                         User,
-%%                         SubscriberId,
-%%                         Rest,
-%%                         [{Topic, Qos, MatchedAcl} | Modifiers],
-%%                         SessionId
-%%                     );
-%%                 false ->
-%%                     ModTopic = {Topic, not_allowed, #matched_acl{}},
-%%                     auth_on_subscribe(
-%%                         User,
-%%                         SubscriberId,
-%%                         Rest,
-%%                         [ModTopic | Modifiers],
-%%                         SessionId
-%%                     )
-%%             end
-%%     end.
+auth_on_subscribe(_, _, [], _SessionId, Modifiers) ->
+    {ok, lists:reverse(Modifiers)};
+auth_on_subscribe(User, SubscriberId, TopicList, SessionId, Modifiers) ->
+    auth_on_subscribe(?RegView, User, SubscriberId, TopicList, SessionId, Modifiers).
 
-auth_on_publish(_User, _SubscriberId, _Qos, _Topic, _, _, _SessionId) ->
-    %% For testing: allow all publishes
-    ok.
+auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], SessionId, Modifiers) ->
+    D = is_topic_invalid(RegView, Topic) orelse is_acl_auth_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            case check(read, Topic, User, SubscriberId) of
+                {true, MatchedAcl} ->
+                    auth_on_subscribe(
+                        User,
+                        SubscriberId,
+                        Rest,
+                        SessionId,
+                        [{Topic, Qos, MatchedAcl} | Modifiers]
+                    );
+                false ->
+                    ModTopic = {Topic, not_allowed, #matched_acl{}},
+                    auth_on_subscribe(
+                        User,
+                        SubscriberId,
+                        Rest,
+                        SessionId,
+                        [ModTopic | Modifiers]
+                    )
+            end
+    end.
+
+auth_on_publish(User, SubscriberId, _Qos, Topic, _, _, _SessionId) ->
+    D = is_acl_auth_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            case check(write, Topic, User, SubscriberId) of
+                {true, MatchedAcl} ->
+                    {ok, [{matched_acl, MatchedAcl}]};
+                false ->
+                    next
+            end
+    end.
 
 auth_on_subscribe_m5(_, _, []) ->
     ok;
@@ -155,8 +163,8 @@ auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
 auth_on_register(
     {_IpAddr, _Port} = _Peer,
     {_MountPoint, _ClientId} = _SubscriberId,
-    _UserName,
-    _Password,
+    UserName,
+    Password,
     _CleanSession,
     _SessionId
 ) ->
@@ -171,8 +179,22 @@ auth_on_register(
     %% 4. return {error, invalid_credentials} -> CONNACK_CREDENTIALS is sent
     %% 5. return {error, Error} -> CONNACK_AUTH is sent
 
-    %% For testing: allow all connections
-    ok.
+    %% we return 'ok'
+    D = is_auth_on_register_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            {Result, Claims} = verify(Password, ?SecretKey),
+            if
+                Result =:= ok ->
+                    check_rid(Claims, UserName);
+                %else block
+                true ->
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
+                    {error, ?INVALID_SIGNATURE}
+            end
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+
@@ -515,45 +537,44 @@ iterate(T, Fun, K) ->
     Fun(K),
     iterate(T, Fun, ets:next(T, K)).
 
-%% Commented out for testing - these will be needed when auth is restored
-%% is_auth_on_register_disabled() ->
-%%     E = ?EnableAuthOnRegister,
-%%     if
-%%         E == true -> false;
-%%         true -> true
-%%     end.
-%%
-%% is_acl_auth_disabled() ->
-%%     E = ?EnableAclHooks,
-%%     if
-%%         E == true -> false;
-%%         true -> true
-%%     end.
-%%
-%% is_topic_invalid(vmq_reg_redis_trie, Topic) ->
-%%     case vmq_topic:contains_wildcard(Topic) of
-%%         true ->
-%%             not is_complex_topic_whitelisted(Topic);
-%%         _ ->
-%%             false
-%%     end;
-%% is_topic_invalid(_, _) ->
-%%     false.
+is_auth_on_register_disabled() ->
+    E = ?EnableAuthOnRegister,
+    if
+        E == true -> false;
+        true -> true
+    end.
 
-% is_complex_topic_whitelisted([<<"$share">>, _Group | Topic]) ->
-%     is_complex_topic_whitelisted(Topic);
-% is_complex_topic_whitelisted([<<"$share">> | _] = _Topic) ->
-%     false;
-% is_complex_topic_whitelisted(Topic) ->
-%     MPTopic = {"", Topic},
-%     case ets:lookup(vmq_redis_trie_node, MPTopic) of
-%         [#trie_node{topic = undefined}] ->
-%             false;
-%         [_] ->
-%             true;
-%         _ ->
-%             false
-%     end.
+is_acl_auth_disabled() ->
+    E = ?EnableAclHooks,
+    if
+        E == true -> false;
+        true -> true
+    end.
+
+is_topic_invalid(vmq_reg_redis_trie, Topic) ->
+    case vmq_topic:contains_wildcard(Topic) of
+        true ->
+            not is_complex_topic_whitelisted(Topic);
+        _ ->
+            false
+    end;
+is_topic_invalid(_, _) ->
+    false.
+
+is_complex_topic_whitelisted([<<"$share">>, _Group | Topic]) ->
+    is_complex_topic_whitelisted(Topic);
+is_complex_topic_whitelisted([<<"$share">> | _] = _Topic) ->
+    false;
+is_complex_topic_whitelisted(Topic) ->
+    MPTopic = {"", Topic},
+    case ets:lookup(vmq_redis_trie_node, MPTopic) of
+        [#trie_node{topic = undefined}] ->
+            false;
+        [_] ->
+            true;
+        _ ->
+            false
+    end.
 
 insert_regex() ->
     case lists:member(?REGEX_TABLE, ets:all()) of
@@ -568,29 +589,28 @@ insert_regex() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helpers for jwt authentication
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Commented out for testing - these will be needed when JWT auth is restored
-%% verify(Password, SecretKey) ->
-%%     try jwerl:verify(Password, hs256, SecretKey) of
-%%         _ -> jwerl:verify(Password, hs256, SecretKey)
-%%     catch
-%%         error:_Error -> {error, invalid_signature}
-%%     end.
-%%
-%% check_rid(Claims, UserName) ->
-%%     case maps:find(rid, Claims) of
-%%         {ok, Value} ->
-%%             if
-%%                 Value =:= UserName ->
-%%                     ok;
-%%                 %else block
-%%                 true ->
-%%                     vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}),
-%%                     {error, ?USERNAME_RID_MISMATCH}
-%%             end;
-%%         error ->
-%%             vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?MISSING_RID}),
-%%             {error, ?MISSING_RID}
-%%     end.
+verify(Password, SecretKey) ->
+    try jwerl:verify(Password, hs256, SecretKey) of
+        _ -> jwerl:verify(Password, hs256, SecretKey)
+    catch
+        error:_Error -> {error, invalid_signature}
+    end.
+
+check_rid(Claims, UserName) ->
+    case maps:find(rid, Claims) of
+        {ok, Value} ->
+            if
+                Value =:= UserName ->
+                    ok;
+                %else block
+                true ->
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}),
+                    {error, ?USERNAME_RID_MISMATCH}
+            end;
+        error ->
+            vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?MISSING_RID}),
+            {error, ?MISSING_RID}
+    end.
 
 -ifdef(TEST).
 %%%%%%%%%%%%%
@@ -753,7 +773,7 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"id">>, <<"c">>], 0},
                     {[<<"a">>, <<"b">>, <<"1">>, <<"c">>], 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -774,7 +794,7 @@ simple_acl(_) ->
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -795,7 +815,7 @@ simple_acl(_) ->
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"example">>, <<"profile-id">>], 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
 
@@ -818,7 +838,7 @@ simple_acl(_) ->
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -843,7 +863,7 @@ simple_acl(_) ->
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -855,7 +875,7 @@ simple_acl(_) ->
                 [<<"a">>, <<"b">>, <<"c">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -867,7 +887,7 @@ simple_acl(_) ->
                 [<<"write-topic">>, <<"a">>, <<"b">>, <<"id">>, <<"c">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -879,7 +899,7 @@ simple_acl(_) ->
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -891,7 +911,7 @@ simple_acl(_) ->
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -903,7 +923,7 @@ simple_acl(_) ->
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -915,7 +935,7 @@ simple_acl(_) ->
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
                 false,
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         %% ACL with Labels
@@ -1049,7 +1069,7 @@ add_complex_acl_test(_) ->
                 [
                     {Topic1, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1062,7 +1082,7 @@ add_complex_acl_test(_) ->
                 [
                     {Topic2, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         )
     ].
@@ -1085,7 +1105,7 @@ delete_complex_acl_test(_) ->
                 [
                     {Topic1, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1098,7 +1118,7 @@ delete_complex_acl_test(_) ->
                 [
                     {Topic2, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         )
     ].
@@ -1122,7 +1142,7 @@ subtopic_subscribe_test(_) ->
                 [
                     {Topic1, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1135,7 +1155,7 @@ subtopic_subscribe_test(_) ->
                 [
                     {SubTopic1, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1146,25 +1166,24 @@ subtopic_subscribe_test(_) ->
                 [
                     {SubTopic2, 0}
                 ],
-                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
+                <<"test-session">>
             )
+        ),
+        ?_assertEqual(
+            true,
+            is_complex_topic_whitelisted(Topic1)
+        ),
+        ?_assertEqual(
+            false,
+            is_complex_topic_whitelisted(Topic2)
+        ),
+        ?_assertEqual(
+            true,
+            is_complex_topic_whitelisted(SubTopic1)
+        ),
+        ?_assertEqual(
+            false,
+            is_complex_topic_whitelisted(SubTopic2)
         )
-        %% is_complex_topic_whitelisted/1 is currently commented out
-        %% ?_assertEqual(
-        %%     true,
-        %%     is_complex_topic_whitelisted(Topic1)
-        %% ),
-        %% ?_assertEqual(
-        %%     false,
-        %%     is_complex_topic_whitelisted(Topic2)
-        %% ),
-        %% ?_assertEqual(
-        %%     true,
-        %%     is_complex_topic_whitelisted(SubTopic1)
-        %% ),
-        %% ?_assertEqual(
-        %%     false,
-        %%     is_complex_topic_whitelisted(SubTopic2)
-        %% )
     ].
 -endif.
