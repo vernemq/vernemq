@@ -752,7 +752,8 @@ simple_acl(_) ->
                 [
                     {[<<"a">>, <<"b">>, <<"id">>, <<"c">>], 0},
                     {[<<"a">>, <<"b">>, <<"1">>, <<"c">>], 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -772,7 +773,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -792,7 +794,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"example">>, <<"profile-id">>], 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
 
@@ -814,7 +817,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -838,7 +842,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -849,7 +854,8 @@ simple_acl(_) ->
                 1,
                 [<<"a">>, <<"b">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -860,7 +866,8 @@ simple_acl(_) ->
                 1,
                 [<<"write-topic">>, <<"a">>, <<"b">>, <<"id">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -871,7 +878,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -882,7 +890,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -893,7 +902,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -904,7 +914,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         %% ACL with Labels
@@ -1037,7 +1048,8 @@ add_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -1049,7 +1061,8 @@ add_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic2, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         )
     ].
@@ -1071,7 +1084,8 @@ delete_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -1083,7 +1097,8 @@ delete_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic2, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         )
     ].
@@ -1106,7 +1121,8 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -1118,7 +1134,8 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {SubTopic1, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
         ),
         ?_assertEqual(
@@ -1128,24 +1145,26 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {SubTopic2, 0}
-                ]
+                ],
+                <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>
             )
-        ),
-        ?_assertEqual(
-            true,
-            is_complex_topic_whitelisted(Topic1)
-        ),
-        ?_assertEqual(
-            false,
-            is_complex_topic_whitelisted(Topic2)
-        ),
-        ?_assertEqual(
-            true,
-            is_complex_topic_whitelisted(SubTopic1)
-        ),
-        ?_assertEqual(
-            false,
-            is_complex_topic_whitelisted(SubTopic2)
         )
+        %% is_complex_topic_whitelisted/1 is currently commented out
+        %% ?_assertEqual(
+        %%     true,
+        %%     is_complex_topic_whitelisted(Topic1)
+        %% ),
+        %% ?_assertEqual(
+        %%     false,
+        %%     is_complex_topic_whitelisted(Topic2)
+        %% ),
+        %% ?_assertEqual(
+        %%     true,
+        %%     is_complex_topic_whitelisted(SubTopic1)
+        %% ),
+        %% ?_assertEqual(
+        %%     false,
+        %%     is_complex_topic_whitelisted(SubTopic2)
+        %% )
     ].
 -endif.

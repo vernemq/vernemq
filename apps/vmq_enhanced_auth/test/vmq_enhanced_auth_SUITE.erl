@@ -48,7 +48,7 @@ auth_on_register_test(_) ->
 
   %When username contains no colons
   Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
-  ok = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
+  ok = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -58,7 +58,7 @@ auth_on_register_rid_absent_test(_) ->
 
   %When rid is not present in claims
   Password = jwerl:sign([{norid, <<"username">>}], hs256, <<"test-key">>),
-  {error, ?MISSING_RID} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, "username", Password, false),
+  {error, ?MISSING_RID} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, "username", Password, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -68,7 +68,7 @@ auth_on_register_rid_different_test(_) ->
 
   %When rid in claims is different from username
   Password = jwerl:sign([{rid, <<"different_username">>}], hs256, <<"test-key">>),
-  {error, ?USERNAME_RID_MISMATCH} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
+  {error, ?USERNAME_RID_MISMATCH} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -77,7 +77,7 @@ auth_on_register_unparsable_token_test(_) ->
   ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
 
   %When password is not jwt from username
-  {error, ?INVALID_SIGNATURE} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, <<"Password">>, false),
+  {error, ?INVALID_SIGNATURE} = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, <<"Password">>, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
@@ -87,6 +87,6 @@ auth_on_register_disabled_test(_) ->
 
   %When username contains no colons
   Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
-  next = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
+  next = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
