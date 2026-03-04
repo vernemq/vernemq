@@ -372,7 +372,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -388,7 +389,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -404,7 +406,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -415,7 +418,8 @@ simple_acl(_) ->
                 1,
                 [<<"a">>, <<"b">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -426,7 +430,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -437,7 +442,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -448,7 +454,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -459,7 +466,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         )
     ].
