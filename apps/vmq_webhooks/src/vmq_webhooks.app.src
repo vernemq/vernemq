@@ -22,7 +22,7 @@
         {vmq_plugin_hooks, [
             {vmq_webhooks_plugin, auth_on_register, 6, []},
             {vmq_webhooks_plugin, auth_on_publish, 7, []},
-            {vmq_webhooks_plugin, auth_on_subscribe, 3, []},
+            {vmq_webhooks_plugin, auth_on_subscribe, 4, []},
             {vmq_webhooks_plugin, on_register, 5, []},
             {vmq_webhooks_plugin, on_publish, 8, []},
             {vmq_webhooks_plugin, on_subscribe, 4, []},
@@ -39,12 +39,12 @@
             {vmq_webhooks_plugin, on_deliver_m5, 7, []},
             {vmq_webhooks_plugin, on_auth_m5, 3, []},
 
-            {vmq_webhooks_plugin, on_offline_message, 5, []},
-            {vmq_webhooks_plugin, on_client_wakeup, 1, []},
-            {vmq_webhooks_plugin, on_client_offline, 3, []},
-            {vmq_webhooks_plugin, on_session_expired, 1, []},
+            {vmq_webhooks_plugin, on_offline_message, 6, []},
+            {vmq_webhooks_plugin, on_client_wakeup, 2, []},
+            {vmq_webhooks_plugin, on_client_offline, 4, []},
+            {vmq_webhooks_plugin, on_session_expired, 2, []},
             {vmq_webhooks_plugin, on_delivery_complete, 9, []},
-            {vmq_webhooks_plugin, on_client_gone, 3, []}
+            {vmq_webhooks_plugin, on_client_gone, 4, []}
         ]}
     ]},
     {modules, []},
