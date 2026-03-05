@@ -497,7 +497,7 @@ connected(
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess, State#state.session_id) of
         {ok, QoSs} ->
             check_mqtt_auth_errors(QoSs),
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
@@ -916,13 +916,14 @@ set_sock_opts(Opts) ->
             subscriber_id(),
             [{topic(), subinfo(), matched_acl()}]
         ) -> {ok, [qos() | not_allowed]} | {error, atom()}
-    )
+    ),
+    session_id()
 ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
-auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
+auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess, SessionId) ->
     case
         vmq_plugin:all_till_ok(
             auth_on_subscribe,
-            [User, SubscriberId, Topics]
+            [User, SubscriberId, Topics, SessionId]
         )
     of
         ok ->
