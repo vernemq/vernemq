@@ -958,7 +958,7 @@ handle_session_down(
             {stop, normal, NewState};
         {0, wait_for_offline, {{terminate, _Reason}, From}} ->
             %% Terminate queue process due to remote sub
-            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, State#state.session_id]),
             gen_fsm:reply(From, ok),
             {stop, normal, NewState};
         {0, _, _} when DeletedSession#session.cleanup_on_disconnect ->

@@ -27,7 +27,7 @@ convert(
     Fun,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
 ) ->
-    case apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain]) of
+    case apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined]) of
         {ok, Vals} when is_list(Vals) ->
             {ok, maps:from_list(Vals)};
         {error, Vals} when is_list(Vals) ->
@@ -44,7 +44,7 @@ convert(
 ) ->
     %% TODOv5, can we do better than having this caveat?
     CleanSession = CleanStart,
-    case apply(Mod, Fun, [Peer, SubscriberId, User, Password, CleanSession]) of
+    case apply(Mod, Fun, [Peer, SubscriberId, User, Password, CleanSession, undefined]) of
         {ok, Vals} when is_list(Vals) ->
             M0 = maps:from_list(Vals),
             case maps:take(clean_session, M0) of
@@ -65,9 +65,9 @@ convert(
     Fun,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
 ) ->
-    apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain]);
+    apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined, undefined]);
 convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties]) ->
-    case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics)]) of
+    case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics), undefined]) of
         {ok, Topics} when is_list(Topics) ->
             {ok, #{topics => Topics}};
         Other ->

@@ -1493,7 +1493,7 @@ hook_on_message_drop(_, Promise, max_packet_size_exceeded, _) ->
 hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired, _) ->
     ok.
 
-hook_on_client_offline(SubscriberId, Reason, Username) ->
+hook_on_client_offline(SubscriberId, Reason, Username, _SessionId) ->
     ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId, Reason, Username}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1507,7 +1507,7 @@ enable_on_subscribe() ->
         auth_on_subscribe,
         ?MODULE,
         hook_auth_on_subscribe,
-        3,
+        4,
         [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
     ).
 enable_on_publish() ->
@@ -1518,7 +1518,7 @@ enable_on_publish() ->
         auth_on_publish,
         ?MODULE,
         hook_auth_on_publish,
-        6,
+        7,
         [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
     ).
 enable_on_message_drop() ->
@@ -1534,7 +1534,7 @@ disable_on_subscribe() ->
         auth_on_subscribe,
         ?MODULE,
         hook_auth_on_subscribe,
-        3,
+        4,
         [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
     ).
 disable_on_publish() ->
@@ -1545,7 +1545,7 @@ disable_on_publish() ->
         auth_on_publish,
         ?MODULE,
         hook_auth_on_publish,
-        6,
+        7,
         [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
     ).
 disable_on_message_drop() ->
@@ -1607,7 +1607,7 @@ wait_for_offline_event(ClientId, Timeout) ->
 
 start_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-        on_client_offline, ?MODULE, hook_on_client_offline, 3
+        on_client_offline, ?MODULE, hook_on_client_offline, 4
     ),
     TestPid = self(),
     F = fun(Fun) ->
@@ -1626,7 +1626,7 @@ start_client_offline_events(Cfg) ->
 
 stop_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-        on_client_offline, ?MODULE, hook_on_client_offline, 3
+        on_client_offline, ?MODULE, hook_on_client_offline, 4
     ),
     Pid = proplists:get_value(?CLIENT_OFFLINE_EVENT_SRV, Cfg),
     Ref = make_ref(),
