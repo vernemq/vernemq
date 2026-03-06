@@ -49,24 +49,24 @@ auth_cache_test(_) ->
     %% This test verifies that an action is granted if a cached ACL is found
     %% for this MP/ClientId
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                                [peer(), allowed_subscriber_id(), username(), password(), true]),
+                                [peer(), allowed_subscriber_id(), username(), password(), true, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                                 [username(), allowed_subscriber_id(), 0,
-                                 [<<"a">>,<<"b">>, <<"c">>], payload(), false]),
+                                 [<<"a">>,<<"b">>, <<"c">>], payload(), false, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), allowed_subscriber_id(), 0,
                        [<<"a">>, <<>>, <<"test-user">>,
                         <<"allowed-subscriber-id">>, <<"hello">>, <<"world">>],
-                       payload(), false]),
+                       payload(), false, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
                                 [username(), allowed_subscriber_id(),
                                  [{[<<"a">>, <<"b">>, <<"c">>], 0},
                                   {[<<"a">>, <<>>, <<"test-user">>,
-                                    <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}]]),
+                                    <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}], undefined]),
     {ok, PubMods1} =
         vmq_plugin:all_till_ok(auth_on_publish,
                                [username(), allowed_subscriber_id(), 0,
-                                [<<"modifiers">>], payload(), false]),
+                                [<<"modifiers">>], payload(), false, undefined]),
     [] = PubMods1 -- [{topic,[<<"hello">>,<<"world">>]},
                       {retain,true},
                       {qos,1},
@@ -76,7 +76,7 @@ auth_cache_test(_) ->
     {ok, [{[<<"hello">>,<<"world">>],2}]} =
         vmq_plugin:all_till_ok(auth_on_subscribe,
                                [username(), allowed_subscriber_id(),
-                                [{[<<"modifiers">>], 0}]]),
+                                [{[<<"modifiers">>], 0}], undefined]),
 
     {ok, #{topic := [<<"hello">>,<<"world">>],
            retain := true,
@@ -97,51 +97,51 @@ auth_cache_reject_test(_) ->
     %% This test verifies that an action is rejected if a cached ACL is found
     %% for this MP/ClientId but wrong publish/subscribe Topics are used
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), allowed_subscriber_id(), username(), password(), true]),
+                      [peer(), allowed_subscriber_id(), username(), password(), true, undefined]),
     {error, _} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), allowed_subscriber_id(), 0,
-                       [<<"c">>, <<"b">>, <<"a">>], payload(), false]),
+                       [<<"c">>, <<"b">>, <<"a">>], payload(), false, undefined]),
     {error, _} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), allowed_subscriber_id(), 0,
                        [<<"a">>, <<>>, <<"not-my-user">>,
                         <<"allowed-subscriber-id">>, <<"hello">>, <<"world">>],
-                       payload(), false]),
+                       payload(), false, undefined]),
     {error, _} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), allowed_subscriber_id(),
                        [{[<<"c">>, <<"b">>, <<"a">>], 0},
                         {[<<"a">>, <<>>, <<"test-user">>,
-                          <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}]]).
+                          <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}], undefined]).
 
 auth_cache_pass_through_test(_) ->
     %% This test verifies that the Lua function gets called if no
     %% cached ACL is found for this MP/ClientId
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), ignored_subscriber_id(), username(), password(), true]),
+                      [peer(), ignored_subscriber_id(), username(), password(), true, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), ignored_subscriber_id(), 0,
-                       [<<"c">>, <<"b">>, <<"a">>], payload(), false]),
+                       [<<"c">>, <<"b">>, <<"a">>], payload(), false, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), ignored_subscriber_id(), 0,
                        [<<"a">>, <<>>, <<"not-my-user">>,
                         <<"ignored-subscriber-id">>, <<"hello">>, <<"world">>],
-                       payload(), false]),
+                       payload(), false, undefined]),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), ignored_subscriber_id(),
                        [{[<<"c">>, <<"b">>, <<"a">>], 0},
                         {[<<"a">>, <<>>, <<"test-user">>,
-                          <<"ignored-subscriber-id">>, <<"+">>, <<"world">>], 0}]]).
+                          <<"ignored-subscriber-id">>, <<"+">>, <<"world">>], 0}], undefined]).
 
 auth_cache_cleanup_test(_) ->
     %% This test verifies that an action is rejected if a cached ACL is found
     %% for this MP/ClientId but wrong publish/subscribe Topics are used
     [] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>),
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), allowed_subscriber_id(), username(), password(), true]),
+                      [peer(), allowed_subscriber_id(), username(), password(), true, undefined]),
     [{publish, PublishAcls},
      {subscribe, SubscribeAcls}] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>),
     3 = length(PublishAcls),
     3 = length(SubscribeAcls),
-    vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason(), username()]),
+    vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason(), username(), undefined]),
     [] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>).
 
 
