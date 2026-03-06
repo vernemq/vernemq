@@ -480,7 +480,7 @@ base64payload_test(_) ->
     {ok, [{payload, ?PAYLOAD}]} =
         vmq_plugin:all_till_ok(
           auth_on_publish,
-          [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+          [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, undefined]),
     deregister_hook(auth_on_publish, ?ENDPOINT).
 
 
@@ -489,7 +489,7 @@ auth_on_publish_no_payload_test(_) ->
                      "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--no_payload=true", "--base64payload=true"]),
     ok = vmq_plugin:all_till_ok(
           auth_on_publish,
-          [?USERNAME, {?MOUNTPOINT, ?NO_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+          [?USERNAME, {?MOUNTPOINT, ?NO_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, undefined]),
     deregister_hook(auth_on_publish, ?ENDPOINT).
 
 auth_on_publish_m5_no_payload_test(_) ->
@@ -505,7 +505,7 @@ auth_on_register_undefined_creds_test(_) ->
     Username = undefined,
     Password = undefined,
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
+                      [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true, undefined]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 %% Test for https://github.com/vernemq/vernemq/issues/740
