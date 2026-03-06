@@ -442,35 +442,35 @@ on_auth_m5_test(_) ->
 on_offline_message_test(_) ->
     register_hook(on_offline_message, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false]),
+    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false, undefined]),
     ok = exp_response(on_offline_message_ok),
     deregister_hook(on_offline_message, ?ENDPOINT).
 
 on_client_wakeup_test(_) ->
     register_hook(on_client_wakeup, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_client_wakeup, [{?MOUNTPOINT, Self}]),
+    [next] = vmq_plugin:all(on_client_wakeup, [{?MOUNTPOINT, Self}, undefined]),
     ok = exp_response(on_client_wakeup_ok),
     deregister_hook(on_client_wakeup, ?ENDPOINT).
 
 on_client_offline_test(_) ->
     register_hook(on_client_offline, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self]),
+    [next] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self, undefined]),
     ok = exp_response(on_client_offline_ok),
     deregister_hook(on_client_offline, ?ENDPOINT).
 
 on_client_gone_test(_) ->
     register_hook(on_client_gone, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self]),
+    [next] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?REASON, Self, undefined]),
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
 
 on_session_expired_test(_) ->
     register_hook(on_session_expired, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}, undefined]),
     ok = exp_response(on_session_expired_ok),
     deregister_hook(on_session_expired, ?ENDPOINT).
 
