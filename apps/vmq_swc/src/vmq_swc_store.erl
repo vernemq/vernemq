@@ -1120,21 +1120,36 @@ subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun) ->
     try
         ets:insert(?SUBS_REGISTRY, {subs_reg_key(StoreName, FullPrefix, Pid), ConvertFun})
     catch
-        _:_ -> ok
+        Class:Reason ->
+            ?LOG_WARNING(
+                "swc_store failed to insert internal subscriber to ETS (~p/~p): store=~p prefix=~p pid=~p",
+                [Class, Reason, StoreName, FullPrefix, Pid]
+            ),
+            ok
     end.
 
 subs_reg_delete(StoreName, FullPrefix, Pid) ->
     try
         ets:delete(?SUBS_REGISTRY, subs_reg_key(StoreName, FullPrefix, Pid))
     catch
-        _:_ -> ok
+        Class:Reason ->
+            ?LOG_WARNING(
+                "swc_store failed to delete internal subscriber from ETS (~p/~p): store=~p prefix=~p pid=~p",
+                [Class, Reason, StoreName, FullPrefix, Pid]
+            ),
+            ok
     end.
 
 subs_reg_match_store(StoreName) ->
     try
         ets:match_object(?SUBS_REGISTRY, {{StoreName, '_', '_'}, '_'})
     catch
-        _:_ -> []
+        Class:Reason ->
+            ?LOG_WARNING(
+                "swc_store failed to read internal subscriber from ETS (~p/~p): store=~p",
+                [Class, Reason, StoreName]
+            ),
+            []
     end.
 
 restore_subscriptions(StoreName, State0) ->
