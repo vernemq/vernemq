@@ -24,6 +24,8 @@
 
 -ifdef(nowarn_gen_fsm).
 -compile([
+    nowarn_deprecated_function,
+    nowarn_deprecated_callback,
     {nowarn_deprecated_function, [
         {gen_fsm, start_link, 3},
         {gen_fsm, reply, 2},

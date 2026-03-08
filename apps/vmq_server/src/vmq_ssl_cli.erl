@@ -234,8 +234,9 @@ decode_sans(asn1_NOVALUE) ->
 decode_sans([]) ->
     [];
 decode_sans([#'Extension'{extnID = ?'id-ce-subjectAltName', extnValue = V} | _]) ->
-    case 'OTP-PUB-KEY':decode('SubjectAltName', iolist_to_binary(V)) of
+    case catch public_key:der_decode('SubjectAltName', iolist_to_binary(V)) of
         {ok, Vs} -> lists:map(fun decode_value/1, Vs);
+        Vs when is_list(Vs) -> lists:map(fun decode_value/1, Vs);
         _ -> []
     end;
 decode_sans([_ | Exts]) ->
