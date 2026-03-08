@@ -2,7 +2,7 @@ BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
 GIT_VERSION      = $(shell git describe --tags --always)
 OVERLAY_VARS    ?=
-REBAR ?= $(BASE_DIR)/rebar3
+REBAR ?= rebar3
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
@@ -40,7 +40,7 @@ debug_build: rel
 dev% :
 	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
 	cat vars/$@_vars.config > vars.generated
-	(./rebar3 as $@ release)
+	($(REBAR) as $@ release)
 
 .PHONY: all compile rel
 export OVERLAY_VARS
