@@ -47,9 +47,9 @@ jobs:
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Check code formatting (erlfmt)
-        run: rebar3 fmt -c
+        run: ./rebar3 fmt -c
       - name: Run dialyzer type checker
-        run: rebar3 dialyzer
+        run: ./rebar3 dialyzer
 
   coverage:
     name: Run tests with coverage
@@ -119,18 +119,18 @@ jobs:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Compile
-        run: rebar3 compile
+        run: ./rebar3 compile
       - name: Run Tests
         run: |
-          rebar3 as ci_tests,test do eunit --cover, ct --cover ||
+          ./rebar3 as ci_tests,test do eunit --cover, ct --cover ||
                 (echo -e "\nContents of retry.spec\n" &&
                 cat _build/ci_tests+test/logs/retry.spec &&
                 echo -e "\nRetrying failed suites:" &&
                 SUITES=$(escript .github/scripts/retry_suites.escript _build/ci_tests+test/logs/retry.spec) &&
                 echo "${SUITES}" &&
                 test -n "${SUITES}" &&
-                rebar3 ct --suite="${SUITES}")
-      - run: rebar3 cover --verbose
+                ./rebar3 ct --suite="${SUITES}")
+      - run: ./rebar3 cover --verbose
       - name: Archive coverage report
         uses: actions/upload-artifact@v6
         with:
@@ -213,17 +213,17 @@ jobs:
           path: ~/.cache/rebar3
           key: ${{runner.os}}-rebar3-${{matrix.otp}}-v2-${{ hashFiles(format('rebar.lock')) }}
       - name: Compile
-        run: rebar3 compile
+        run: ./rebar3 compile
       - name: Run tests
         run: |
-          rebar3 do eunit, ct ||
+          ./rebar3 do eunit, ct ||
                 (echo -e "\nContents of retry.spec\n" &&
                 cat _build/test/logs/retry.spec &&
                 echo -e "\nRetrying failed suites:" &&
                 SUITES=$(escript .github/scripts/retry_suites.escript _build/test/logs/retry.spec) &&
                 echo "${SUITES}" &&
                 test -n "${SUITES}" &&
-                rebar3 ct --suite="${SUITES}")
+                ./rebar3 ct --suite="${SUITES}")
       - name: Upload JUnit Test Report
         uses: actions/upload-artifact@v6
         if: always() # always run even if the previous step fails
