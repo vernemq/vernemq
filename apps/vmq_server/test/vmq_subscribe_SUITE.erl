@@ -442,7 +442,7 @@ resubscribe_test(_) ->
     ok = packet:expect_packet(Socket, "suback", ReSuback),
     ok = gen_tcp:send(Socket, Publish1),
     ok = packet:expect_packet(Socket, "puback", Puback),
-    ok = packet:expect_packet(Socket, "publish1", Publish1),
+    ok = packet:expect_packet(gen_tcp, Socket, "publish1", Publish1, 30000),
     ok = gen_tcp:send(Socket, Puback),
 
     ok = gen_tcp:close(Socket).

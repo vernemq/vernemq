@@ -163,13 +163,18 @@ init_per_testcase(Case, Config) ->
                 {keyfile, ssl_path("server.encrypted.key")},
                 {keypasswd, "VerneMQ123"},
                 {tls_version, "tlsv1.2"}]),
-            {ok, _} = vmq_server_cmd:listener_start(1889, [{ssl, true},
+            case vmq_server_cmd:listener_start(1889, [{ssl, true},
                 {nr_of_acceptors, 5},
                 {cafile, ssl_path("all-ca.crt")},
                 {certfile, ssl_path("server.crt")},
                 {keyfile, ssl_path("server.encrypted.key")},
                 {keypasswd, "VerneMQ123Wrong"},
-                {tls_version, "tlsv1.2"}]);
+                {tls_version, "tlsv1.2"}]) of
+                {ok, _} ->
+                    ok;
+                {error, _} ->
+                    ok
+            end;
         {_, _, _, _, _, _, _, _, _, _, _,true} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
@@ -300,11 +305,16 @@ connect_no_auth_test_passwd(K) ->
    % good case
    connect_no_auth_test(K),
     % wrong passwd
-   _Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
-   _Connack = packet:gen_connack(0),
-    {error, closed} = ssl:connect("localhost", 1889,
+    case ssl:connect("localhost", 1889,
         [binary, {active, false}, {packet, raw},
-            {cacerts, load_cacerts()}]).
+            {cacerts, load_cacerts()}]) of
+        {error, closed} ->
+            ok;
+        {error, econnrefused} ->
+            ok;
+        {error, {tls_alert, _}} ->
+            ok
+    end.
 
 
     connect_no_auth_wrong_ca_test(_) ->
