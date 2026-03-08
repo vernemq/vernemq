@@ -46,6 +46,13 @@ jobs:
         uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
+      - name: Ensure rebar3 executable
+        run: |
+          if [ ! -x ./rebar3 ]; then
+            curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+            chmod +x ./rebar3
+          fi
+          ./rebar3 version
       - name: Check code formatting (erlfmt)
         run: ./rebar3 fmt -c
       - name: Run dialyzer type checker
@@ -108,6 +115,13 @@ jobs:
         uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
+      - name: Ensure rebar3 executable
+        run: |
+          if [ ! -x ./rebar3 ]; then
+            curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+            chmod +x ./rebar3
+          fi
+          ./rebar3 version
       - name: Cache _build/default
         uses: actions/cache@v5
         with:
@@ -202,6 +216,13 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           version-type: loose
+      - name: Ensure rebar3 executable
+        run: |
+          if [ ! -x ./rebar3 ]; then
+            curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+            chmod +x ./rebar3
+          fi
+          ./rebar3 version
       - name: Cache build
         uses: actions/cache@v5
         with:
