@@ -21,5 +21,4 @@
 -define(REASON, normal_disconnect).
 -define(LABEL, <<"test-label">>).
 -define(PATTERN, <<"test/pattern">>).
-
-
+-define(SESSION_ID, <<"test-session-id">>).
