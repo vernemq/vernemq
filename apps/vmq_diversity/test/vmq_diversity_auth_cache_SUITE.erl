@@ -71,7 +71,8 @@ auth_cache_test(_) ->
                       {retain,true},
                       {qos,1},
                       {payload,<<"hello world">>},
-                      {mountpoint,"override-mountpoint2"}],
+                      {mountpoint,"override-mountpoint2"},
+                      {properties, #{p_content_type => <<"cache-content-type">>}}],
 
     {ok, [{[<<"hello">>,<<"world">>],2}]} =
         vmq_plugin:all_till_ok(auth_on_subscribe,
@@ -79,10 +80,11 @@ auth_cache_test(_) ->
                                 [{[<<"modifiers">>], 0}]]),
 
     {ok, #{topic := [<<"hello">>,<<"world">>],
-           retain := true,
-           qos := 1,
-           payload := <<"hello world">>,
-           mountpoint := "override-mountpoint2"}} =
+            retain := true,
+            qos := 1,
+            payload := <<"hello world">>,
+            mountpoint := "override-mountpoint2",
+            properties := #{p_content_type := <<"cache-content-type">>}}} =
         vmq_plugin:all_till_ok(auth_on_publish_m5,
                                [username(), allowed_subscriber_id(), 0,
                                 [<<"modifiers">>], payload(), false, #{}]),
