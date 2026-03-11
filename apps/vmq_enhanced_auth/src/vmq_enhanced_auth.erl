@@ -96,10 +96,10 @@ change_config(Configs) ->
             vmq_enhanced_auth_reloader:change_config_now()
     end.
 
-auth_on_subscribe(User, SubscriberId, TopicList, _SessionId) ->
-    auth_on_subscribe(User, SubscriberId, TopicList, _SessionId, []).
+auth_on_subscribe(User, SubscriberId, TopicList, SessionId) ->
+    auth_on_subscribe(User, SubscriberId, TopicList, SessionId, []).
 
-auth_on_subscribe(_, _, [], _SessionId, Modifiers) ->
+auth_on_subscribe(_, _, [], _, Modifiers) ->
     {ok, lists:reverse(Modifiers)};
 auth_on_subscribe(User, SubscriberId, TopicList, SessionId, Modifiers) ->
     auth_on_subscribe(?RegView, User, SubscriberId, TopicList, SessionId, Modifiers).
