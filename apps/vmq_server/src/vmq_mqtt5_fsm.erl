@@ -1502,7 +1502,9 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
             case
                 on_publish_hook(
                     vmq_reg:publish(RegView, ClientId, MaybeChangedMsg),
-                    HookArgs
+                    HookArgs,
+                    SubscriberId,
+                    MaybeChangedMsg
                 )
             of
                 ok -> {ok, MaybeChangedMsg, SessCtrl};
@@ -1512,11 +1514,25 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
         State
     ).
 
--spec on_publish_hook({ok, {integer(), integer()}} | {error, _}, list()) -> ok | {error, _}.
-on_publish_hook({ok, _NumMatched}, HookParams) ->
+-spec on_publish_hook(
+    {ok, {integer(), integer()}} | {error, _}, list(), subscriber_id(), msg()
+) -> ok | {error, _}.
+on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId, Msg) ->
+    _ = vmq_plugin:all(on_publish_m5, HookParams),
+    _ = vmq_metrics:incr_no_matching_subscribers_dropped(),
+    #vmq_msg{
+        qos = QoS,
+        retain = IsRetain,
+        acl_name = AclName
+    } = Msg,
+    _ = vmq_plugin:all(on_undeliverable_publish, [
+        SubscriberId, QoS, IsRetain, #matched_acl{name = AclName}
+    ]),
+    ok;
+on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId, _Msg) ->
     _ = vmq_plugin:all(on_publish_m5, HookParams),
     ok;
-on_publish_hook(Other, _) ->
+on_publish_hook(Other, _, _SubscriberId, _Msg) ->
     Other.
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
@@ -1865,7 +1881,9 @@ schedule_last_will_msg(#state{
                     ClientId,
                     filter_outgoing_pub_props(Msg)
                 ),
-                HookArgs
+                HookArgs,
+                SubscriberId,
+                Msg
             )
         end,
     case get_last_will_delay(Msg) of
