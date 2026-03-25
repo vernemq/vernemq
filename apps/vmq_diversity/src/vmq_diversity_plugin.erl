@@ -306,7 +306,10 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
             ok;
         Modifiers when is_list(Modifiers) ->
             %% Found a valid cache entry containing modifiers
-            {ok, modifier_compat(auth_on_publish_m5, Modifiers)};
+            merge_user_property_modifier(
+                Props,
+                {ok, modifier_compat(auth_on_publish_m5, Modifiers)}
+            );
         false ->
             %% Found a valid cache entry which rejects this publish
             {error, not_authorized};
@@ -321,7 +324,7 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
                 {retain, IsRetain},
                 {properties, conv_args_props(Props)}
             ]),
-            conv_res(auth_on_pub, Res)
+            merge_user_property_modifier(Props, conv_res(auth_on_pub, Res))
     end.
 
 on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
@@ -339,16 +342,19 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
 
 on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_deliver_m5, [
-        {username, nilify(UserName)},
-        {mountpoint, MP},
-        {client_id, ClientId},
-        {qos, QoS},
-        {topic, unword(Topic)},
-        {payload, Payload},
-        {retain, IsRetain},
-        {properties, conv_args_props(Props)}
-    ]).
+    merge_user_property_modifier(
+        Props,
+        all_till_ok(on_deliver_m5, [
+            {username, nilify(UserName)},
+            {mountpoint, MP},
+            {client_id, ClientId},
+            {qos, QoS},
+            {topic, unword(Topic)},
+            {payload, Payload},
+            {retain, IsRetain},
+            {properties, conv_args_props(Props)}
+        ])
+    ).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -771,3 +777,24 @@ modifier_compat(auth_on_subscribe_m5, Mods) ->
     #{topics => Mods};
 modifier_compat(auth_on_publish_m5, Mods) ->
     maps:from_list(Mods).
+
+merge_user_property_modifier(InputProps, {ok, #{properties := ModProps} = Mods}) when is_map(ModProps) ->
+    case maps:find(?P_USER_PROPERTY, ModProps) of
+        {ok, ModUserProps} when is_list(ModUserProps) ->
+            InputUserProps = maps:get(?P_USER_PROPERTY, InputProps, []),
+            MergedUserProps = merge_user_properties(InputUserProps, ModUserProps),
+            {ok, Mods#{properties => ModProps#{?P_USER_PROPERTY => MergedUserProps}}};
+        _ ->
+            {ok, Mods}
+    end;
+merge_user_property_modifier(_, Other) ->
+    Other.
+
+merge_user_properties(InputUserProps, ModUserProps) ->
+    KeysToReplace = maps:from_list([{K, true} || K <- lists:usort([K || {K, _} <- ModUserProps])]),
+    KeptUserProps = [
+        {K, V}
+     || {K, V} <- InputUserProps,
+        not maps:is_key(K, KeysToReplace)
+    ],
+    KeptUserProps ++ ModUserProps.

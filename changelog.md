@@ -1,3 +1,5 @@
+- vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
+
 ## VerneMQ 2.1.2
 
 - HTTP status page: Full-page container for improved status page view - especially helpful on wider monitors.

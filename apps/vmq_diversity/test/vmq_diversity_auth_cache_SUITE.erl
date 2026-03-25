@@ -72,7 +72,11 @@ auth_cache_test(_) ->
                       {qos,1},
                       {payload,<<"hello world">>},
                       {mountpoint,"override-mountpoint2"},
-                      {properties, #{p_content_type => <<"cache-content-type">>}}],
+                      {properties,
+                       #{p_content_type => <<"cache-content-type">>,
+                         p_user_property =>
+                             [{<<"k1">>, <<"v3">>},
+                              {<<"k3">>, <<"v3">>}]}}],
 
     {ok, [{[<<"hello">>,<<"world">>],2}]} =
         vmq_plugin:all_till_ok(auth_on_subscribe,
@@ -84,10 +88,21 @@ auth_cache_test(_) ->
             qos := 1,
             payload := <<"hello world">>,
             mountpoint := "override-mountpoint2",
-            properties := #{p_content_type := <<"cache-content-type">>}}} =
+            properties :=
+                #{p_content_type := <<"cache-content-type">>,
+                  p_user_property :=
+                      [{<<"k2">>, <<"v2">>},
+                       {<<"k4">>, <<"v4">>},
+                       {<<"k1">>, <<"v3">>},
+                       {<<"k3">>, <<"v3">>}]}}} =
         vmq_plugin:all_till_ok(auth_on_publish_m5,
                                [username(), allowed_subscriber_id(), 0,
-                                [<<"modifiers">>], payload(), false, #{}]),
+                                [<<"modifiers">>], payload(), false,
+                                #{p_user_property =>
+                                      [{<<"k1">>, <<"v1">>},
+                                       {<<"k1">>, <<"v2">>},
+                                       {<<"k2">>, <<"v2">>},
+                                       {<<"k4">>, <<"v4">>}] }]),
 
     {ok, #{topics := [{[<<"hello">>,<<"world">>],2}]}} =
         vmq_plugin:all_till_ok(auth_on_subscribe_m5,

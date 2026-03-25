@@ -50,7 +50,8 @@ pub_modifiers_acls = {
             retain = true,
             mountpoint = "override-mountpoint2",
             properties = {
-                p_content_type = "cache-content-type"
+                p_content_type = "cache-content-type",
+                p_user_property = {{k1 = "v3"}, {k3 = "v3"}}
             }
         }
     }
@@ -94,9 +95,10 @@ function auth_on_register(reg)
                  retain = true,
                  mountpoint = "override-mountpoint2",
                  properties = {
-                    p_content_type = "cache-content-type"
-                 }
-              }
+                    p_content_type = "cache-content-type",
+                    p_user_property = {{k1 = "v3"}, {k3 = "v3"}}
+                  }
+               }
 
           }
        }
