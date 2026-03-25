@@ -410,7 +410,16 @@ validate_modifiers(Type, Mods0) ->
     Ret =
         case Type of
             publish ->
-                vmq_plugin_util:check_modifiers(auth_on_publish, Mods1);
+                case lists:keymember(properties, 1, Mods1) of
+                    true ->
+                        Mods2 = maps:to_list(
+                            vmq_diversity_utils:convert_modifiers(auth_on_publish_m5, Mods0)
+                        ),
+                        vmq_plugin_util:check_modifiers(auth_on_publish_m5, Mods2);
+                    false ->
+                        %% for a v5 publish without properties we can fall back to auth_on_publish too
+                        vmq_plugin_util:check_modifiers(auth_on_publish, Mods1)
+                end;
             subscribe ->
                 %% massage the modifiers to take the same form as it were returned by
                 %% the callback directly
