@@ -112,7 +112,10 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
                    username := ?USERNAME,
                    password := ?PASSWORD,
                    clean_session := true
-                 }) ->
+                  }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{client_id := ?CANCEL_CLIENT_ID}) ->
+    timer:sleep(800),
     {200, #{result => <<"ok">>}};
 auth_on_register(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
@@ -136,6 +139,9 @@ auth_on_register_m5(#{peer_addr := ?PEER_BIN,
                       password := ?PASSWORD,
                       clean_start := true
                      }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register_m5(#{client_id := ?CANCEL_CLIENT_ID_M5}) ->
+    timer:sleep(800),
     {200, #{result => <<"ok">>}};
 auth_on_register_m5(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
@@ -549,4 +555,3 @@ process_hook(<<"on_deliver_m5">>, Body) ->
     on_deliver_m5(Body);
 process_hook(<<"on_auth_m5">>, Body) ->
     on_auth_m5(Body).
-
