@@ -2327,7 +2327,7 @@
 %% when you never overwrite or consume retained messages; usually
 %% expired retained messages are cleaned up at the next delivery attempt.
 {mapping, "expire_retain_cache", "vmq_server.expire_retain_cache", [
-                                                             {default, 60},
-                                                             {commented, 60},
+                                                             {default, 0},
+                                                             {commented, 0},
                                                              {datatype, integer}
                                                             ]}.
