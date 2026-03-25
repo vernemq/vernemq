@@ -154,13 +154,20 @@ start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
     active_once(MaskedSocket),
     process_flag(trap_exit, true),
     _ = vmq_metrics:incr_socket_open(),
-    loop(#st{
+    St = #st{
         socket = MaskedSocket,
         fsm_state = FsmState,
         fsm_mod = FsmMod,
         proto_tag = Transport:messages(),
         parent = Parent
-    }).
+    },
+    try
+        loop(St)
+    catch
+        _:_ ->
+            _ = vmq_metrics:incr_socket_close(),
+            close(MaskedSocket)
+    end.
 
 mask_socket(ranch_tcp, Socket) -> Socket;
 mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
