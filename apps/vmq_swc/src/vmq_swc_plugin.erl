@@ -78,6 +78,7 @@ cluster_leave(Node) ->
             AllNodes = riak_dt_orswot:value(Local),
             % multi_cast so we don't need to wait for the next gossip round
             multi_cast(AllNodes, vmq_swc_peer_service_gossip, {receive_state, Merged}),
+            multi_cast(AllNodes, vmq_swc_peer_service_gossip, trigger_fast_gossip),
             {ok, Local2} = vmq_swc_peer_service_manager:get_local_state(),
             Local2List = riak_dt_orswot:value(Local2),
             case [P || P <- Local2List, P =:= Node] of
@@ -112,7 +113,8 @@ cluster_rename_member(OldName, NewName) ->
         Actor,
         LocalState
     ),
-    _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}).
+    _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
+    vmq_swc_peer_service_gossip:notify_membership_change().
 
 cluster_events_add_handler(Module, Opts) ->
     vmq_swc_peer_service_events:add_sup_handler(Module, Opts).

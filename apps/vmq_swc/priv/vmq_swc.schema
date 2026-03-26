@@ -91,6 +91,30 @@
   {SyncInterval, Leeway}
   end}.
 
+%% @doc Gossip interval for the peer service in normal mode.
+%% Value in milliseconds. Default: 15000
+{mapping, "vmq_swc.gossip_interval", "vmq_swc.gossip_interval", [
+                                             {default, 15000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+
+%% @doc Gossip interval for the peer service in fast mode (after membership changes).
+%% Value in milliseconds. Default: 2000
+{mapping, "vmq_swc.fast_gossip_interval", "vmq_swc.fast_gossip_interval", [
+                                             {default, 2000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+
+%% @doc Duration of fast gossip mode after the last membership change.
+%% Value in milliseconds. Default: 30000
+{mapping, "vmq_swc.fast_gossip_duration", "vmq_swc.fast_gossip_duration", [
+                                             {default, 30000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
+
 {validator, "swc_group_size", "Set to a value between 1 and 100",
  fun(Size) ->
   (Size =< 100) and (Size > 0)
