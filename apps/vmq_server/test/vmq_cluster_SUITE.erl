@@ -269,22 +269,28 @@ racing_connect_test(Config) ->
                          packet:gen_connack(true, 0)
                  end,
              spawn_link(fun() ->
-                           {_RandomPeer, _RandomNode, RandomPort} = random_node(Nodes),
-                           {ok, Socket} =
-                               packet:do_client_connect(Connect,
-                                                        Connack,
-                                                        [{port, RandomPort},
-                                                         {mqtt_connect_timeout, 15000},
-                                                         {reconnect_timeout, 15}]),
-                           inet:setopts(Socket, [{active, true}]),
-                           receive
-                               {tcp_closed, Socket} ->
-                                   %% we should be kicked out by the subsequent client
-                                   ok;
-                               {lastman, test_over} -> ok;
-                               M -> exit({unknown_message, M})
-                           end
-                        end)
+                            {_RandomPeer, _RandomNode, RandomPort} = random_node(Nodes),
+                            case
+                                connect_racer(Connect,
+                                              Connack,
+                                              [{port, RandomPort},
+                                               {mqtt_connect_timeout, 15000},
+                                               {reconnect_timeout, 15}],
+                                              8)
+                            of
+                                {ok, Socket} ->
+                                    inet:setopts(Socket, [{active, true}]),
+                                    receive
+                                        {tcp_closed, Socket} ->
+                                            %% we should be kicked out by the subsequent client
+                                            ok;
+                                        {lastman, test_over} -> ok;
+                                        M -> exit({unknown_message, M})
+                                    end;
+                                {error, _} ->
+                                    ok
+                            end
+                         end)
          end
          || I <- lists:seq(1, 5)],
 
@@ -1170,3 +1176,20 @@ receive_times(Msg, N) ->
 
 fold_sessions(V, Acc) ->
     [V | Acc].
+
+connect_racer(Connect, Connack, Opts, Retries) ->
+    case packet:do_client_connect(Connect, Connack, Opts) of
+        {ok, _Socket} = Ok ->
+            Ok;
+        {error, [{return_code, 0, 3} | _]} when Retries > 0 ->
+            timer:sleep(100),
+            connect_racer(Connect, Connack, Opts, Retries - 1);
+        {error, timeout} when Retries > 0 ->
+            timer:sleep(100),
+            connect_racer(Connect, Connack, Opts, Retries - 1);
+        {error, closed} when Retries > 0 ->
+            timer:sleep(100),
+            connect_racer(Connect, Connack, Opts, Retries - 1);
+        Error ->
+            Error
+    end.

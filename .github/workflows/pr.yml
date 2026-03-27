@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 26.2
+  DEFAULT_RELEASE_OTP: 28.4
 
 jobs:
   code_checks:
@@ -46,6 +46,11 @@ jobs:
         uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
+      - name: Ensure rebar3 executable
+        run: |
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          chmod +x ./rebar3
+          ./rebar3 version
       - name: Check code formatting (erlfmt)
         run: ./rebar3 fmt -c
       - name: Run dialyzer type checker
@@ -101,13 +106,18 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install libsnappy-dev pcregrep
+          sudo apt-get -qq install libsnappy-dev
       - name: Checkout code
         uses: actions/checkout@v6
       - name: Install Erlang/OTP
         uses: erlef/setup-beam@v1.20.4
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
+      - name: Ensure rebar3 executable
+        run: |
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          chmod +x ./rebar3
+          ./rebar3 version
       - name: Cache _build/default
         uses: actions/cache@v5
         with:
@@ -126,8 +136,10 @@ jobs:
                 (echo -e "\nContents of retry.spec\n" &&
                 cat _build/ci_tests+test/logs/retry.spec &&
                 echo -e "\nRetrying failed suites:" &&
-                echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -) &&
-                ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -))
+                SUITES=$(escript .github/scripts/retry_suites.escript _build/ci_tests+test/logs/retry.spec) &&
+                echo "${SUITES}" &&
+                test -n "${SUITES}" &&
+                ./rebar3 ct --suite="${SUITES}")
       - run: ./rebar3 cover --verbose
       - name: Archive coverage report
         uses: actions/upload-artifact@v6
@@ -161,9 +173,9 @@ jobs:
           # Sonoma
           - macos-13
         otp:
+          - "28.4"
           - "27.2"
           - "26.2"
-          - "25.3"
         exclude:
           - os: macos-12
             otp: "27.2"
@@ -173,7 +185,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install libsnappy-dev mosquitto-clients pcregrep
+          sudo apt-get -qq install libsnappy-dev mosquitto-clients
       - name: Configure Homebrew cache
         if: ${{ startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v5
@@ -186,7 +198,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           export majorversion="$(cut -d '.' -f 1 <<< "${{ matrix.otp }}")"
-          brew install coreutils snappy erlang@$majorversion openssl mosquitto pcre
+          brew install coreutils snappy erlang@$majorversion openssl mosquitto
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
         uses: actions/checkout@v6
@@ -200,6 +212,11 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           version-type: loose
+      - name: Ensure rebar3 executable
+        run: |
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          chmod +x ./rebar3
+          ./rebar3 version
       - name: Cache build
         uses: actions/cache@v5
         with:
@@ -218,8 +235,10 @@ jobs:
                 (echo -e "\nContents of retry.spec\n" &&
                 cat _build/test/logs/retry.spec &&
                 echo -e "\nRetrying failed suites:" &&
-                echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -) &&
-                ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -))
+                SUITES=$(escript .github/scripts/retry_suites.escript _build/test/logs/retry.spec) &&
+                echo "${SUITES}" &&
+                test -n "${SUITES}" &&
+                ./rebar3 ct --suite="${SUITES}")
       - name: Upload JUnit Test Report
         uses: actions/upload-artifact@v6
         if: always() # always run even if the previous step fails
@@ -268,4 +287,3 @@ jobs:
         with:
           name: Event File
           path: ${{ github.event_path }}
-
