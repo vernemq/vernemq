@@ -12,6 +12,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- New feature: Cluster auto-balance (Layer 1). Monitors connection distribution across cluster nodes and exposes an HTTP readiness endpoint (`GET /api/balance-health`) that returns 503 when a node has more connections than the cluster average by a configurable threshold. Designed for use as a Kubernetes readiness probe or NLB health check to steer new connections away from overloaded nodes. Disabled by default (`balance_enabled = off`). New config settings: `balance_enabled`, `balance_threshold`, `balance_hysteresis`, `balance_min_connections`, `balance_check_interval`. New Prometheus metrics: `balance_is_accepting`, `balance_local_connections`, `balance_cluster_avg`, `balance_is_enabled`.
 
 ## VerneMQ 2.1.1
 

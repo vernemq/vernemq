@@ -1642,6 +1642,8 @@ misc_statistics() ->
     ),
     {NetsplitDetectedCount, NetsplitResolvedCount} =
         fetch_external_metric(vmq_cluster, netsplit_statistics, {0, 0}),
+    {BalanceAccepting, BalanceLocalConns, BalanceClusterAvg, BalanceEnabled} =
+        fetch_external_metric(vmq_balance_srv, balance_stats, {1, 0, 0, 0}),
     [
         {netsplit_detected, NetsplitDetectedCount},
         {netsplit_resolved, NetsplitResolvedCount},
@@ -1652,7 +1654,11 @@ misc_statistics() ->
         {queue_processes, fetch_external_metric(vmq_queue_sup_sup, nr_of_queues, 0)},
         {active_mqttws_connections, NrOfMQTTWSConnections},
         {active_mqtt_connections, NrOfMQTTConnections},
-        {total_active_connections, NrOfMQTTWSConnections + NrOfMQTTConnections}
+        {total_active_connections, NrOfMQTTWSConnections + NrOfMQTTConnections},
+        {balance_is_accepting, BalanceAccepting},
+        {balance_local_connections, BalanceLocalConns},
+        {balance_cluster_avg, BalanceClusterAvg},
+        {balance_is_enabled, BalanceEnabled}
     ].
 
 -spec misc_stats_def() -> [metric_def()].
@@ -1721,6 +1727,34 @@ misc_stats_def() ->
             total_active_connections,
             total_active_connections,
             <<"The total number of active MQTT and MQTTWS connections.">>
+        ),
+        m(
+            gauge,
+            [],
+            balance_is_accepting,
+            balance_is_accepting,
+            <<"1 if node is accepting new connections, 0 if rejecting due to balance.">>
+        ),
+        m(
+            gauge,
+            [],
+            balance_local_connections,
+            balance_local_connections,
+            <<"The number of active connections on this node as seen by the balance system.">>
+        ),
+        m(
+            gauge,
+            [],
+            balance_cluster_avg,
+            balance_cluster_avg,
+            <<"The current cluster average connection count.">>
+        ),
+        m(
+            gauge,
+            [],
+            balance_is_enabled,
+            balance_is_enabled,
+            <<"1 if cluster auto-balancing is enabled, 0 if disabled.">>
         )
     ].
 
