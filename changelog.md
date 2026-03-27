@@ -12,6 +12,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- Enhancement: Add exponential backoff with jitter to cluster node reconnect timer. Configurable via `outgoing_clustering_reconnect_base_delay` (default: 1000ms) and `outgoing_clustering_reconnect_max_delay` (default: 10000ms).
 
 ## VerneMQ 2.1.1
 
