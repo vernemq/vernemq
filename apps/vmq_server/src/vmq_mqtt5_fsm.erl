@@ -68,6 +68,9 @@
         | username()
         | {preauth, string() | undefined},
     conn_opts :: map(),
+    listener_addr :: undefined | tuple() | {local, string()},
+    listener_port :: undefined | non_neg_integer(),
+    listener_type :: undefined | atom(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     clean_start = false :: flag(),
@@ -154,6 +157,9 @@ init(
             {_, PreAuth} -> {preauth, PreAuth}
         end,
     ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
+    ListenerAddr = proplists:get_value(listener_addr, Opts, undefined),
+    ListenerPort = proplists:get_value(listener_port, Opts, undefined),
+    ListenerType = proplists:get_value(listener_type, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -212,6 +218,9 @@ init(
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
         conn_opts = ConnOpts,
+        listener_addr = ListenerAddr,
+        listener_port = ListenerPort,
+        listener_type = ListenerType,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -1363,15 +1372,31 @@ auth_on_register(Password, Props, State) ->
         cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
         username = User,
-        conn_opts = ConnOpts
+        conn_opts = ConnOpts,
+        listener_addr = ListenerAddr,
+        listener_port = ListenerPort,
+        listener_type = ListenerType
     } = State,
     BasicHookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
-    HookArgs =
+    ListenerInfo = #{
+        listener_addr => ListenerAddr,
+        listener_port => ListenerPort,
+        listener_type => ListenerType
+    },
+    ExtendedOpts =
         case ConnOpts of
-            M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
-            _ -> BasicHookArgs
+            M when is_map(M) -> maps:merge(M, ListenerInfo);
+            _ -> ListenerInfo
         end,
-    case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
+    HookArgs7 = lists:flatten([BasicHookArgs | [ExtendedOpts]]),
+    HookResult =
+        case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs7) of
+            {error, no_matching_hook_found} ->
+                vmq_plugin:all_till_ok(auth_on_register_m5, BasicHookArgs);
+            Res ->
+                Res
+        end,
+    case HookResult of
         ok ->
             {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->
