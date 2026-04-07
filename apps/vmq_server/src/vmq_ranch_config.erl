@@ -138,7 +138,8 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(nr_of_acceptors)
     ),
-    ProtocolOpts = protocol_opts_for_type(Type, Opts),
+    ListenerOpts = [{listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts],
+    ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
     TransportMod = transport_for_type(Type),
     TransportOptions = maps:from_list(
         [
@@ -437,12 +438,18 @@ default_session_opts(Opts) ->
     MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    ListenerAddr = proplists:get_value(listener_addr, Opts, undefined),
+    ListenerPort = proplists:get_value(listener_port, Opts, undefined),
+    ListenerType = proplists:get_value(listener_type, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
-        {buffer_sizes, BufferSizes}
+        {buffer_sizes, BufferSizes},
+        {listener_addr, ListenerAddr},
+        {listener_port, ListenerPort},
+        {listener_type, ListenerType}
         | MaybeProxyDefaults2
     ].
 

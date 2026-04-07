@@ -2,6 +2,7 @@
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
 - Enhancement: Disable `expire_retain_cache` as a default.
+- Add listener address, port, and type to auth_on_register and auth_on_register_m5
 
 ## VerneMQ 2.1.2
 
