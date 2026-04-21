@@ -230,46 +230,72 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                 {register_subscriber_retry_exhausted, draining}
             );
         _ ->
-            %% remap subscriber... enabling that new messages will
-            %% eventually reach the new queue.  Remapping triggers
-            %% remote nodes to initiate queue migration
-            {SubscriptionsPresent, UpdatedSubs, ChangedNodes} =
-                maybe_remap_subscriber(SubscriberId, StartClean),
+            %% Phase 1: Compute remap WITHOUT writing metadata yet.
+            %% This avoids the window where routing tables point to the
+            %% new node but the old queue hasn't started draining.
+            {SubscriptionsPresent, UpdatedSubs, ChangedNodes, NeedsWrite} =
+                compute_remap_subscriber(SubscriberId, StartClean),
             SessionPresent1 = SubscriptionsPresent or QueuePresent,
+            BlockCondFun = fun(Sid, OldNode) ->
+                case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                    not_found ->
+                        case get_queue_pid(Sid) of
+                            not_found ->
+                                block;
+                            LocalPid when is_pid(LocalPid) ->
+                                done
+                        end;
+                    OldPid when is_pid(OldPid) ->
+                        case vmq_queue:info(OldPid) of
+                            #{statename := drain} ->
+                                done;
+                            {error, noproc} ->
+                                %% Queue process died, treat as migrated
+                                done;
+                            _ ->
+                                block
+                        end;
+                    {badrpc, _} ->
+                        %% Old node unreachable, nothing to drain from
+                        done
+                end
+            end,
             SessionPresent2 =
                 case StartClean of
                     true ->
-                        %% SessionPresent is always false in case CleanupSession=true
+                        %% Clean session: commit immediately, no migration needed
+                        maybe_commit(NeedsWrite, SubscriberId, UpdatedSubs),
                         false;
                     false when QueuePresent ->
-                        %% no migration expected to happen, as queue is already local.
+                        %% Queue already local, no migration needed
+                        maybe_commit(NeedsWrite, SubscriberId, UpdatedSubs),
                         SessionPresent1;
                     false ->
-                        Fun = fun(Sid, OldNode) ->
-                            case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
-                                not_found ->
-                                    case get_queue_pid(Sid) of
-                                        not_found ->
-                                            block;
-                                        LocalPid when is_pid(LocalPid) ->
-                                            done
-                                    end;
-                                OldPid when is_pid(OldPid) ->
-                                    case vmq_queue:info(OldPid) of
-                                        #{statename := drain} ->
-                                            %% Queue is in draining state, we're done here and
-                                            %% can return to the caller.
-                                            %% TODO: We can improve this by only having a single
-                                            %% rpc call. But this would break backward upgrade
-                                            %% compatibility.
-                                            done;
-                                        _ ->
-                                            block
-                                    end
-                            end
-                        end,
-                        block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
-                        SessionPresent1
+                        %% Phase 2: Try direct migration via RPC before
+                        %% committing metadata (avoids message ordering window)
+                        case try_direct_migration(SubscriberId, QPid, ChangedNodes) of
+                            ok ->
+                                %% Phase 3: Poll for drain WITHOUT metadata writes
+                                case block_until_drain(SubscriberId, ChangedNodes, BlockCondFun) of
+                                    ok ->
+                                        %% Phase 4: Commit metadata (old queue already draining)
+                                        maybe_commit(NeedsWrite, SubscriberId, UpdatedSubs);
+                                    timeout ->
+                                        %% Direct drain polling timed out. Fall back to
+                                        %% metadata-driven path with conflict resolution.
+                                        maybe_commit(NeedsWrite, SubscriberId, UpdatedSubs),
+                                        block_until(
+                                            SubscriberId, UpdatedSubs, ChangedNodes, BlockCondFun
+                                        )
+                                end,
+                                SessionPresent1;
+                            {error, _} ->
+                                %% Old node unreachable: commit metadata first (current
+                                %% behavior). This triggers migration via vmq_reg_mgr.
+                                maybe_commit(NeedsWrite, SubscriberId, UpdatedSubs),
+                                block_until(SubscriberId, UpdatedSubs, ChangedNodes, BlockCondFun),
+                                SessionPresent1
+                        end
                 end,
             case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
                 {'EXIT', {normal, _}} ->
@@ -809,7 +835,7 @@ fix_dead_queues(DeadNodes, AccTargets) ->
     ?LOG_INFO("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target | Targets], N}) ->
-    %%% Why not use maybe_remap_subscriber/2:
+    %%% Why not use compute_remap_subscriber/2 + commit:
     %%%  it is possible that the original subscriber has used
     %%%  allow_multiple_sessions=true
     %%%
@@ -1151,32 +1177,100 @@ del_subscriptions(Topics, SubscriberId) ->
             ok
     end.
 
-%% the return value is used to inform the caller
-%% if a session was already present for the given
-%% subscriber id.
--spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
-    {boolean(), undefined | vmq_subscriber:subs(), [node()]}.
-maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
-    %% no need to remap, we can delete this subscriber
-    %% we overwrite any other value
+%% compute_remap_subscriber/2 reads metadata and computes the node remap
+%% WITHOUT writing. Returns {SubsPresent, Subs, ChangedNodes, NeedsWrite}.
+-spec compute_remap_subscriber(subscriber_id(), boolean()) ->
+    {boolean(), vmq_subscriber:subs(), [node()], boolean()}.
+compute_remap_subscriber(_SubscriberId, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
-    vmq_subscriber_db:store(SubscriberId, Subs),
-    {false, Subs, []};
-maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
+    {false, Subs, [], true};
+compute_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
         undefined ->
-            %% Store empty Subscriber Data
             Subs = vmq_subscriber:new(false),
-            vmq_subscriber_db:store(SubscriberId, Subs),
-            {false, Subs, []};
+            {false, Subs, [], true};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
-                    vmq_subscriber_db:store(SubscriberId, NewSubs),
-                    {true, NewSubs, ChangedNodes};
+                    {true, NewSubs, ChangedNodes, true};
                 _ ->
-                    {true, Subs, []}
+                    {true, Subs, [], false}
             end
+    end.
+
+%% commit_remap_subscriber/2 writes the computed subs to metadata store.
+-spec commit_remap_subscriber(subscriber_id(), vmq_subscriber:subs()) -> ok.
+commit_remap_subscriber(SubscriberId, Subs) ->
+    vmq_subscriber_db:store(SubscriberId, Subs).
+
+%% maybe_commit/3 writes metadata only if NeedsWrite is true.
+maybe_commit(true, SubscriberId, Subs) ->
+    commit_remap_subscriber(SubscriberId, Subs);
+maybe_commit(false, _SubscriberId, _Subs) ->
+    ok.
+
+%% try_direct_migration/3 attempts direct RPC-based migration for each
+%% changed node, bypassing the metadata-driven migration path.
+%% Returns ok if all nodes succeed, {error, Reason} on first failure.
+-spec try_direct_migration(subscriber_id(), pid(), [node()]) -> ok | {error, term()}.
+try_direct_migration(_SubscriberId, _LocalQPid, []) ->
+    ok;
+try_direct_migration(SubscriberId, LocalQPid, [OldNode | Rest]) ->
+    case initiate_direct_migration(SubscriberId, LocalQPid, OldNode) of
+        ok ->
+            try_direct_migration(SubscriberId, LocalQPid, Rest);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% initiate_direct_migration/3 contacts the old node via RPC,
+%% finds the old queue process, and spawns a migration.
+%% vmq_queue:migrate/2 is synchronous (blocks until drain_over),
+%% so we spawn it to avoid blocking the caller.
+-spec initiate_direct_migration(subscriber_id(), pid(), node()) -> ok | {error, term()}.
+initiate_direct_migration(SubscriberId, LocalQPid, OldNode) ->
+    case rpc:call(OldNode, ?MODULE, get_queue_pid, [SubscriberId]) of
+        not_found ->
+            %% Old queue already gone, nothing to migrate
+            ok;
+        OldQPid when is_pid(OldQPid) ->
+            %% Spawn because vmq_queue:migrate/2 blocks until drain completes
+            spawn(fun() ->
+                try
+                    vmq_queue:migrate(OldQPid, LocalQPid)
+                catch
+                    Class:Reason ->
+                        ?LOG_WARNING(
+                            "direct migration failed for ~p from ~p: ~p:~p",
+                            [SubscriberId, OldNode, Class, Reason]
+                        )
+                end
+            end),
+            ok;
+        {badrpc, Reason} ->
+            {error, {badrpc, OldNode, Reason}}
+    end.
+
+%% block_until_drain/3 polls the block condition WITHOUT re-writing
+%% metadata on every iteration (unlike block_until/4). Falls back to
+%% the metadata-driven path if max iterations are exceeded.
+-define(MAX_DRAIN_POLL_ITERATIONS, 100).
+
+-spec block_until_drain(subscriber_id(), [node()], fun()) -> ok | timeout.
+block_until_drain(SubscriberId, ChangedNodes, BlockCond) ->
+    block_until_drain(SubscriberId, ChangedNodes, BlockCond, ?MAX_DRAIN_POLL_ITERATIONS).
+
+block_until_drain(_, [], _, _) ->
+    ok;
+block_until_drain(_, _, _, 0) ->
+    timeout;
+block_until_drain(SubscriberId, [Node | Rest] = ChangedNodes, BlockCond, N) ->
+    case BlockCond(SubscriberId, Node) of
+        block ->
+            timer:sleep(100),
+            block_until_drain(SubscriberId, ChangedNodes, BlockCond, N - 1);
+        done ->
+            block_until_drain(SubscriberId, Rest, BlockCond, N)
     end.
 
 -spec get_session_pids(subscriber_id()) ->
