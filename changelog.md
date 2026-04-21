@@ -1,7 +1,8 @@
-## VerneMQ 2.1.3
+## VerneMQ 2.1.3 RC1
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
 - Enhancement: Disable `expire_retain_cache` as a default.
+- Enhancement: Make SWC store processes more robust in boot and re-spawn cases.
 
 ## VerneMQ 2.1.2
 
