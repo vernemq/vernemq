@@ -13,6 +13,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- Enhancement: Optimize shared subscription subscriber selection from O(N log N) sort to O(N) list rotation.
 
 ## VerneMQ 2.1.1
 
