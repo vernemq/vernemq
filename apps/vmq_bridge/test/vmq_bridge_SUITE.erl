@@ -21,7 +21,12 @@ init_per_group(mqttv3, Config) ->
 init_per_group(inet, Config) ->
     [{inet_version, inet} | Config];
 init_per_group(inet6, Config) ->
-    [{inet_version, inet6} | Config];
+    case inet6_supported() of
+        true ->
+            [{inet_version, inet6} | Config];
+        false ->
+            {skip, "inet6 loopback is not available"}
+    end;
 init_per_group(try_private_3, Config) ->
     [{mqtt_version, 128+3} | Config];
 init_per_group(try_private_4, Config) ->
@@ -82,27 +87,35 @@ prefixes_test(Cfg) ->
     {proto_ver, mqtt_version(Cfg)}]),
     Connack = packet:gen_connack(0),
     {ok, SSocket} = gen_tcp:listen(1890, [Inet, binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
-    {ok, BrokerSocket} = gen_tcp:accept(SSocket),
-    ok = packet:expect_packet(BrokerSocket, "connect", Connect),
-    ok = gen_tcp:send(BrokerSocket, Connack),
+    try
+        {ok, BrokerSocket} = gen_tcp:accept(SSocket),
+        try
+            ok = packet:expect_packet(BrokerSocket, "connect", Connect),
+            ok = gen_tcp:send(BrokerSocket, Connack),
 
-    Subscribe = packet:gen_subscribe(1, "remote-in-prefix/bridge-in", 0),
-    ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),
-    ok = bridge_rec({subscribe, BridgePid}, 100),
+            Subscribe = packet:gen_subscribe(1, "remote-in-prefix/bridge-in", 0),
+            ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),
+            ok = bridge_rec({subscribe, BridgePid}, 100),
 
-    %% out: publish to bridge and check it arrives at the broker
-    ExpectPub0 = fun(Socket, Topic, Payload) ->
-                         Pub = packet:gen_publish(Topic, 0, Payload, []),
-                         ok = packet:expect_packet(Socket, "publish", Pub)
-                 end,
+            %% out: publish to bridge and check it arrives at the broker
+            ExpectPub0 = fun(Socket, Topic, Payload) ->
+                Pub = packet:gen_publish(Topic, 0, Payload, []),
+                ok = packet:expect_packet(Socket, "publish", Pub)
+            end,
 
-    ok = pub_to_bridge(BridgePid, [<<"local-out-prefix">>, <<"bridge-out">>], "bridge-out-msg", 0),
-    ok = ExpectPub0(BrokerSocket, "remote-out-prefix/bridge-out", "bridge-out-msg"),
+            ok = pub_to_bridge(BridgePid, [<<"local-out-prefix">>, <<"bridge-out">>], "bridge-out-msg", 0),
+            ok = ExpectPub0(BrokerSocket, "remote-out-prefix/bridge-out", "bridge-out-msg"),
 
-    %% in: publish to broker and check it arrives at the bridge
-    PublishBroker = packet:gen_publish("remote-in-prefix/bridge-in", 0, <<"bridge-in">>, []),
-    ok = gen_tcp:send(BrokerSocket, PublishBroker),
-    ok = bridge_rec({publish,[<<"local-in-prefix">>,<<"bridge-in">>],<<"bridge-in">>}, 100).
+            %% in: publish to broker and check it arrives at the bridge
+            PublishBroker = packet:gen_publish("remote-in-prefix/bridge-in", 0, <<"bridge-in">>, []),
+            ok = gen_tcp:send(BrokerSocket, PublishBroker),
+            ok = bridge_rec({publish, [<<"local-in-prefix">>, <<"bridge-in">>], <<"bridge-in">>}, 100)
+        after
+            maybe_close(BrokerSocket)
+        end
+    after
+        maybe_close(SSocket)
+    end.
 
 remote_reconnect_qos1_test(Cfg) ->
     start_bridge_plugin(#{
@@ -326,63 +339,84 @@ buffer_outgoing_test_(Cfg) ->
 
     %% Start the 'broker' and let the bridge connect
     {ok, SSocket} = gen_tcp:listen(1890, [Inet, binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
-    {ok, BrokerSocket} = gen_tcp:accept(SSocket, 5000),
-    Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
-                                            {proto_ver, mqtt_version(Cfg)}]),
-    ok = packet:expect_packet(BrokerSocket, "connect", Connect),
+    try
+        {ok, BrokerSocket} = gen_tcp:accept(SSocket, 5000),
+        try
+            Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
+                    {proto_ver, mqtt_version(Cfg)}]),
+            ok = packet:expect_packet(BrokerSocket, "connect", Connect),
 
-    %% Publish some more while in the `waiting_for_connack` state
-    pub_to_bridge(BridgePid, <<"m6">>, 0),
-    pub_to_bridge(BridgePid, <<"m7">>, 0),
-    pub_to_bridge(BridgePid, <<"m8">>, 0),
-    pub_to_bridge(BridgePid, <<"m9">>, 0),
-    pub_to_bridge(BridgePid, <<"m10">>, 0),
-    pub_to_bridge(BridgePid, <<"m11">>, 0),
-    pub_to_bridge(BridgePid, <<"m12">>, 0),
+            %% Publish some more while in the `waiting_for_connack` state
+            pub_to_bridge(BridgePid, <<"m6">>, 0),
+            pub_to_bridge(BridgePid, <<"m7">>, 0),
+            pub_to_bridge(BridgePid, <<"m8">>, 0),
+            pub_to_bridge(BridgePid, <<"m9">>, 0),
+            pub_to_bridge(BridgePid, <<"m10">>, 0),
+            pub_to_bridge(BridgePid, <<"m11">>, 0),
+            pub_to_bridge(BridgePid, <<"m12">>, 0),
 
-    {ok, #{out_queue_dropped := 2,
-           out_queue_max_size := 10,
-           out_queue_size := 10}} = vmq_bridge:info(BridgePid),
+            {ok, #{out_queue_dropped := 2,
+                   out_queue_max_size := 10,
+                   out_queue_size := 10}} = vmq_bridge:info(BridgePid),
 
-  [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
-      <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics_for_tests(),
+            [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
+                <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics_for_tests(),
 
-    %% Reply with the connack
-    Connack = packet:gen_connack(0),
-    ok = gen_tcp:send(BrokerSocket, Connack),
-    ExpectPub = fun(Payload) ->
-                        Pub = packet:gen_publish("bridge/topic", 0, Payload, []),
-                        ok = packet:expect_packet(BrokerSocket, "publish", Pub)
-                end,
+            %% Reply with the connack
+            Connack = packet:gen_connack(0),
+            ok = gen_tcp:send(BrokerSocket, Connack),
+            ExpectPub = fun(Payload) ->
+                Pub = packet:gen_publish("bridge/topic", 0, Payload, []),
+                ok = packet:expect_packet(BrokerSocket, "publish", Pub)
+            end,
 
-    ExpectPub(<<"m1">>),
-    ExpectPub(<<"m2">>),
-    ExpectPub(<<"m3">>),
-    ExpectPub(<<"m4">>),
-    ExpectPub(<<"m5">>),
-    ExpectPub(<<"m6">>),
-    ExpectPub(<<"m7">>),
-    ExpectPub(<<"m8">>),
-    ExpectPub(<<"m9">>),
-    ExpectPub(<<"m10">>),
+            ExpectPub(<<"m1">>),
+            ExpectPub(<<"m2">>),
+            ExpectPub(<<"m3">>),
+            ExpectPub(<<"m4">>),
+            ExpectPub(<<"m5">>),
+            ExpectPub(<<"m6">>),
+            ExpectPub(<<"m7">>),
+            ExpectPub(<<"m8">>),
+            ExpectPub(<<"m9">>),
+            ExpectPub(<<"m10">>),
 
 
-    %% After having published the buffered messages the bridge will
-    %% try to subscribe. TODO: Note this is not completely
-    %% deterministic as it could happen that the subscribe is
-    %% interleaved with the publishes above. We should fix this if
-    %% that becomes a problem.
-    Subscribe = packet:gen_subscribe(11, "bridge/#", 0),
-    ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),
-    Suback = packet:gen_suback(11, 2),
-    ok = gen_tcp:send(BrokerSocket, Suback),
+            %% After having published the buffered messages the bridge will
+            %% try to subscribe. TODO: Note this is not completely
+            %% deterministic as it could happen that the subscribe is
+            %% interleaved with the publishes above. We should fix this if
+            %% that becomes a problem.
+            Subscribe = packet:gen_subscribe(11, "bridge/#", 0),
+            ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),
+            Suback = packet:gen_suback(11, 2),
+            ok = gen_tcp:send(BrokerSocket, Suback),
 
-    %% Everything should be flushed.
-    {ok, #{out_queue_dropped := 2,
-           out_queue_max_size := 10,
-           out_queue_size := 0}} = vmq_bridge:info(BridgePid),
+            %% Everything should be flushed.
+            {ok, #{out_queue_dropped := 2,
+                   out_queue_max_size := 10,
+                   out_queue_size := 0}} = vmq_bridge:info(BridgePid)
+        after
+            maybe_close(BrokerSocket)
+        end
+    after
+        maybe_close(SSocket)
+    end.
 
-    ok = gen_tcp:close(BrokerSocket).
+inet6_supported() ->
+    case gen_tcp:listen(0, [inet6, {ip, {0, 0, 0, 0, 0, 0, 0, 1}}, binary, {active, false}]) of
+        {ok, S} ->
+            ok = gen_tcp:close(S),
+            true;
+        _ ->
+            false
+    end.
+
+maybe_close(undefined) ->
+    ok;
+maybe_close(S) ->
+    catch gen_tcp:close(S),
+    ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Test Helpers
