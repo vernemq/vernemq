@@ -1,0 +1,143 @@
+# VerneMQ vitals (alert rules for Prometheus)
+#
+# Install with Prometheus:
+# 1) Copy this file to your Prometheus rules directory.
+# 2) Reference it from prometheus.yml under rule_files.
+#    Example:
+#      rule_files:
+#        - /etc/prometheus/vernemq-alert-rules.yml
+# 3) Reload Prometheus and verify rules are loaded on /rules.
+# 4) Optional validation with promtool:
+#      promtool check rules /etc/prometheus/vernemq-alert-rules.yml
+#
+# Notes:
+# - These are baseline defaults intended to be tuned for your environment.
+# - Expressions are based on the default VerneMQ setting
+#   prometheus_namespace = "vernemq_".
+# - If you changed prometheus_namespace, replace the vernemq_ prefix accordingly.
+# - Adjust job matchers to your scrape config.
+
+groups:
+  - name: vernemq-vital
+    rules:
+      - alert: VerneMQInstanceDown  
+        expr: up{job="vernemq"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: VerneMQ target is down
+          description: Prometheus cannot scrape a VerneMQ target for more than 2 minutes.
+          runbook_hint: Check the VerneMQ process, HTTP listener, and network path.
+
+      - alert: VerneMQHighSchedulerUtilization
+        expr: vernemq_system_utilization > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ scheduler utilization is high
+          description: Average Erlang scheduler utilization is above 90% for 10 minutes.
+          runbook_hint: Check plugin overload and traffic spikes.
+
+      - alert: VerneMQRunQueueHigh
+        expr: vernemq_system_run_queue > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ run queue is high
+          description: Erlang run queue is above 50 for 10 minutes.
+          runbook_hint: Check long-running processes and CPU limits.
+
+      - alert: VerneMQHighMemoryUsage
+        expr: vernemq_vm_memory_total > 8589934592
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ memory usage is high
+          description: Erlang VM memory usage is above 8 GiB for 10 minutes.
+          runbook_hint: Tune this threshold to host size and expected workload.
+
+      - alert: VerneMQCriticalMemoryUsage
+        expr: vernemq_vm_memory_total > 17179869184
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: VerneMQ memory usage is critical
+          description: Erlang VM memory usage is above 16 GiB for 10 minutes.
+          runbook_hint: Investigate memory pressure, queue growth, retained data, and plugin behavior.
+
+      - alert: VerneMQQueueMessageDrop
+        expr: increase(vernemq_queue_message_drop[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ dropped queued messages
+          description: VerneMQ dropped one or more queued messages in the last 5 minutes.
+          runbook_hint: Check queue pressure, offline session backlog.
+
+      - alert: VerneMQQueueUnhandledHigh
+        expr: increase(vernemq_queue_message_unhandled[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ unhandled queue messages are elevated
+          description: More than 100 unhandled queue messages were observed within 5 minutes.
+          runbook_hint: Check session behavior, clean-session usage, and offline message handling.
+
+      - alert: VerneMQPublishErrorRateHigh
+        expr: increase(vernemq_mqtt_publish_error[5m]) / clamp_min(increase(vernemq_mqtt_publish_received[5m]), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ publish error rate is high
+          description: More than 5% of received publishes result in publish errors over 10 minutes.
+          runbook_hint: Check cluster stability, netsplit behavior, clients etc.
+
+      - alert: VerneMQSocketErrorRateHigh
+        expr: increase(vernemq_socket_error[5m]) / clamp_min(increase(vernemq_socket_open[5m]), 1) > 0.02
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ socket error rate is high
+          description: Socket errors exceed 2% of socket opens over 10 minutes.
+          runbook_hint: Check network health, TLS settings.
+
+      - alert: VerneMQKeepaliveExpiredHigh
+        expr: increase(vernemq_client_keepalive_expired[5m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ keepalive expirations are high
+          description: More than 50 clients expired on keepalive in the last 5 minutes.
+          runbook_hint: Check client network quality, keepalive configuration.
+
+  - name: vernemq-cluster
+    rules:
+      - alert: VerneMQNetsplitDetected
+        expr: increase(vernemq_netsplit_detected[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: VerneMQ cluster netsplit detected
+          description: One or more VerneMQ nodes detected a netsplit in the last 5 minutes.
+          runbook_hint: Check node reachability, Erlang distribution, and cluster connectivity.
+
+      - alert: VerneMQClusterBytesDropped
+        expr: increase(vernemq_cluster_bytes_dropped[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: VerneMQ drops inter-node cluster traffic
+          description: VerneMQ dropped one or more bytes while sending data (MQTT messages) to other cluster nodes in the last 5 minutes.
+          runbook_hint: Check inter-node network, and buffer sizes for vmq listener. Check whether inter-node buffer is big enough. 
