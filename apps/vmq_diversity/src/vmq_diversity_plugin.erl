@@ -689,14 +689,37 @@ all_till_ok([Pid | Rest], HookName, Args) ->
         false ->
             {error, lua_script_returned_false};
         error ->
-            {error, lua_script_error};
+            maybe_continue_on_error(HookName, Rest, Args, {error, lua_script_error});
         {error, Reason} ->
-            {error, Reason};
+            maybe_continue_on_error(HookName, Rest, Args, {error, Reason});
         _ ->
             all_till_ok(Rest, HookName, Args)
     end;
 all_till_ok([], _, _) ->
     next.
+
+maybe_continue_on_error(HookName, Rest, Args, Error) ->
+    case is_auth_hook(HookName) of
+        true ->
+            all_till_ok(Rest, HookName, Args);
+        false ->
+            Error
+    end.
+
+is_auth_hook(auth_on_register) ->
+    true;
+is_auth_hook(auth_on_register_m5) ->
+    true;
+is_auth_hook(auth_on_publish) ->
+    true;
+is_auth_hook(auth_on_publish_m5) ->
+    true;
+is_auth_hook(auth_on_subscribe) ->
+    true;
+is_auth_hook(auth_on_subscribe_m5) ->
+    true;
+is_auth_hook(_) ->
+    false.
 
 all(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of

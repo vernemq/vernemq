@@ -1,3 +1,5 @@
+- Bugfix: Make ``vmq_diversity` more robust in case of script errors and plugin chains.
+
 ## VerneMQ 2.1.3 RC1
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
