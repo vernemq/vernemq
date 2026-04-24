@@ -51,8 +51,9 @@ all() ->
      on_client_offline_test,
      on_client_gone_test,
      on_session_expired_test,
-     auth_on_register_undefined_creds_test,
-     invalid_modifiers_test,
+      auth_hooks_continue_on_script_error_test,
+      auth_on_register_undefined_creds_test,
+      invalid_modifiers_test,
 
      auth_on_register_m5_test,
      auth_on_register_m5_modify_props_test,
@@ -165,6 +166,32 @@ on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id()]).
 on_session_expired_test(_) ->
     [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id()]).
+
+auth_hooks_continue_on_script_error_test(_) ->
+    Script = code:lib_dir(vmq_diversity) ++ "/test/auth_hooks_offline_db_test.lua",
+    {ok, _} = vmq_diversity:load_script(Script),
+    try
+        next = vmq_diversity_plugin:auth_on_register(
+            peer(), ignored_subscriber_id(), username(), password(), true
+        ),
+        next = vmq_diversity_plugin:auth_on_publish(
+            username(), ignored_subscriber_id(), 1, topic(), payload(), false
+        ),
+        next = vmq_diversity_plugin:auth_on_subscribe(
+            username(), ignored_subscriber_id(), [{topic(), 1}]
+        ),
+        next = vmq_diversity_plugin:auth_on_register_m5(
+            peer(), ignored_subscriber_id(), username(), password(), true, props()
+        ),
+        next = vmq_diversity_plugin:auth_on_publish_m5(
+            username(), ignored_subscriber_id(), 1, topic(), payload(), false, props()
+        ),
+        next = vmq_diversity_plugin:auth_on_subscribe_m5(
+            username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props()
+        )
+    after
+        ok = vmq_diversity:unload_script(Script)
+    end.
 
 auth_on_register_undefined_creds_test(_) ->
     Username = undefined,

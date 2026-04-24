@@ -108,7 +108,7 @@ postgres_test(_) ->
 
 postgres_error_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("postgres_error_test.lua")),
-    error = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
+    next = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
 
 mongodb_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("mongodb_test.lua")).
@@ -118,7 +118,7 @@ mongodb_auth_source_test(_) ->
 
 mongodb_error_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("mongodb_error_test.lua")),
-    error = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
+    next = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
 
 redis_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("redis_test.lua")).

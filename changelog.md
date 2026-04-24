@@ -2,6 +2,7 @@
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
 - Enhancement: Disable `expire_retain_cache` as a default.
+- Bugfix: Make ``vmq_diversity` more robust in case of script errors and plugin chains.
 
 ## VerneMQ 2.1.2
 
