@@ -1,8 +1,10 @@
-## VerneMQ 2.1.3
+- Bugfix: Make ``vmq_diversity` more robust in case of script errors and plugin chains.
+
+## VerneMQ 2.1.3 RC1
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
 - Enhancement: Disable `expire_retain_cache` as a default.
-- Bugfix: Make ``vmq_diversity` more robust in case of script errors and plugin chains.
+- Enhancement: Make SWC store processes more robust in boot and re-spawn cases.
 
 ## VerneMQ 2.1.2
 
@@ -13,6 +15,7 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
+- Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout
 
 ## VerneMQ 2.1.1
 
