@@ -783,9 +783,10 @@ merge_user_property_modifier(InputProps, {ok, #{properties := ModProps} = Mods})
         {ok, ModUserProps} when is_list(ModUserProps) ->
             InputUserProps = maps:get(?P_USER_PROPERTY, InputProps, []),
             MergedUserProps = merge_user_properties(InputUserProps, ModUserProps),
-            {ok, Mods#{properties => ModProps#{?P_USER_PROPERTY => MergedUserProps}}};
+            MergedProps = maps:merge(InputProps, ModProps#{?P_USER_PROPERTY => MergedUserProps}),
+            {ok, Mods#{properties => MergedProps}};
         _ ->
-            {ok, Mods}
+            {ok, Mods#{properties => maps:merge(InputProps, ModProps)}}
     end;
 merge_user_property_modifier(_, Other) ->
     Other.
