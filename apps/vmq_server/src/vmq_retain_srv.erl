@@ -170,7 +170,7 @@ fold_expired() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    ExpCleanup = vmq_config:get_env(expire_retain_cache, 60) * 1000,
+    ExpCleanup = vmq_config:get_env(expire_retain_cache, 0) * 1000,
     vmq_metadata:subscribe(?RETAIN_DB),
     vmq_metadata:fold(
         ?RETAIN_DB,

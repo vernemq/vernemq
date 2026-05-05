@@ -22,6 +22,8 @@
 
 -behaviour(supervisor).
 
+-include("vmq_swc.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -44,6 +46,10 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     ets:new(vmq_swc_group_config, [named_table, public, {read_concurrency, true}]),
+    ets:new(
+        ?SUBS_REGISTRY,
+        [named_table, public, set, {read_concurrency, true}, {write_concurrency, true}]
+    ),
     MetricsWorker = #{
         id => vmq_swc_metrics,
         start => {vmq_swc_metrics, start_link, []}
