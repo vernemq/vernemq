@@ -1,3 +1,5 @@
+- vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
+
 ## VerneMQ 2.1.3 RC1
 
 - Bugfix: closed connection count for mqtt listeners when there is an exception in the connection loop.
