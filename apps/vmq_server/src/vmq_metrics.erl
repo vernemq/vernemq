@@ -1139,6 +1139,13 @@ counter_entries_def() ->
             mqtt_subscribe_error,
             <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>
         ),
+        m(
+            counter,
+            [],
+            ?MQTT_SUBSCRIBE_VISIBILITY_TIMEOUT,
+            mqtt_subscribe_visibility_timeout,
+            <<"The number of times SUBSCRIBE visibility checks timed out before SUBACK.">>
+        ),
 
         m(
             counter,
@@ -2173,7 +2180,8 @@ met2idx(mqtt_connack_unacceptable_protocol_sent) -> 192;
 met2idx(mqtt_connack_accepted_sent) -> 193;
 met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT) -> 194;
 met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED) -> 195;
-met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED) -> 196.
+met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED) -> 196;
+met2idx(?MQTT_SUBSCRIBE_VISIBILITY_TIMEOUT) -> 197.
 
 -ifdef(TEST).
 clear_stored_rates() ->

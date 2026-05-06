@@ -50,6 +50,7 @@ groups() ->
          subpub_qos0_test,
          subpub_qos1_test,
          subpub_qos2_test,
+         subpub_pipelined_after_subscribe_test,
          resubscribe_test,
          bridge_protocol_retain_as_publish_test,
          bridge_protocol_no_local_test],
@@ -57,6 +58,7 @@ groups() ->
      {mqttv4, [shuffle,sequence], Tests},
      {mqttv5, [shuffle],
       [
+       subpub_pipelined_after_subscribe_mqtt5_test,
        subscribe_no_local_test,
        subscribe_illegal_opt,
        subscription_ids
@@ -415,6 +417,53 @@ subpub_qos2_test(_) ->
     ok = gen_tcp:send(Socket, Pubrec2),
     ok = packet:expect_packet(Socket, "pubrel2", Pubrel2),
     ok = gen_tcp:close(Socket).
+
+subpub_pipelined_after_subscribe_test(_Cfg) ->
+    TopicBase =
+        "subpub/pipelined/" ++ integer_to_list(erlang:unique_integer([positive])),
+    subpub_pipelined_after_subscribe_test(TopicBase, 20).
+
+subpub_pipelined_after_subscribe_test(_TopicBase, 0) ->
+    ok;
+subpub_pipelined_after_subscribe_test(TopicBase, N) ->
+    Suffix = integer_to_list(N),
+    ClientId = "subpub-pipelined-after-subscribe-" ++ Suffix,
+    Topic = TopicBase ++ "/" ++ Suffix,
+    Connect = packet:gen_connect(ClientId, [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(2000 + N, Topic, 0),
+    Suback = packet:gen_suback(2000 + N, 0),
+    Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, <<Subscribe/binary, Publish/binary>>),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = packet:expect_packet(Socket, "publish", Publish),
+    ok = gen_tcp:close(Socket),
+    subpub_pipelined_after_subscribe_test(TopicBase, N - 1).
+
+subpub_pipelined_after_subscribe_mqtt5_test(_Cfg) ->
+    TopicBase =
+        "subpub/pipelined/mqtt5/" ++ integer_to_list(erlang:unique_integer([positive])),
+    subpub_pipelined_after_subscribe_mqtt5_test(TopicBase, 20).
+
+subpub_pipelined_after_subscribe_mqtt5_test(_TopicBase, 0) ->
+    ok;
+subpub_pipelined_after_subscribe_mqtt5_test(TopicBase, N) ->
+    Suffix = integer_to_list(N),
+    ClientId = "subpub-pipelined-after-subscribe-mqtt5-" ++ Suffix,
+    Topic = TopicBase ++ "/" ++ Suffix,
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60}]),
+    Connack = packetv5:gen_connack(),
+    SubTopic = packetv5:gen_subtopic(Topic, 0),
+    Subscribe = packetv5:gen_subscribe(3000 + N, [SubTopic], #{}),
+    Suback = packetv5:gen_suback(3000 + N, [0], #{}),
+    Publish = packetv5:gen_publish(Topic, 0, <<"message">>, []),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, <<Subscribe/binary, Publish/binary>>),
+    ok = packetv5:expect_frame(Socket, Suback),
+    ok = packetv5:expect_frame(Socket, Publish),
+    ok = gen_tcp:close(Socket),
+    subpub_pipelined_after_subscribe_mqtt5_test(TopicBase, N - 1).
 
 resubscribe_test(_) ->
     %% test that we can override a subscription
