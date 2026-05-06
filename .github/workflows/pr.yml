@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 26.2
+  DEFAULT_RELEASE_OTP: 27.3
 
 jobs:
   code_checks:
@@ -158,16 +158,14 @@ jobs:
       matrix:
         os:
           - ubuntu-24.04
-          # Sonoma
-          - macos-13
+          # Sequoia
+          - macos-15
         otp:
-          - "27.2"
+          - "27.3"
           - "26.2"
           - "25.3"
         exclude:
-          - os: macos-12
-            otp: "27.2"
-            
+          - otp: "25.3"
     steps:
       - name: Install dependencies (Linux)
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
