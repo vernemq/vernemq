@@ -74,6 +74,7 @@
 -define(MQTT4_PUBLISH_ERROR, mqtt_publish_error).
 -define(MQTT4_SUBSCRIBE_ERROR, mqtt_subscribe_error).
 -define(MQTT4_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error).
+-define(MQTT_SUBSCRIBE_VISIBILITY_TIMEOUT, mqtt_subscribe_visibility_timeout).
 -define(MQTT4_CLIENT_KEEPALIVE_EXPIRED, mqtt4_client_keepalive_expired).
 -define(METRIC_QUEUE_SETUP, queue_setup).
 -define(METRIC_QUEUE_INITIALIZED_FROM_STORAGE, queue_initialized_from_storage).
