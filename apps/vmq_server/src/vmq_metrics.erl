@@ -67,9 +67,6 @@
     incr_mqtt_error_subscribe/0,
     incr_mqtt_error_unsubscribe/0,
 
-    incr_sidecar_events/1,
-    incr_sidecar_events_error/1,
-
     incr_queue_setup/0,
     incr_queue_initialized_from_storage/0,
     incr_queue_teardown/0,
@@ -97,9 +94,6 @@
 
     incr_msg_enqueue_subscriber_not_found/0,
     incr_shared_subscription_group_publish_attempt_failed/0,
-
-    incr_events_sampled/2,
-    incr_events_dropped/2,
     update_config_version_metric/2
 ]).
 
@@ -129,7 +123,6 @@
 ]).
 
 -define(TIMER_TABLE, vmq_metrics_timers).
--define(EVENTS_SAMPLING_TABLE, vmq_metrics_events_sampling).
 -define(CONFIG_VERION_TABLE, config_version_table).
 
 -record(state, {
@@ -262,12 +255,6 @@ incr_qos1_non_retry_message_dropped() ->
 incr_qos1_non_persistence_message_dropped() ->
     incr_item(?QOS1_NON_PERSISTENCE_DROPPED, 1).
 
-incr_sidecar_events(HookName) ->
-    incr_item({?SIDECAR_EVENTS, HookName}, 1).
-
-incr_sidecar_events_error(HookName) ->
-    incr_item({?SIDECAR_EVENTS_ERROR, HookName}, 1).
-
 incr_queue_setup() ->
     incr_item(?METRIC_QUEUE_SETUP, 1).
 
@@ -335,29 +322,6 @@ incr_msg_enqueue_subscriber_not_found() ->
 
 incr_shared_subscription_group_publish_attempt_failed() ->
     incr_item(shared_subscription_group_publish_attempt_failed, 1).
-
--spec incr_events_sampled(hook_name(), Criterion :: binary() | undefined) -> ok.
-incr_events_sampled(_, undefined) -> ok;
-incr_events_sampled(H, C) -> incr_events_sampled_item(H, C, "sampled").
-
--spec incr_events_dropped(hook_name(), Criterion :: binary() | undefined) -> ok.
-incr_events_dropped(_, undefined) -> ok;
-incr_events_dropped(H, C) -> incr_events_sampled_item(H, C, "dropped").
-
-incr_events_sampled_item(H, C, SDType) ->
-    try
-        ets:update_counter(?EVENTS_SAMPLING_TABLE, {H, C, SDType}, 1)
-    catch
-        _:_ ->
-            try
-                ets:insert_new(?EVENTS_SAMPLING_TABLE, {{H, C, SDType}, 0}),
-                incr_events_sampled_item(H, C, SDType)
-            catch
-                _:_ ->
-                    lager:warning("couldn't initialize tables", [])
-            end
-    end,
-    ok.
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -430,15 +394,13 @@ metrics(Opts) ->
 
     {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
     {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
-    {EventsSamplingMetricsDefs, EventsSamplingMetricsValues} = events_sampling_metrics(),
     {ConfigVersionMetricsDefs, ConfigVersionMetricsValues} = config_version_metrics(),
 
     MetricDefs =
-        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++
-            EventsSamplingMetricsDefs ++ ConfigVersionMetricsDefs,
+        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++ ConfigVersionMetricsDefs,
     MetricValues =
         metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++
-            EventsSamplingMetricsValues ++ ConfigVersionMetricsValues,
+            ConfigVersionMetricsValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -556,24 +518,6 @@ histogram_metrics() ->
         Histogram
     ).
 
-events_sampling_metric_defs() ->
-    {Defs, _} = events_sampling_metrics(),
-    Defs.
-
-events_sampling_metrics() ->
-    ets:foldl(
-        fun({{Hook, Criterion, SDType}, TotalCount}, {DefsAcc, ValsAcc}) ->
-            {UniqueId, MetricName, Description, Labels} = events_sampled_metric_name(
-                Hook, Criterion, SDType
-            ),
-            {[m(counter, Labels, UniqueId, MetricName, Description) | DefsAcc], [
-                {UniqueId, TotalCount} | ValsAcc
-            ]}
-        end,
-        {[], []},
-        ?EVENTS_SAMPLING_TABLE
-    ).
-
 incr_bucket_ops(V) when V =< 10 ->
     [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
 incr_bucket_ops(V) when V =< 100 ->
@@ -683,7 +627,7 @@ get_label_info() ->
             end,
             #{},
             metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs() ++
-                events_sampling_metric_defs() ++ config_version_metric_defs()
+                config_version_metric_defs()
         ),
     maps:to_list(LabelInfo).
 
@@ -721,7 +665,6 @@ init([]) ->
     NumEntries = length(lists:usort(Idxs)),
 
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
-    ets:new(?EVENTS_SAMPLING_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?CONFIG_VERION_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
@@ -981,7 +924,6 @@ internal_defs() ->
             mqtt5_pubcomp_received_def(),
             mqtt5_auth_sent_def(),
             mqtt5_auth_received_def(),
-            sidecar_events_def(),
             redis_def(),
             mqtt_disconnect_def()
         ],
@@ -1124,44 +1066,6 @@ redis_def() ->
             )
         ],
     REDIS_DEF_1 ++ REDIS_DEF_2 ++ REDIS_DEF_3.
-
-sidecar_events_def() ->
-    HOOKs =
-        [
-            ?ON_REGISTER,
-            ?ON_REGISTER_FAILED,
-            ?ON_PUBLISH,
-            ?ON_SUBSCRIBE,
-            ?ON_UNSUBSCRIBE,
-            ?ON_DELIVER,
-            ?ON_DELIVERY_COMPLETE,
-            ?ON_OFFLINE_MESSAGE,
-            ?ON_CLIENT_WAKEUP,
-            ?ON_CLIENT_OFFLINE,
-            ?ON_CLIENT_GONE,
-            ?ON_SESSION_EXPIRED,
-            ?ON_MESSAGE_DROP
-        ],
-    [
-        m(
-            counter,
-            [{mqtt_version, "4"}, {hook, rcn_to_str(HOOK)}],
-            {?SIDECAR_EVENTS, HOOK},
-            sidecar_events,
-            <<"The number of events sidecar hook attempts.">>
-        )
-     || HOOK <- HOOKs
-    ] ++
-        [
-            m(
-                counter,
-                [{mqtt_version, "4"}, {hook, rcn_to_str(HOOK)}],
-                {?SIDECAR_EVENTS_ERROR, HOOK},
-                sidecar_events_error,
-                <<"The number of times events sidecar hook call failed.">>
-            )
-         || HOOK <- HOOKs
-        ].
 
 counter_entries_def() ->
     [
@@ -2870,14 +2774,6 @@ metric_name({Metric, SubMetric}) ->
         "A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."
     ),
     {Name, Name, Description, []}.
-
-events_sampled_metric_name(H, C, SDType) ->
-    Name = list_to_atom("vmq_events_" ++ SDType),
-    Labels = [{hook, atom_to_list(H)}, {acl_name, C}],
-    Description = list_to_binary(
-        "The number of events " ++ SDType ++ " due to sampling enabled."
-    ),
-    {[Name | Labels], Name, Description, Labels}.
 
 config_version_metric_name({MetricName, Labels}) ->
     Description = list_to_binary("The current version of the config file."),

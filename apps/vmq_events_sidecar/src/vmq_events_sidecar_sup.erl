@@ -72,6 +72,13 @@ init([]) ->
     ChildSpecs =
         [
             #{
+                id => vmq_events_sidecar_metrics,
+                start => {vmq_events_sidecar_metrics, start_link, []},
+                restart => permanent,
+                type => worker,
+                modules => [vmq_events_sidecar_metrics]
+            },
+            #{
                 id => vmq_events_sidecar_plugin,
                 start => {vmq_events_sidecar_plugin, start_link, []},
                 restart => permanent,

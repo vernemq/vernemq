@@ -462,7 +462,7 @@ send_event(HookName, EventPayload, Criterion) ->
         [] ->
             next;
         [{_}] ->
-            vmq_metrics:incr_sidecar_events(HookName),
+            vmq_events_sidecar_metrics:incr_sidecar_events(HookName),
             case sample(HookName, Criterion) of
                 true ->
                     process_event(HookName, EventPayload);
@@ -515,7 +515,7 @@ process_event(HookName, EventPayload) ->
             ok;
         {error, Reason} ->
             lager:error("Error sending event(shackle:cast): ~p", [Reason]),
-            vmq_metrics:incr_sidecar_events_error(HookName)
+            vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
     end,
     V2 = vmq_util:ts(),
     vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2 - V1).
@@ -542,10 +542,10 @@ check(Hook, Criterion) ->
         [{_, P}] ->
             case P >= rand:uniform(100) of
                 true ->
-                    vmq_metrics:incr_events_sampled(Hook, Criterion),
+                    vmq_events_sidecar_metrics:incr_events_sampled(Hook, Criterion),
                     true;
                 _ ->
-                    vmq_metrics:incr_events_dropped(Hook, Criterion),
+                    vmq_events_sidecar_metrics:incr_events_dropped(Hook, Criterion),
                     false
             end
     end.
