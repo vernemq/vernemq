@@ -28,3 +28,34 @@
                                                                     {datatype, atom},
                                                                     {default, false}
                                                                     ]}.
+
+%% @doc Set the maximum publish rate (messages per second) for an acl_name.
+%% The $acl_name variable is replaced with the actual ACL name.
+{mapping, "vmq_enhanced_auth.publish_rate_limit.$acl_name", "vmq_enhanced_auth.publish_rate_limit", [
+                                                                    {datatype, integer}
+                                                                    ]}.
+
+{translation, "vmq_enhanced_auth.publish_rate_limit",
+  fun(Conf) ->
+    RateLimits = lists:filter(
+        fun({K, _V}) ->
+            cuttlefish_variable:is_fuzzy_match(
+                K, string:tokens("vmq_enhanced_auth.publish_rate_limit.$acl_name", ".")
+            )
+        end,
+        Conf
+    ),
+    [
+        begin
+            case R > 0 of
+                true -> ok;
+                _ -> cuttlefish:invalid(
+                    "vmq_enhanced_auth.publish_rate_limit." ++ AclName ++
+                    " must be a positive integer, got " ++ integer_to_list(R))
+            end,
+            {AclName, R}
+        end
+     || {[_, _, AclName], R} <- RateLimits
+    ]
+  end
+}.

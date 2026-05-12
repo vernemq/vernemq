@@ -9,7 +9,9 @@
     start_link/0,
     metrics/0,
     incr/1,
-    incr/2
+    incr/2,
+    rate_limit_metrics/0,
+    incr_publish_drop_metric/2
 ]).
 
 %% gen_server callbacks
@@ -84,7 +86,8 @@ metrics() ->
         end,
         MetricValues
     ),
-    Metrics.
+    RateLimitMetrics = rate_limit_metrics(),
+    Metrics ++ RateLimitMetrics.
 
 -spec incr(any()) -> 'ok'.
 incr(Entry) ->
@@ -142,6 +145,31 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-spec rate_limit_metrics() -> list().
+rate_limit_metrics() ->
+    case ets:info(?RATE_LIMIT_METRICS_TBL) of
+        undefined ->
+            [];
+        _ ->
+            ets:foldl(
+                fun({{AclName, QoS}, DroppedCount}, Acc) ->
+                    Labels = [{acl_name, binary_to_list(AclName)}, {qos, integer_to_list(QoS)}],
+                    Id = {?PUBLISH_RATE_LIMIT_EXCEEDED, AclName, QoS},
+                    Name = ?PUBLISH_RATE_LIMIT_EXCEEDED,
+                    Desc = <<"The number of publishes dropped due to per-acl_name rate limiting.">>,
+                    [{counter, Labels, Id, Name, Desc, DroppedCount} | Acc]
+                end,
+                [],
+                ?RATE_LIMIT_METRICS_TBL
+            )
+    end.
+
+-spec incr_publish_drop_metric(binary(), non_neg_integer()) -> ok.
+incr_publish_drop_metric(AclName, QoS) ->
+    Key = {AclName, QoS},
+    ets:update_counter(?RATE_LIMIT_METRICS_TBL, Key, 1, {Key, 0}),
+    ok.
 
 %% don't do the update
 incr_item(_, 0) ->

@@ -498,6 +498,7 @@ usage() ->
         "    trace                   Trace various aspects of VerneMQ\n",
         "    all_queues_setup_check  Manage all_queues_setup_check rollout as part of health check\n",
         "    delay_puback            Manage Delayed PUBACK configuration\n",
+        "    publish-ratelimit       Manage per-acl_name publish rate limits\n",
         get_reg_redis_trie_usage_lead_line(),
         remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
         "  Use --help after a sub-command for more details.\n"
