@@ -1123,10 +1123,13 @@ insert_many(MsgsOrRefs, State) ->
 
 %% Offline Queue
 -spec insert(deliver() | msg_ref(), state()) -> state().
-insert(#deliver{qos = 0}, #state{sessions = Sessions} = State) when
+insert(
+    #deliver{qos = 0} = D, #state{id = SId, sessions = Sessions, session_id = SessionId} = State
+) when
     Sessions == #{}
 ->
     %% no session online, skip message for QoS0 Subscription
+    on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessions} = State) when
     Sessions == #{}
@@ -1134,10 +1137,14 @@ insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessi
     %% no session online, skip message for QoS1 with non_persistence Subscription
     _ = vmq_metrics:incr_qos1_non_persistence_message_dropped(),
     State;
-insert(#deliver{msg = #vmq_msg{qos = 0}}, #state{sessions = Sessions} = State) when
+insert(
+    #deliver{msg = #vmq_msg{qos = 0}} = D,
+    #state{id = SId, sessions = Sessions, session_id = SessionId} = State
+) when
     Sessions == #{}
 ->
     %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
+    on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(
     MsgOrRef,
