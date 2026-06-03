@@ -100,7 +100,10 @@
             vmq_status_http,
             vmq_health_http
         ]},
-        {outgoing_clustering_buffer_size, 10000},
+        {outgoing_clustering_buffer_size, 67108864},
+        {incoming_clustering_buffer_size, 67108864},
+        {outgoing_clustering_flush_threshold, 65536},
+        {outgoing_cluster_handshake_ack_timeout, 250},
         {remote_enqueue_timeout, 5000},
         {cluster_ready_rpc_timeout, 5000},
         {outgoing_connect_options, []},

@@ -309,10 +309,31 @@
 %% @doc specifies how many size in bytes are buffered in case the remote node
 %% is not available.
 {mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
-                                                                                            {default, 10000},
-                                                                                            {datatype, integer},
-                                                                                            hidden
-                                                                                           ]}.
+                                                                                             {default, 67108864},
+                                                                                             {datatype, integer},
+                                                                                             hidden
+                                                                                            ]}.
+
+%% @doc specifies how many bytes are buffered while parsing incoming internode traffic.
+{mapping, "incoming_clustering_buffer_size", "vmq_server.incoming_clustering_buffer_size", [
+                                                                                             {default, 67108864},
+                                                                                             {datatype, integer},
+                                                                                             hidden
+                                                                                            ]}.
+
+%% @doc specifies the number of bytes to batch before eagerly flushing internode traffic.
+{mapping, "outgoing_clustering_flush_threshold", "vmq_server.outgoing_clustering_flush_threshold", [
+                                                                                                    {default, 65536},
+                                                                                                    {datatype, integer},
+                                                                                                    hidden
+                                                                                                   ]}.
+
+%% @doc specifies how long to wait for a cluster connect ack before assuming a legacy peer.
+{mapping, "outgoing_cluster_handshake_ack_timeout", "vmq_server.outgoing_cluster_handshake_ack_timeout", [
+                                                                                                          {default, 250},
+                                                                                                          {datatype, integer},
+                                                                                                          hidden
+                                                                                                         ]}.
 
 %% @doc specifies the timeout for enqueuing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [

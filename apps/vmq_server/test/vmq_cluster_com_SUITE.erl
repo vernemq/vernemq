@@ -34,6 +34,8 @@ end_per_testcase(_Case, Config) ->
 
 all() ->
     [connect_success_test,
+     connect_success_delays_publish_until_ack,
+     connect_success_legacy_fallback,
      connect_success_send_error,
      connect_success_send_error_timeout
     ].
@@ -48,11 +50,45 @@ connect_success_test(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket} = gen_tcp:accept(ListenSocket, 30000),
-    recv_connect(Socket, Config),
+    recv_connect_ack(Socket, Config),
 
     % send test message
     ok = send_message(ClusterNodePid, hello_world),
     % recv this message
+    recv_message(Socket, hello_world).
+
+connect_success_delays_publish_until_ack(Config) ->
+    ClusterNodePid = cluster_node_pid(Config),
+    ok = rpc:block_call(node(ClusterNodePid), vmq_config, set_env, [outgoing_cluster_handshake_ack_timeout, 5000, false]),
+    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+    {ok, Socket} = gen_tcp:accept(ListenSocket, 30000),
+    recv_connect(Socket, Config),
+
+    Caller = self(),
+    SendPid = spawn(fun() -> Caller ! {publish_result, send_message(ClusterNodePid, hello_world)} end),
+    receive
+        {publish_result, Result} ->
+            exit({publish_returned_before_ack, Result})
+    after 100 ->
+        ok
+    end,
+
+    ok = gen_tcp:send(Socket, <<"vmq-connect-ack">>),
+    receive
+        {publish_result, ok} -> ok
+    after 30000 ->
+        exit({publish_did_not_return, SendPid})
+    end,
+    recv_message(Socket, hello_world).
+
+connect_success_legacy_fallback(Config) ->
+    ClusterNodePid = cluster_node_pid(Config),
+    ok = rpc:block_call(node(ClusterNodePid), vmq_config, set_env, [outgoing_cluster_handshake_ack_timeout, 100, false]),
+    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+    {ok, Socket} = gen_tcp:accept(ListenSocket, 30000),
+    recv_connect(Socket, Config),
+
+    ok = send_message(ClusterNodePid, hello_world),
     recv_message(Socket, hello_world).
 
 connect_success_send_error(Config) ->
@@ -60,14 +96,14 @@ connect_success_send_error(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
-    recv_connect(Socket1, Config),
+    recv_connect_ack(Socket1, Config),
     % close this socket
     gen_tcp:close(Socket1),
     % send test message, will be buffered and delivered on next successful reconnect
     ok = send_message(ClusterNodePid, hello_world),
 
     {ok, Socket2} = gen_tcp:accept(ListenSocket, 30000),
-    recv_connect(Socket2, Config),
+    recv_connect_ack(Socket2, Config),
     % recv this message
     recv_message(Socket2, hello_world).
 
@@ -77,7 +113,7 @@ connect_success_send_error_timeout(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
-    recv_connect(Socket1, Config),
+    recv_connect_ack(Socket1, Config),
 
     N = send_until_tcp_buffer_full(ClusterNodePid),
     % once the tcp buffer is full, we get disconnected
@@ -87,7 +123,7 @@ connect_success_send_error_timeout(Config) ->
 
     % the cluster node should do the reconnect
     {ok, Socket2} = gen_tcp:accept(ListenSocket, 30000),
-    recv_connect(Socket2, Config),
+    recv_connect_ack(Socket2, Config),
 
     % the last buffered message is repeated as the cluster node doesn't
     % actually know if we have received it or not.
@@ -126,6 +162,8 @@ setup_mock_vmq_cluster_node(Config, Opts) ->
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_flush_threshold, 1460, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_cluster_handshake_ack_timeout, 250, false]),
     {ok, ClusterNodePid} = rpc:block_call(Node, vmq_cluster_node, start_link, [node()]),
     ClusterNodePid.
 
@@ -144,6 +182,10 @@ recv_connect(Socket, Config) ->
     HandshakeMsg = <<"vmq-connect", L1:32, NodeName/binary>>,
     {ok, HandshakeMsg} = gen_tcp:recv(Socket, byte_size(HandshakeMsg)),
     ok.
+
+recv_connect_ack(Socket, Config) ->
+    ok = recv_connect(Socket, Config),
+    ok = gen_tcp:send(Socket, <<"vmq-connect-ack">>).
 
 
 send_message(ClusterNodePid, Msg) ->
