@@ -39,7 +39,8 @@ all() ->
      parse_unparse_pingresp_test,
      parse_unparse_disconnect_test,
      parse_unparse_auth_test,
-     no_null_char_in_client].
+     no_null_char_in_client,
+     subscribe_invalid_wildcard_in_word].
 
 parse_unparse_tests(_Config) ->
     Properties = #{p_session_expiry_interval => 12341234},
@@ -264,6 +265,27 @@ parse_unparse_properties_test(_Config) ->
 no_null_char_in_client(_Config) ->
     C = vmq_parser_mqtt5:gen_connect(<<1,0>>, []),
     {{error, invalid_utf8_string}, <<>>} = vmq_parser_mqtt5:parse(C).
+
+subscribe_invalid_wildcard_in_word(_Config) ->
+    %% A SUBSCRIBE whose topic filter contains a '+' wildcard in the middle
+    %% of a word is invalid per [MQTT-4.7.1-3] (the wildcard must occupy an
+    %% entire level). The parser surfaces this as a frame-level error embedded
+    %% in a {Frame, Rest} tuple, which the session FSM must treat as a protocol
+    %% error rather than feeding it to the state machine as an unexpected
+    %% message.
+    SubPlus = vmq_parser_mqtt5:gen_subscribe(
+                123, [#mqtt5_subscribe_topic{topic = <<"sport/tennis+">>, qos = 0,
+                                       no_local = false, rap = false,
+                                       retain_handling = send_retain}], #{}),
+    {{error, 'no_+_allowed_in_word'}, <<>>} = vmq_parser_mqtt5:parse(SubPlus),
+    SubHash = vmq_parser_mqtt5:gen_subscribe(
+                124, [#mqtt5_subscribe_topic{topic = <<"sport/tennis#">>, qos = 0,
+                                       no_local = false, rap = false,
+                                       retain_handling = send_retain}], #{}),
+    {{error, 'no_#_allowed_in_word'}, <<>>} = vmq_parser_mqtt5:parse(SubHash),
+    %% Same handling applies to UNSUBSCRIBE topic filters.
+    Unsub = vmq_parser_mqtt5:gen_unsubscribe(125, [<<"sport/tennis+">>], #{}),
+    {{error, 'no_+_allowed_in_word'}, <<>>} = vmq_parser_mqtt5:parse(Unsub).
 
 parse_unparse_property(Property) ->
     Encoded = enc_property_(Property),
