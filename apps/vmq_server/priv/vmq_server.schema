@@ -321,6 +321,15 @@
                                                                           hidden
                                                                          ]}.
 
+%% @doc specifies the timeout in milliseconds for the parallel RPC used
+%% during cluster readiness checks. This is a total timeout for all nodes,
+%% not per-node. The previous sequential approach had no timeout (infinity).
+{mapping, "cluster_ready_rpc_timeout", "vmq_server.cluster_ready_rpc_timeout", [
+                                                                                 {default, 5000},
+                                                                                 {datatype, integer},
+                                                                                 hidden
+                                                                                ]}.
+
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},

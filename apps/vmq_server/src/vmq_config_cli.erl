@@ -64,6 +64,7 @@ register_config_() ->
             "suppress_lwt_on_session_takeover",
             "coordinate_registrations",
             "mqtt_connect_timeout",
+            "cluster_ready_rpc_timeout",
             "disconnect_on_unauthorized_publish_v3",
             "subscriber_retain_mode"
         ],

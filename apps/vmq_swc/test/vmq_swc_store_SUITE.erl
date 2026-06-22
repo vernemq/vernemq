@@ -42,6 +42,10 @@ init_per_testcase(basic_store_test, Config) ->
     application:set_env(vmq_swc, dkm_dir, proplists:get_value(dkm_dir, Config)),
     ok = vmq_swc_plugin:plugin_start([basic]),
     Config;
+init_per_testcase(store_restart_test, Config) ->
+    init_per_testcase(basic_store_test, Config);
+init_per_testcase(bad_convertfun_test, Config) ->
+    init_per_testcase(basic_store_test, Config);
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, {1000, 500}},{auto_gc, true}|Config0], % afa: why did we set sync_interval to 0 before?
     init_per_testcase_(Case, Config1, [electra, flail]);
@@ -62,6 +66,10 @@ init_per_testcase_(Case, Config, Nodenames) ->
 
 end_per_testcase(basic_store_test, _Config) ->
     application:stop(vmq_swc);
+end_per_testcase(store_restart_test, _Config) ->
+    application:stop(vmq_swc);
+end_per_testcase(bad_convertfun_test, _Config) ->
+    application:stop(vmq_swc);
 end_per_testcase(_, Config) ->
     PeerNodes = proplists:get_value(peer_nodes, Config),
     vmq_swc_test_utils:pmap(fun({Peer, Node}) -> vmq_swc_test_utils:stop_peer(Peer, Node) end,
@@ -77,6 +85,8 @@ all() ->
 
 groups() ->
     AllTests = [basic_store_test,
+                store_restart_test,
+                bad_convertfun_test,
                 read_write_delete_test,
                 partitioned_cluster_test,
                 partitioned_delete_test,
@@ -109,7 +119,68 @@ basic_store_test(_Config) ->
       fun(P) ->
               KVsForPrefix = vmq_swc:fold(basic, fun(K,V, Acc) -> [{K, V}|Acc] end, [], P, []),
               ?assertEqual(KVsForPrefix, maps:get(P, KVPairsByPrefix))
-      end, Prefixes).
+       end, Prefixes).
+
+store_restart_test(_Config) ->
+    Group = basic,
+    Config = vmq_swc:config(Group),
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    Prefix = {test, subs},
+    Key = key1,
+    Value = val1,
+    ConvertFun = fun(Evt) -> {swc_evt, Evt} end,
+    ok = vmq_swc_store:subscribe(Config, Prefix, ConvertFun),
+    StorePid0 = whereis(StoreName),
+    ?assert(is_pid(StorePid0)),
+    exit(StorePid0, kill),
+    _StorePid1 = wait_until_pid(StoreName, StorePid0, 50),
+    %% trigger an event, should still be delivered after restart
+    ok = vmq_swc:put(Group, Prefix, Key, Value, []),
+    receive
+        {swc_evt, {updated, Prefix, Key, _OldVals, _NewVals}} -> ok
+    after 5000 ->
+        ct:fail(timeout)
+    end.
+
+bad_convertfun_test(_Config) ->
+    Group = basic,
+    Config = vmq_swc:config(Group),
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    Prefix = {test, subs_crash},
+    Key = key2,
+    Value = val2,
+    BadFun = fun(_Evt) -> erlang:error(bad_convertfun) end,
+    GoodFun = fun(Evt) -> {good_evt, Evt} end,
+    ok = vmq_swc_store:subscribe(Config, Prefix, BadFun),
+    ok = vmq_swc_store:subscribe(Config, Prefix, GoodFun),
+    StorePid0 = whereis(StoreName),
+    MRef = monitor(process, StorePid0),
+    ok = vmq_swc:put(Group, Prefix, Key, Value, []),
+    receive
+        {good_evt, {updated, Prefix, Key, _OldVals, _NewVals}} -> ok
+    after 5000 ->
+        ct:fail(timeout)
+    end,
+    receive
+        {'DOWN', MRef, process, _, Reason} ->
+            ct:fail({store_crashed, Reason})
+    after 500 ->
+        demonitor(MRef, [flush]),
+        ok
+    end.
+
+wait_until_pid(Name, OldPid, 0) ->
+    Pid = whereis(Name),
+    case is_pid(Pid) andalso (Pid =/= OldPid) of
+        true -> Pid;
+        false -> ct:fail(store_not_restarted)
+    end;
+wait_until_pid(Name, OldPid, N) ->
+    Pid = whereis(Name),
+    case is_pid(Pid) andalso (Pid =/= OldPid) of
+        true -> Pid;
+        false -> ct:sleep(100), wait_until_pid(Name, OldPid, N - 1)
+    end.
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),    

@@ -47,6 +47,7 @@
 -define(SERVER, ?MODULE).
 %% table is owned by vmq_cluster_mon
 -define(VMQ_CLUSTER_STATUS, vmq_status).
+-define(DEFAULT_RPC_TIMEOUT, 5000).
 
 -record(state, {}).
 -type state() :: #state{}.
@@ -217,19 +218,27 @@ check_ready(Nodes) ->
     ),
     ok.
 
-check_ready([Node | Rest], Acc) ->
-    IsReady =
-        case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
-            Pid when is_pid(Pid) -> true;
-            _ -> false
+check_ready(Nodes, _Acc) ->
+    %% Check all nodes in parallel with a single bounded timeout
+    %% instead of sequential rpc:call which takes up to N*5s.
+    Timeout = vmq_config:get_env(cluster_ready_rpc_timeout, ?DEFAULT_RPC_TIMEOUT),
+    Results = erpc:multicall(Nodes, erlang, whereis, [vmq_server_sup], Timeout),
+    Acc = lists:zipwith(
+        fun(Node, Result) ->
+            IsReady =
+                case Result of
+                    {ok, Pid} when is_pid(Pid) -> true;
+                    _ -> false
+                end,
+            ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
+            %% We should only say we're ready if we've established a
+            %% connection to the remote node.
+            Status = vmq_cluster_node_sup:node_status(Node),
+            {Node, IsReady andalso lists:member(Status, [up, init])}
         end,
-    ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
-    %% We should only say we're ready if we've established a
-    %% connection to the remote node.
-    Status = vmq_cluster_node_sup:node_status(Node),
-    IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-    check_ready(Rest, [{Node, IsReady1} | Acc]);
-check_ready([], Acc) ->
+        Nodes,
+        Results
+    ),
     OldObj =
         case ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
             [] -> {true, 0, 0};

@@ -3,6 +3,7 @@
 -define(DB_OBJ, obj).
 -define(DB_DKM, dkm).
 -define(DB_DEFAULT, default).
+-define(SUBS_REGISTRY, vmq_swc_subscriptions).
 
 -type key_prefix() :: atom().
 -type key_suffix() :: term().
