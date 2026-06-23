@@ -255,11 +255,21 @@ data_in(Data, SessionState, OutAcc) ->
             {error, Reason, lists:reverse(OutAcc)};
         {{error, Reason}, _Rest} ->
             %% The parser embeds frame-level validation errors (e.g. an
-            %% invalid wildcard in a SUBSCRIBE topic) as the "frame" of a
-            %% {Frame, Rest} tuple. Treat them as protocol errors and close
-            %% the connection cleanly instead of feeding the error term to
-            %% the FSM as an unexpected message.
-            {error, Reason, lists:reverse(OutAcc)};
+            %% invalid wildcard in a SUBSCRIBE topic filter) as the "frame"
+            %% of a {Frame, Rest} tuple, so they never reach the state
+            %% machine as a real frame. Handle them here as protocol errors
+            %% instead of feeding the error term to the FSM as an unexpected
+            %% message. For an established session we inform the client with
+            %% a DISCONNECT carrying an appropriate reason code; a DISCONNECT
+            %% must not precede the CONNACK, so in any other session state we
+            %% just close the connection.
+            case SessionState of
+                {connected, State} ->
+                    {stop, StopReason, Out} = terminate(frame_error_rcn(Reason), State),
+                    {stop, StopReason, lists:reverse([Out | OutAcc])};
+                _ ->
+                    {error, Reason, lists:reverse(OutAcc)}
+            end;
         {Frame, Rest} ->
             case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
@@ -2216,6 +2226,15 @@ gen_disconnect(RCN, Props) ->
 gen_disconnect_(RCN, Props) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_SENT, RCN}),
     serialise_frame(#mqtt5_disconnect{reason_code = rcn2rc(RCN), properties = Props}).
+
+%% Map a parser frame-validation error to the MQTT 5.0 reason code sent in
+%% the DISCONNECT before the connection is closed.
+-spec frame_error_rcn(atom()) -> reason_code_name().
+frame_error_rcn('no_+_allowed_in_word') -> ?TOPIC_FILTER_INVALID;
+frame_error_rcn('no_#_allowed_in_word') -> ?TOPIC_FILTER_INVALID;
+frame_error_rcn('no_+_allowed_in_publish') -> ?TOPIC_NAME_INVALID;
+frame_error_rcn('no_#_allowed_in_publish') -> ?TOPIC_NAME_INVALID;
+frame_error_rcn(_) -> ?MALFORMED_PACKET.
 
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
