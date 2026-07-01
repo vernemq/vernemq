@@ -23,6 +23,12 @@ init_per_group(mqtts, Config) ->
 init_per_group(mqttws, Config) ->
     Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
+init_per_group(mqttws_allow_anonymous_override, Config) ->
+    Config1 = [{type, ws},{port, 1893}, {address, "127.0.0.1"}, {allow_anonymous_override, true}|Config],
+    start_listener(Config1);
+init_per_group(mqttwss_allow_anonymous_override, Config) ->
+    Config1 = [{type, wss},{port, 1894}, {address, "127.0.0.1"}, {allow_anonymous_override, true}|Config],
+    start_listener(Config1);
 init_per_group(mqttwsp, Config) ->
     Config1 = [{type, ws},{port, 1891}, {address, "127.0.0.1"}, {proxy_protocol, true}|Config],
     start_listener(Config1);
@@ -55,6 +61,8 @@ all() ->
     [
      {group, mqtts},
      {group, mqttws},
+     {group, mqttws_allow_anonymous_override},
+     {group, mqttwss_allow_anonymous_override},
      {group, mqttwsp}, % ws with proxy protocol
      {group, mqttwsx}, % ws with xff headers
      {group, mqttv4},
@@ -80,6 +88,8 @@ groups() ->
       [auth_on_register_change_username_test|Tests]},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
+     {mqttws_allow_anonymous_override, [], [anon_success_test]},
+     {mqttwss_allow_anonymous_override, [], [anon_success_test]},
      {mqttwsp, [], [ws_proxy_protocol_v1_test, ws_proxy_protocol_v2_test,
                     ws_proxy_protocol_localcommand_v1_test, ws_proxy_protocol_localcommand_v2_test]},
      {mqttwsx, [], [ws_xff_peer_test, ws_xff_peer_reject_no_user_test]},
@@ -372,7 +382,7 @@ transport(Config) ->
         {type, ws} ->
             gen_tcp;
         {type, wss} ->
-            ssl;
+            vmq_ws_transport;
         {type, wsx} ->
             gen_tcp
     end.
@@ -393,6 +403,14 @@ conn_opts(Config) ->
                   ]}];
             ws ->
                 [{transport, vmq_ws_transport}, {conn_opts, []}];
+            wss ->
+                [{transport, vmq_ws_transport},
+                 {conn_opts,
+                  [
+                   {ssl, true},
+                   {verify, verify_none},
+                   {cacerts, load_cacerts()}
+                  ]}];
             wsx ->
                 [{transport, vmq_ws_transport}, {conn_opts, []}]
         end,
@@ -443,14 +461,19 @@ start_listener(Config) ->
                     {proxy_xff_use_cn_as_username, "true"},
                     {proxy_xff_cn_header, "x-ssl-client-cn"}];
             wss -> [{ssl, true},
-                 {nr_of_acceptors, 5},
-                 {cafile, ssl_path("all-ca.crt")},
+                  {nr_of_acceptors, 5},
+                  {cafile, ssl_path("all-ca.crt")},
                  {certfile, ssl_path("server.crt")},
                  {keyfile, ssl_path("server.key")},
                  {tls_version, "tlsv1.2"},
-                 {websocket, true}]
+                  {websocket, true}]
         end,
-    {ok, _} = vmq_server_cmd:listener_start(Port, Address, [ProtVers | Opts1]),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Config, false),
+    {ok, _} = vmq_server_cmd:listener_start(
+        Port,
+        Address,
+        [{allow_anonymous_override, AllowAnonymousOverride}, ProtVers | Opts1]
+    ),
     [{address, Address},{port, Port},{opts, Opts1}|Config].
 
 ssl_path(File) ->

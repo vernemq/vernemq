@@ -1016,6 +1016,8 @@
 %%
 %%     - listener.tcp.my_listener.allow_anonymous_override
 %%     - listener.ssl.my_listener.allow_anonymous_override
+%%     - listener.ws.my_listener.allow_anonymous_override
+%%     - listener.wss.my_listener.allow_anonymous_override
 %%
 %% Allowed values are 'on' or 'off'. The default value for an unconfigured listener will be 'off'.
 {mapping, "listener.tcp.$name.allow_anonymous_override", "vmq_server.listeners",
@@ -1025,6 +1027,18 @@
  ]}.
 
  {mapping, "listener.ssl.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
+
+ {mapping, "listener.ws.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
+
+ {mapping, "listener.wss.$name.allow_anonymous_override", "vmq_server.listeners",
  [
   {default, off},
   {datatype, flag}
