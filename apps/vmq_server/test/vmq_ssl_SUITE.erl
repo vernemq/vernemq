@@ -240,7 +240,7 @@ all_cert_auth_identity_allow_anonymous_override_on() ->
         [connect_identity_allow_anonymous_override_on_test].
 
 all_cert_auth_identity_allow_anonymous_override_off() ->
-        [connect_identity_allow_anonymous_override_on_test].
+        [connect_identity_allow_anonymous_override_off_test].
 
 all_psk_auth() ->
   [connect_psk_test,
