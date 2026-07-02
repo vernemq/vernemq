@@ -31,7 +31,8 @@ all() ->
      not_enough_data_max_exceeded,
      not_enough_data_max_not_exceeded,
      parse_unparse_tests,
-     no_null_char_in_client  
+     no_null_char_in_client,
+     subscribe_invalid_wildcard_in_word
     ].
 
 %%--------------------------------------------------------------------
@@ -71,6 +72,21 @@ not_enough_data_max_not_exceeded(_Config) ->
 no_null_char_in_client(_Config) ->
     C = vmq_parser:gen_connect(<<1,0>>, []),
     {{error, invalid_utf8_string}, <<>>} = vmq_parser:parse(C).
+
+subscribe_invalid_wildcard_in_word(_Config) ->
+    %% A SUBSCRIBE whose topic filter contains a '+' wildcard in the middle
+    %% of a word is invalid per [MQTT-4.7.1-3] (the wildcard must occupy an
+    %% entire level). The parser surfaces this as a frame-level error embedded
+    %% in a {Frame, Rest} tuple, which the session FSM must treat as a protocol
+    %% error rather than feeding it to the state machine as an unexpected
+    %% message.
+    SubPlus = vmq_parser:gen_subscribe(123, "sport/tennis+", 0),
+    {{error, 'no_+_allowed_in_word'}, <<>>} = vmq_parser:parse(SubPlus),
+    SubHash = vmq_parser:gen_subscribe(124, "sport/tennis#", 0),
+    {{error, 'no_#_allowed_in_word'}, <<>>} = vmq_parser:parse(SubHash),
+    %% Same handling applies to UNSUBSCRIBE topic filters.
+    Unsub = vmq_parser:gen_unsubscribe(125, "sport/tennis+"),
+    {{error, 'no_+_allowed_in_word'}, <<>>} = vmq_parser:parse(Unsub).
 
 parse_unparse_tests(_Config) ->
     compare_frame("connect1", vmq_parser:gen_connect("test-client", [])),
