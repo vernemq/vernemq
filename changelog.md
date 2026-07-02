@@ -1,3 +1,4 @@
+- Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
 
 ## VerneMQ 2.1.3 RC1
