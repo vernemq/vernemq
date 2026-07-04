@@ -162,6 +162,22 @@
                                                              {datatype, integer}
                                                             ]}.
 
+%% @doc Maximum number of retries for waiting until a new subscription
+%% is visible in local routing ETS tables before sending SUBACK.
+{mapping, "max_subscription_retry", "vmq_server.max_subscription_retry", [
+                                                                            {default, 10},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}.
+
+%% @doc Sleep interval in milliseconds between retries while waiting
+%% for subscription visibility in local routing ETS tables.
+{mapping, "subscription_retry_interval_ms", "vmq_server.subscription_retry_interval_ms", [
+                                                                                             {default, 100},
+                                                                                             {datatype, integer},
+                                                                                             hidden
+                                                                                            ]}.
+
 %% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
 %% limit of 23 characters
 {mapping, "max_client_id_size", "vmq_server.max_client_id_size", [

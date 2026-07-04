@@ -74,6 +74,8 @@
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
+-define(DEFAULT_MAX_SUBSCRIPTION_RETRY, 10).
+-define(DEFAULT_SUBSCRIPTION_RETRY_INTERVAL_MS, 100).
 
 -spec subscribe(
     flag(),
@@ -93,6 +95,22 @@ subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Existing = subscriptions_exist(OldSubs, Topics),
     add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
+    AddedSubscriptions = added_subscriptions(Existing, Topics),
+    case wait_until_subscriptions_visible(SubscriberId, AddedSubscriptions) of
+        ok ->
+            ok;
+        {error, not_ready} ->
+            vmq_metrics:incr(mqtt_subscribe_visibility_timeout),
+            AddedTopics = [Topic || {Topic, _} <- AddedSubscriptions],
+            ?LOG_WARNING(
+                "SUBSCRIBE visibility timeout; subscriber_id=~p added_topics=~p",
+                [SubscriberId, AddedTopics]
+            )
+    end,
+    {ok, subscribe_qos_table(SubscriberId, Existing, Topics)}.
+
+-spec subscribe_qos_table(subscriber_id(), [boolean()], [subscription()]) -> [qos() | not_allowed].
+subscribe_qos_table(SubscriberId, Existing, Topics) ->
     {QoSTable, _Ign} =
         lists:foldl(
             fun
@@ -114,7 +132,100 @@ subscribe_op(SubscriberId, Topics) ->
             {[], (vmq_config:get_env(subscriber_retain_mode, immediate) == syncwait)},
             lists:zip(Existing, Topics)
         ),
-    {ok, lists:reverse(QoSTable)}.
+    lists:reverse(QoSTable).
+
+-spec added_subscriptions([boolean()], [subscription()]) -> [subscription()].
+added_subscriptions(Existing, Topics) ->
+    lists:foldl(
+        fun
+            ({false, {_Topic, QoS} = Subscription}, Acc) when is_integer(QoS) ->
+                [Subscription | Acc];
+            ({false, {_Topic, {QoS, SubOpts}} = Subscription}, Acc) when
+                is_integer(QoS), is_map(SubOpts)
+            ->
+                [Subscription | Acc];
+            (_, Acc) ->
+                Acc
+        end,
+        [],
+        lists:zip(Existing, Topics)
+    ).
+
+-spec wait_until_subscriptions_visible(subscriber_id(), [subscription()]) ->
+    ok | {error, not_ready}.
+wait_until_subscriptions_visible(_SubscriberId, []) ->
+    ok;
+wait_until_subscriptions_visible(SubscriberId, AddedSubscriptions) ->
+    MaxRetries = non_neg_integer_env(max_subscription_retry, ?DEFAULT_MAX_SUBSCRIPTION_RETRY),
+    RetryIntervalMs = non_neg_integer_env(
+        subscription_retry_interval_ms, ?DEFAULT_SUBSCRIPTION_RETRY_INTERVAL_MS
+    ),
+    wait_until_subscriptions_visible(
+        SubscriberId,
+        vmq_config:get_env(default_reg_view, vmq_reg_trie),
+        AddedSubscriptions,
+        MaxRetries,
+        RetryIntervalMs
+    ).
+
+wait_until_subscriptions_visible(
+    SubscriberId, RegView, AddedSubscriptions, Retries, RetryIntervalMs
+) ->
+    case subscriptions_visible(SubscriberId, RegView, AddedSubscriptions) of
+        true ->
+            ok;
+        false when Retries =< 0 ->
+            {error, not_ready};
+        false ->
+            timer:sleep(RetryIntervalMs),
+            wait_until_subscriptions_visible(
+                SubscriberId, RegView, AddedSubscriptions, Retries - 1, RetryIntervalMs
+            )
+    end.
+
+-spec subscriptions_visible(subscriber_id(), atom(), [subscription()]) -> boolean().
+subscriptions_visible(SubscriberId, RegView, AddedSubscriptions) ->
+    lists:all(
+        fun(Subscription) ->
+            subscription_visible(SubscriberId, RegView, Subscription)
+        end,
+        AddedSubscriptions
+    ).
+
+-spec subscription_visible(subscriber_id(), atom(), subscription()) -> boolean().
+subscription_visible(SubscriberId, vmq_reg_ordered_trie, Subscription) ->
+    subscription_visible(
+        vmq_ordered_tree_subs, vmq_ordered_subs_fanout, SubscriberId, Subscription
+    );
+subscription_visible(SubscriberId, _RegView, Subscription) ->
+    subscription_visible(vmq_trie_subs, vmq_trie_subs_fanout, SubscriberId, Subscription).
+
+subscription_visible(SubsTab, FanoutTab, {MP, _} = SubscriberId, {
+    [<<"$share">>, Group | Topic], SubInfo
+}) ->
+    Key = {MP, Group, node(), Topic},
+    Value = {node(), Group, SubscriberId, SubInfo},
+    ets_subscription_exists(SubsTab, FanoutTab, Key, Value);
+subscription_visible(SubsTab, FanoutTab, {MP, _} = SubscriberId, {Topic, SubInfo}) ->
+    Key = {MP, Topic},
+    Value = {SubscriberId, SubInfo},
+    ets_subscription_exists(SubsTab, FanoutTab, Key, Value).
+
+ets_subscription_exists(SubsTab, FanoutTab, Key, Value) ->
+    case lists:member({Key, Value}, ets:lookup(SubsTab, Key)) of
+        true ->
+            true;
+        false ->
+            ets:member(FanoutTab, {Key, Value})
+    end.
+
+non_neg_integer_env(Key, Default) ->
+    case vmq_config:get_env(Key, Default) of
+        V when is_integer(V), V >= 0 ->
+            V;
+        _ ->
+            Default
+    end.
 
 -spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, SubscriberId, Topics) ->
