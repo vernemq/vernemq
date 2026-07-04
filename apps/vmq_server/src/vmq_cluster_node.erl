@@ -43,8 +43,14 @@
     socket,
     transport,
     reachable = false,
+    handshake = none,
+    handshake_tref,
+    handshake_buffer = <<>>,
+    delayed_publish_replies = [],
     pending = [],
+    pending_bytes = 0,
     max_queue_size,
+    flush_threshold,
     reconnect_tref,
     async_connect_pid,
     bytes_dropped = {os:timestamp(), 0},
@@ -52,6 +58,7 @@
 }).
 
 -define(RECONNECT, 1000).
+-define(CONNECT_ACK, <<"vmq-connect-ack">>).
 
 %%%===================================================================
 %%% API
@@ -118,13 +125,19 @@ status(Pid) ->
 
 init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
+    FlushThreshold = vmq_config:get_env(outgoing_clustering_flush_threshold, 65536),
     proc_lib:init_ack(Parent, {ok, self()}),
     % Delay the initial connect attempt, this is useful when automating
     % cluster node setup, where multiple nodes are concurrently setup.
     % Without a delay a node may try to connect to a cluster node that
     % hasn't finished setting up the vmq cluster listener.
     erlang:send_after(1000, self(), reconnect),
-    loop(#state{parent = Parent, node = RemoteNode, max_queue_size = MaxQueueSize}).
+    loop(#state{
+        parent = Parent,
+        node = RemoteNode,
+        max_queue_size = MaxQueueSize,
+        flush_threshold = FlushThreshold
+    }).
 
 loop(#state{pending = Pending, reachable = Reachable} = State) when
     Pending == [];
@@ -146,6 +159,7 @@ buffer_message(
     BinMsg,
     #state{
         pending = Pending,
+        pending_bytes = PendingBytes,
         max_queue_size = Max,
         reachable = Reachable,
         bytes_dropped = {{M, S, _}, V}
@@ -156,13 +170,14 @@ buffer_message(
             true ->
                 {[BinMsg | Pending], 0};
             false ->
-                case iolist_size(Pending) < Max of
+                case PendingBytes < Max of
                     true ->
                         {[BinMsg | Pending], 0};
                     false ->
                         {Pending, byte_size(BinMsg)}
                 end
         end,
+    NewPendingBytes = PendingBytes + byte_size(BinMsg) - Dropped,
     NewBytesDropped =
         case os:timestamp() of
             {M, S, _} = TS ->
@@ -171,7 +186,11 @@ buffer_message(
                 _ = vmq_metrics:incr_cluster_bytes_dropped(V + Dropped),
                 {TS, 0}
         end,
-    {Dropped, maybe_flush(State#state{pending = NewPending, bytes_dropped = NewBytesDropped})}.
+    {Dropped, maybe_flush(State#state{
+        pending = NewPending,
+        pending_bytes = NewPendingBytes,
+        bytes_dropped = NewBytesDropped
+    })}.
 
 handle_message(
     {enq, CallerPid, Ref, _, BufferIfUnreachable},
@@ -203,11 +222,14 @@ handle_message({msg, CallerPid, Ref, Msg}, State) ->
     {Dropped, NewState} = buffer_message(BinMsg, State),
     case Dropped > 0 of
         true ->
-            CallerPid ! {Ref, {error, msg_dropped}};
+            CallerPid ! {Ref, {error, msg_dropped}},
+            NewState;
+        false when NewState#state.handshake =:= pending ->
+            maybe_delay_publish_reply(CallerPid, Ref, NewState);
         false ->
-            CallerPid ! {Ref, ok}
-    end,
-    NewState;
+            CallerPid ! {Ref, ok},
+            NewState
+    end;
 handle_message(
     {connect_async_done, AsyncPid, {ok, {Transport, Socket}}},
     #state{async_connect_pid = AsyncPid, node = RemoteNode} = State
@@ -218,12 +240,16 @@ handle_message(
     case send(Transport, Socket, Msg) of
         ok ->
             ?LOG_INFO("successfully connected to cluster node ~p", [RemoteNode]),
+            HandshakeTRef = handshake_timer(),
             State#state{
                 socket = Socket,
                 transport = Transport,
-                %% !!! remote node is reachable
+                %% Wait for a new-peer ack, or fall back to legacy mode after a short timeout.
                 async_connect_pid = undefined,
-                reachable = true
+                reachable = false,
+                handshake = pending,
+                handshake_tref = HandshakeTRef,
+                handshake_buffer = <<>>
             };
         {error, Reason} ->
             ?LOG_WARNING("can't initiate connect to cluster node ~p due to ~p", [
@@ -234,6 +260,15 @@ handle_message(
 handle_message({connect_async_done, AsyncPid, error}, #state{async_connect_pid = AsyncPid} = State) ->
     % connect_async already logged the error details
     close_reconnect(State);
+handle_message(handshake_timeout, #state{handshake = pending, node = RemoteNode} = State) ->
+    ?LOG_DEBUG("cluster node ~p did not send connect ack, assuming legacy peer", [RemoteNode]),
+    handshake_complete(legacy, State#state{handshake_tref = undefined});
+handle_message(handshake_timeout, State) ->
+    State;
+handle_message({tcp, Socket, Data}, #state{socket = Socket} = State) ->
+    handle_socket_data(Data, State);
+handle_message({ssl, Socket, Data}, #state{socket = {ssl, Socket}} = State) ->
+    handle_socket_data(Data, State);
 handle_message(reconnect, #state{reachable = false} = State) ->
     connect(State#state{reconnect_tref = undefined});
 handle_message({status, CallerPid, Ref}, #state{socket = Socket, reachable = Reachable} = State) ->
@@ -277,10 +312,8 @@ handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     ),
     State.
 
-% tcp-over-ethernet MSS 1460
--define(FLUSH_THRESHOLD, 1460).
-maybe_flush(#state{pending = Pending} = State) ->
-    case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
+maybe_flush(#state{pending_bytes = PendingBytes, flush_threshold = FlushThreshold} = State) ->
+    case PendingBytes >= FlushThreshold of
         true ->
             internal_flush(State);
         false ->
@@ -294,13 +327,14 @@ internal_flush(#state{pending = []} = State) ->
 internal_flush(
     #state{
         pending = Pending,
+        pending_bytes = PendingBytes,
         node = Node,
         transport = Transport,
         socket = Socket,
         bytes_send = {{M, S, _}, V}
     } = State
 ) ->
-    L = iolist_size(Pending),
+    L = PendingBytes,
     Msg = [<<"vmq-send", L:32>> | lists:reverse(Pending)],
     case send(Transport, Socket, Msg) of
         ok ->
@@ -312,7 +346,7 @@ internal_flush(
                         _ = vmq_metrics:incr_cluster_bytes_sent(V + L),
                         {TS, 0}
                 end,
-            State#state{pending = [], bytes_send = NewBytesSend};
+            State#state{pending = [], pending_bytes = 0, bytes_send = NewBytesSend};
         {error, Reason} ->
             ?LOG_WARNING(
                 "can't send ~p bytes to ~p due to ~p, reconnect!",
@@ -378,16 +412,66 @@ connect_async(ParentPid, RemoteNode) ->
     ParentPid ! {connect_async_done, self(), Reply}.
 
 close_reconnect(#state{transport = Transport, socket = Socket} = State) ->
+    cancel_timer(State#state.handshake_tref),
     close(Transport, Socket),
     State#state{
         async_connect_pid = undefined,
         reachable = false,
         socket = undefined,
+        handshake = none,
+        handshake_tref = undefined,
+        handshake_buffer = <<>>,
         reconnect_tref = reconnect_timer()
     }.
 
 reconnect_timer() ->
     erlang:send_after(?RECONNECT, self(), reconnect).
+
+handshake_timer() ->
+    Timeout = vmq_config:get_env(outgoing_cluster_handshake_ack_timeout, 250),
+    erlang:send_after(Timeout, self(), handshake_timeout).
+
+cancel_timer(undefined) ->
+    ok;
+cancel_timer(TRef) ->
+    _ = erlang:cancel_timer(TRef),
+    ok.
+
+maybe_delay_publish_reply(CallerPid, Ref, #state{handshake = pending} = State) ->
+    State#state{delayed_publish_replies = [{CallerPid, Ref} | State#state.delayed_publish_replies]};
+maybe_delay_publish_reply(_, _, State) ->
+    State.
+
+handshake_complete(Handshake, #state{} = State) ->
+    cancel_timer(State#state.handshake_tref),
+    lists:foreach(
+        fun({CallerPid, Ref}) -> CallerPid ! {Ref, ok} end,
+        lists:reverse(State#state.delayed_publish_replies)
+    ),
+    maybe_flush(State#state{
+        reachable = true,
+        handshake = Handshake,
+        handshake_tref = undefined,
+        handshake_buffer = <<>>,
+        delayed_publish_replies = []
+    }).
+
+handle_socket_data(Data, #state{handshake = pending} = State) ->
+    Ack = ?CONNECT_ACK,
+    AckSize = byte_size(Ack),
+    Buffer = <<(State#state.handshake_buffer)/binary, Data/binary>>,
+    case Buffer of
+        <<Ack:AckSize/binary, _/binary>> ->
+            handshake_complete(acked, State);
+        _ when byte_size(Buffer) < AckSize ->
+            State#state{handshake_buffer = Buffer};
+        _ ->
+            ?LOG_DEBUG("ignoring unexpected cluster handshake data ~p", [Buffer]),
+            State#state{handshake_buffer = <<>>}
+    end;
+handle_socket_data(Data, State) ->
+    ?LOG_DEBUG("ignoring unexpected data on outgoing cluster socket: ~p", [Data]),
+    State.
 
 %% connect_params is called by a RPC
 connect_params(_Node) ->

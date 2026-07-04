@@ -37,8 +37,13 @@
     proto_tag,
     pending = [],
     throttled = false,
+    max_buffer_size,
     bytes_recv = {os:timestamp(), 0}
 }).
+
+-define(CONNECT_ACK, <<"vmq-connect-ack">>).
+-define(CONNECT, <<"vmq-connect">>).
+-define(SEND, <<"vmq-send">>).
 
 %% API.
 start_link(Ref, _Socket, Transport, Opts) ->
@@ -51,6 +56,7 @@ init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    MaxBufferSize = vmq_config:get_env(incoming_clustering_buffer_size, 67108864),
 
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
@@ -79,6 +85,7 @@ init(Ref, Transport, Opts) ->
             loop(#st{
                 socket = MaskedSocket,
                 reg_view = RegView,
+                max_buffer_size = MaxBufferSize,
                 proto_tag = proto_tag(Transport)
             });
         {error, Reason} ->
@@ -159,27 +166,72 @@ handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr}} = State) 
 handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
-process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
+process_bytes(Bytes, undefined, St) ->
+    process_connect_bytes(Bytes, St);
+process_bytes(Bytes, {connect, Buffer}, St) ->
+    process_connect_bytes(<<Buffer/binary, Bytes/binary>>, St);
+process_bytes(Bytes, Buffer, St) ->
+    NewBuffer = <<Buffer/binary, Bytes/binary>>,
+    case validate_frame_buffer(NewBuffer, St#st.max_buffer_size) of
+        ok ->
+            process_frame_buffer(NewBuffer, St);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+process_connect_bytes(Bytes, St) ->
+    case validate_prefixed_buffer(Bytes, ?CONNECT, St#st.max_buffer_size) of
+        ok ->
+            process_connect_buffer(Bytes, St);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+process_connect_buffer(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, St) ->
     NodeName = binary_to_term(BNodeName),
     case vmq_cluster_node_sup:get_cluster_node(NodeName) of
         {ok, ClusterNodePid} ->
             monitor(process, ClusterNodePid),
+            ok = send_connect_ack(St),
             process_bytes(Rest, <<>>, St);
         {error, not_found} ->
             ?LOG_DEBUG("connect request from unknown cluster node ~p", [NodeName]),
             {error, remote_node_not_available}
     end;
-process_bytes(Bytes, Buffer, St) ->
-    NewBuffer = <<Buffer/binary, Bytes/binary>>,
-    case NewBuffer of
-        <<"vmq-send", L:32, BFrames:L/binary, Rest/binary>> ->
-            process(BFrames, St),
-            process_bytes(Rest, <<>>, St);
+process_connect_buffer(Bytes, _St) ->
+    {ok, {connect, Bytes}}.
+
+process_frame_buffer(<<"vmq-send", L:32, BFrames:L/binary, Rest/binary>>, St) ->
+    process(BFrames, St),
+    process_bytes(Rest, <<>>, St);
+process_frame_buffer(Bytes, _St) ->
+    {ok, Bytes}.
+
+validate_frame_buffer(<<"vmq-send", L:32, _/binary>>, MaxBufferSize) when L > MaxBufferSize ->
+    {error, cluster_frame_too_large};
+validate_frame_buffer(Bytes, MaxBufferSize) ->
+    validate_prefixed_buffer(Bytes, ?SEND, MaxBufferSize).
+
+validate_prefixed_buffer(Bytes, _Prefix, MaxBufferSize) when byte_size(Bytes) > MaxBufferSize ->
+    {error, cluster_buffer_too_large};
+validate_prefixed_buffer(Bytes, Prefix, _MaxBufferSize) ->
+    PrefixSize = byte_size(Prefix),
+    case Bytes of
+        <<Prefix:PrefixSize/binary, _/binary>> ->
+            ok;
+        _ when byte_size(Bytes) < PrefixSize ->
+            case is_prefix(Bytes, Prefix) of
+                true -> ok;
+                false -> {error, invalid_cluster_frame}
+            end;
         _ ->
-            %% if we have received something else than "vmq-send" we
-            %% will buffer everything unbounded forever and ever!
-            {ok, NewBuffer}
+            {error, invalid_cluster_frame}
     end.
+
+is_prefix(Bytes, Prefix) ->
+    Size = byte_size(Bytes),
+    <<PrefixPart:Size/binary, _/binary>> = Prefix,
+    Bytes =:= PrefixPart.
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{
@@ -228,6 +280,11 @@ process(<<>>, _) ->
 process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     ?LOG_WARNING("unknown message: ~p", [Cmd]),
     process(Rest, St).
+
+send_connect_ack(#st{socket = {ssl, Socket}}) ->
+    ssl:send(Socket, ?CONNECT_ACK);
+send_connect_ack(#st{socket = Socket}) ->
+    gen_tcp:send(Socket, ?CONNECT_ACK).
 
 to_vmq_msgs(Msgs) ->
     lists:map(
