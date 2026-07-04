@@ -53,6 +53,12 @@ ciphers(Opts) ->
     case psk_support_enabled(Opts) of
         true ->
             [
+                "DHE-PSK-AES256-GCM-SHA384",
+                "DHE-PSK-AES128-GCM-SHA256",
+                "DHE-PSK-CHACHA20-POLY1305",
+                "ECDHE-PSK-CHACHA20-POLY1305",
+                "DHE-PSK-AES256-CBC-SHA",
+                "DHE-PSK-AES128-CBC-SHA",
                 "PSK-AES256-GCM-SHA384",
                 "PSK-AES256-CBC-SHA",
                 "PSK-AES128-GCM-SHA256",
