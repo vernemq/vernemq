@@ -408,11 +408,15 @@ init([
     %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
-    Init = vmq_swc_db:get(Config, default, <<"ISY">>, []),
     Init1 =
-        case Init of
-            not_found -> false;
-            {ok, Res} -> binary_to_term(Res)
+        case application:get_env(vmq_swc, init_sync_procedure, false) of
+            false ->
+                true;
+            true ->
+                case vmq_swc_db:get(Config, default, <<"ISY">>, []) of
+                    not_found -> false;
+                    {ok, Res} -> binary_to_term(Res)
+                end
         end,
     vmq_swc_group_coordinator:group_initialized(Group, Init1),
     IsBroadcastEnabled =
