@@ -21,7 +21,8 @@
     metadata_get/2,
     metadata_delete/2,
     metadata_fold/3,
-    metadata_subscribe/1
+    metadata_subscribe/1,
+    metadata_subscribe/2
 ]).
 
 -export([
@@ -114,3 +115,6 @@ metadata_fold(FullPrefix, Fun, Acc) ->
 
 metadata_subscribe(FullPrefix) ->
     plumtree_metadata_manager:subscribe(FullPrefix).
+
+metadata_subscribe(FullPrefix, _Opts) ->
+    metadata_subscribe(FullPrefix).

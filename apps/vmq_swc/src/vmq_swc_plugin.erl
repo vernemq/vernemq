@@ -22,6 +22,7 @@
     metadata_delete/2,
     metadata_fold/3,
     metadata_subscribe/1,
+    metadata_subscribe/2,
 
     cluster_join/1,
     cluster_leave/1,
@@ -182,6 +183,9 @@ metadata_fold(FullPrefix, Fun, Acc) ->
     ).
 
 metadata_subscribe(FullPrefix) ->
+    metadata_subscribe(FullPrefix, []).
+
+metadata_subscribe(FullPrefix, Opts) ->
     {_, SWCGroups} = ?SWC_GROUPS,
     ConvertFun = fun
         ({deleted, FP, Key, OldValues}) ->
@@ -192,7 +196,7 @@ metadata_subscribe(FullPrefix) ->
     end,
     lists:foreach(
         fun(Group) ->
-            vmq_swc_store:subscribe(vmq_swc:config(Group), FullPrefix, ConvertFun)
+            vmq_swc_store:subscribe(vmq_swc:config(Group), FullPrefix, ConvertFun, Opts)
         end,
         SWCGroups
     ).

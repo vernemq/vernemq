@@ -348,13 +348,15 @@ block_until(SubscriberId, UpdatedSubs, [Node | Rest] = ChangedNodes, BlockCond) 
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
-    case subscriptions_for_subscriber_id(SubscriberId) of
+    CurrentSubs = subscriptions_for_subscriber_id(SubscriberId),
+    case CurrentSubs of
         UpdatedSubs ->
             ok;
         _ ->
             %% in case the subscriptions were resolved elsewhere in the meantime
             %% we'll write 'our' version of the remapped subscriptions
-            vmq_subscriber_db:store(SubscriberId, UpdatedSubs)
+            vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+            sync_reg_view_update(SubscriberId, CurrentSubs, UpdatedSubs)
     end,
 
     case BlockCond(SubscriberId, Node) of
@@ -784,6 +786,7 @@ trigger_migration(
     Subs = subscriptions_for_subscriber_id(SubscriberId),
     UpdatedSubs = vmq_subscriber:change_node(Subs, OldNode, Target, false),
     vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+    sync_reg_view_update(SubscriberId, Subs, UpdatedSubs),
     S1 = S#{
         draining_queues => [Q | DQueues],
         draining_cnt => DCnt + 1,
@@ -866,8 +869,10 @@ replace_dead_queue(SubscriberId, _DeadNodes, _StartClean = true) ->
             %% clients on other nodes to be disconnected (if
             %% allow_multiple_sessions=false) (TODO: formalize this behaviour
             %% in a test-case) and they'll then reconnect.
+            OldSubs = subscriptions_for_subscriber_id(SubscriberId),
             Subs = vmq_subscriber:new(true),
             vmq_subscriber_db:store(SubscriberId, Subs),
+            sync_reg_view_update(SubscriberId, OldSubs, Subs),
             %% no local queue, so we delete the client information.
             del_subscriber(SubscriberId),
             ok;
@@ -894,7 +899,8 @@ replace_dead_queue(SubscriberId, DeadNodes, _StartClean = false) ->
             NewSubs = rewrite_dead_nodes(LocalSubs, DeadNodes, node(), false),
             %% store the updated subs, also to make sure to
             %% propagate the new values to all other nodes.
-            vmq_subscriber_db:store(SubscriberId, NewSubs)
+            vmq_subscriber_db:store(SubscriberId, NewSubs),
+            sync_reg_view_update(SubscriberId, LocalSubs, NewSubs)
     end.
 
 rewrite_dead_nodes(Subs, DeadNodes, TargetNode, CleanSession) ->
@@ -1128,7 +1134,8 @@ add_subscriber(Topics, OldSubs, SubscriberId) ->
         ),
     case vmq_subscriber:add(OldSubs, NewSubs) of
         {NewSubs0, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs0);
+            vmq_subscriber_db:store(SubscriberId, NewSubs0),
+            sync_reg_view_update(SubscriberId, OldSubs, NewSubs0);
         _ ->
             ok
     end.
@@ -1139,17 +1146,24 @@ subscriptions_exist(OldSubs, Topics) ->
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->
-    vmq_subscriber_db:delete(SubscriberId).
+    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
+    vmq_subscriber_db:delete(SubscriberId),
+    sync_reg_view_update(SubscriberId, OldSubs, []).
 
 -spec del_subscriptions([topic()], subscriber_id()) -> ok.
 del_subscriptions(Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     case vmq_subscriber:remove(OldSubs, Topics) of
         {NewSubs, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs);
+            vmq_subscriber_db:store(SubscriberId, NewSubs),
+            sync_reg_view_update(SubscriberId, OldSubs, NewSubs);
         _ ->
             ok
     end.
+
+sync_reg_view_update(SubscriberId, OldSubs, NewSubs) ->
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    vmq_reg_view:update_subscriber(RegView, SubscriberId, OldSubs, NewSubs).
 
 %% the return value is used to inform the caller
 %% if a session was already present for the given
@@ -1159,8 +1173,10 @@ del_subscriptions(Topics, SubscriberId) ->
 maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
+    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Subs = vmq_subscriber:new(true),
     vmq_subscriber_db:store(SubscriberId, Subs),
+    sync_reg_view_update(SubscriberId, OldSubs, Subs),
     {false, Subs, []};
 maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
@@ -1168,11 +1184,13 @@ maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
             %% Store empty Subscriber Data
             Subs = vmq_subscriber:new(false),
             vmq_subscriber_db:store(SubscriberId, Subs),
+            sync_reg_view_update(SubscriberId, [], Subs),
             {false, Subs, []};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
                     vmq_subscriber_db:store(SubscriberId, NewSubs),
+                    sync_reg_view_update(SubscriberId, Subs, NewSubs),
                     {true, NewSubs, ChangedNodes};
                 _ ->
                     {true, Subs, []}

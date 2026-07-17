@@ -57,7 +57,7 @@ fold(FoldFun, Acc) ->
     ).
 
 subscribe_db_events() ->
-    vmq_metadata:subscribe(?SUBSCRIBER_DB),
+    vmq_metadata:subscribe(?SUBSCRIBER_DB, [{skip_local_feedback, true}]),
     fun
         ({deleted, ?SUBSCRIBER_DB, _, Val}) when
             (Val == ?TOMBSTONE) or (Val == undefined)
