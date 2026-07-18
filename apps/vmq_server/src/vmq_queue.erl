@@ -106,7 +106,7 @@
     expiry_timer :: undefined | reference(),
     drain_time,
     drain_over_timer,
-    drain_pending_batch :: undefined | {reference(), reference(), queue:new()},
+    drain_pending_batch :: undefined | {reference(), reference(), queue:queue()},
     max_msgs_per_drain_step,
     waiting_call,
     opts,
