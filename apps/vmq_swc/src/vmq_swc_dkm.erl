@@ -400,10 +400,15 @@ test() ->
     Dot3 = sext:encode({b, 1}),
     insert(DKM, a, 1, <<"hello">>),
     insert(DKM, b, 1, <<"hello">>),
-    [] = prune(DKM, a, 1, []),
+    [] = prune(DKM, watermark(a, 1), [], #{}),
     insert(DKM, a, 2, <<"hello">>),
-    [{?DB_DKM, Dot1, ?DELETED}] = prune(DKM, a, 1, []),
+    [{?DB_DKM, Dot1, ?DELETED}] = prune(DKM, watermark(a, 1), [], #{}),
     mark_for_gc(DKM, <<"hello">>),
-    [] = prune(DKM, a, 1, []),
-    [{?DB_DKM, Dot2, ?DELETED}] = prune(DKM, a, 2, []),
-    [{?DB_DKM, Dot3, ?DELETED}, {?DB_OBJ, hello, ?DELETED}] = prune(DKM, b, 1, []).
+    [] = prune(DKM, watermark(a, 1), [], #{}),
+    [{?DB_DKM, Dot2, ?DELETED}] = prune(DKM, watermark(a, 2), [], #{}),
+    [{?DB_DKM, Dot3, ?DELETED}, {?DB_OBJ, <<"hello">>, ?DELETED}] = prune(
+        DKM, watermark(b, 1), [], #{}
+    ).
+
+watermark(Id, Counter) ->
+    swc_watermark:update_cell(swc_watermark:new(), Id, Id, Counter).

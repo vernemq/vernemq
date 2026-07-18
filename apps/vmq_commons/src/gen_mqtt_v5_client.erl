@@ -150,7 +150,7 @@
     pubrel_queue = #queue{} :: queue(),
     waiting_acks = maps:new() :: map(),
     unacked_msgs = maps:new() :: map(),
-    ping_tref :: timer:ref() | undefined,
+    ping_tref :: reference() | undefined,
     reconnect_timeout,
     keepalive_interval = 60000,
     retry_interval = 10000,
@@ -709,7 +709,7 @@ handle_frame(
                 MessageId, NextAck, NewWaiting
             ]),
             NewKey = {pubrel, MessageId},
-            PubRelFrame = #mqtt5_pubrel{message_id = MessageId},
+            PubRelFrame = #mqtt5_pubrel{message_id = MessageId, reason_code = ?M5_SUCCESS},
             {NewPubrelQQ, NewPubrelWaiting} = queue_pubrel(PubRelFrame, PubRelQQ, PubRelWaiting),
             NewPubrelQ = PubRelQ#queue{
                 out_waiting = NewPubrelWaiting,
@@ -918,7 +918,7 @@ send_connect(
         password = Password,
         clean_start = CleanSession,
         keep_alive = Int,
-        client_id = ClientId,
+        client_id = iolist_to_binary(ClientId),
         lwt = undefined,
         properties = #{p_session_expiry_interval => 120}
     },
@@ -960,7 +960,7 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, Prop, State) ->
     end.
 
 send_disconnect(Transport, Sock) ->
-    send_frame(Transport, Sock, #mqtt5_disconnect{}).
+    send_frame(Transport, Sock, #mqtt5_disconnect{reason_code = ?M5_NORMAL_DISCONNECT}).
 
 send_ping(Transport, Sock) ->
     send_frame(Transport, Sock, #mqtt5_pingreq{}).

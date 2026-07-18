@@ -86,10 +86,10 @@ maybe_update_nodetool() ->
             ]),
             case escript:extract(Nodetool, []) of
                 {ok, [Shebang, Comment, _, Source]} ->
-                    {ok, UpdatedScriptBin} =
-                        escript:create(binary, [
-                            Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
-                        ]),
+                    {ok, UpdatedScriptBin} = erlang:apply(escript, create, [
+                        binary,
+                        [Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source]
+                    ]),
                     try file:write_file(Nodetool, UpdatedScriptBin) of
                         ok -> ok
                     catch
