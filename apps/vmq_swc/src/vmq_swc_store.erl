@@ -177,8 +177,8 @@ fold_values(Config, Fun, Acc, FullPrefix) ->
         ) -> any()
     )
 ) -> ok.
-subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun) ->
-    subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun, []).
+subscribe(#swc_config{} = Config, FullPrefix, ConvertFun) ->
+    subscribe(Config, FullPrefix, ConvertFun, []).
 
 -spec subscribe(
     config(),
