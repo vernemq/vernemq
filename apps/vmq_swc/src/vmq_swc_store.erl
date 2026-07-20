@@ -203,7 +203,8 @@ subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun, Opts) ->
         _ ->
             Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200),
             case Res of
-                ok -> ok;
+                ok ->
+                    ok;
                 _ ->
                     catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
                     ok
@@ -223,7 +224,8 @@ retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N) ->
         _ ->
             Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200),
             case Res of
-                ok -> ok;
+                ok ->
+                    ok;
                 _ ->
                     catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
                     ok
@@ -424,11 +426,15 @@ init([
     %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
-    Init = vmq_swc_db:get(Config, default, <<"ISY">>, []),
     Init1 =
-        case Init of
-            not_found -> false;
-            {ok, Res} -> binary_to_term(Res)
+        case application:get_env(vmq_swc, init_sync_procedure, false) of
+            false ->
+                true;
+            true ->
+                case vmq_swc_db:get(Config, default, <<"ISY">>, []) of
+                    not_found -> false;
+                    {ok, Res} -> binary_to_term(Res)
+                end
         end,
     vmq_swc_group_coordinator:group_initialized(Group, Init1),
     IsBroadcastEnabled =
@@ -1150,7 +1156,8 @@ skip_local_feedback(OriginPid, Opts) ->
 
 safe_deliver_event(Pid, ConvertFun, Event) ->
     try
-        Pid ! ConvertFun(Event) %% so that ConvertFun does not crash the store
+        %% so that ConvertFun does not crash the store
+        Pid ! ConvertFun(Event)
     catch
         Class:Reason:Stack ->
             ?LOG_WARNING(
@@ -1224,6 +1231,10 @@ restore_subscriptions(StoreName, State0) ->
 
 upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, #state{config = #swc_config{store = StoreName}} = State0) ->
     subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
+upsert_subscription(
+    FullPrefix, Pid, ConvertFun, #state{config = #swc_config{store = StoreName}} = State0
+) ->
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
     Subs0 = State0#state.subscriptions,
     PrefixMap0 = maps:get(FullPrefix, Subs0, #{}),
     PrefixMap1 = maps:put(Pid, {ConvertFun, Opts}, PrefixMap0),

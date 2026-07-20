@@ -20,6 +20,8 @@
     is_past/1
 ]).
 
+-export_type([timestamp/0]).
+
 -type timestamp() :: non_neg_integer().
 -type duration() :: non_neg_integer().
 

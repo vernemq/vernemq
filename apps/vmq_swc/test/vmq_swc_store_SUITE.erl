@@ -37,6 +37,15 @@ end_per_group(_Group, _Config) ->
 
 init_per_testcase(basic_store_test, Config) ->
     application:load(vmq_swc),
+    application:set_env(vmq_swc, init_sync_procedure, false),
+    application:set_env(vmq_swc, db_backend, proplists:get_value(db_backend, Config)),
+    application:set_env(vmq_swc, dkm_backend, proplists:get_value(dkm_backend, Config)),
+    application:set_env(vmq_swc, dkm_dir, proplists:get_value(dkm_dir, Config)),
+    ok = vmq_swc_plugin:plugin_start([basic]),
+    Config;
+init_per_testcase(init_sync_procedure_on_test, Config) ->
+    application:load(vmq_swc),
+    application:set_env(vmq_swc, init_sync_procedure, true),
     application:set_env(vmq_swc, db_backend, proplists:get_value(db_backend, Config)),
     application:set_env(vmq_swc, dkm_backend, proplists:get_value(dkm_backend, Config)),
     application:set_env(vmq_swc, dkm_dir, proplists:get_value(dkm_dir, Config)),
@@ -45,6 +54,8 @@ init_per_testcase(basic_store_test, Config) ->
 init_per_testcase(store_restart_test, Config) ->
     init_per_testcase(basic_store_test, Config);
 init_per_testcase(bad_convertfun_test, Config) ->
+    init_per_testcase(basic_store_test, Config);
+init_per_testcase(init_sync_procedure_off_test, Config) ->
     init_per_testcase(basic_store_test, Config);
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, {1000, 500}},{auto_gc, true}|Config0], % afa: why did we set sync_interval to 0 before?
@@ -70,6 +81,12 @@ end_per_testcase(store_restart_test, _Config) ->
     application:stop(vmq_swc);
 end_per_testcase(bad_convertfun_test, _Config) ->
     application:stop(vmq_swc);
+end_per_testcase(init_sync_procedure_off_test, _Config) ->
+    application:stop(vmq_swc),
+    application:unset_env(vmq_swc, init_sync_procedure);
+end_per_testcase(init_sync_procedure_on_test, _Config) ->
+    application:stop(vmq_swc),
+    application:unset_env(vmq_swc, init_sync_procedure);
 end_per_testcase(_, Config) ->
     PeerNodes = proplists:get_value(peer_nodes, Config),
     vmq_swc_test_utils:pmap(fun({Peer, Node}) -> vmq_swc_test_utils:stop_peer(Peer, Node) end,
@@ -85,6 +102,8 @@ all() ->
 
 groups() ->
     AllTests = [basic_store_test,
+                init_sync_procedure_off_test,
+                init_sync_procedure_on_test,
                 store_restart_test,
                 bad_convertfun_test,
                 read_write_delete_test,
@@ -119,7 +138,15 @@ basic_store_test(_Config) ->
       fun(P) ->
               KVsForPrefix = vmq_swc:fold(basic, fun(K,V, Acc) -> [{K, V}|Acc] end, [], P, []),
               ?assertEqual(KVsForPrefix, maps:get(P, KVPairsByPrefix))
-       end, Prefixes).
+        end, Prefixes).
+
+init_sync_procedure_off_test(_Config) ->
+    Config = vmq_swc:config(basic),
+    ?assertEqual(true, vmq_swc_store:get_init_sync(Config)).
+
+init_sync_procedure_on_test(_Config) ->
+    Config = vmq_swc:config(basic),
+    ?assertEqual(false, vmq_swc_store:get_init_sync(Config)).
 
 store_restart_test(_Config) ->
     Group = basic,

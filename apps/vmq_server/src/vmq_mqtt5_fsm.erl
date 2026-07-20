@@ -67,7 +67,7 @@
         undefined
         | username()
         | {preauth, string() | undefined},
-    conn_opts :: map(),
+    conn_opts :: undefined | map(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     clean_start = false :: flag(),

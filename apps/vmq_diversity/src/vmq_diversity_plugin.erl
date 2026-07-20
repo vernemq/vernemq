@@ -778,7 +778,9 @@ modifier_compat(auth_on_subscribe_m5, Mods) ->
 modifier_compat(auth_on_publish_m5, Mods) ->
     maps:from_list(Mods).
 
-merge_user_property_modifier(InputProps, {ok, #{properties := ModProps} = Mods}) when is_map(ModProps) ->
+merge_user_property_modifier(InputProps, {ok, #{properties := ModProps} = Mods}) when
+    is_map(ModProps)
+->
     case maps:find(?P_USER_PROPERTY, ModProps) of
         {ok, ModUserProps} when is_list(ModUserProps) ->
             InputUserProps = maps:get(?P_USER_PROPERTY, InputProps, []),
