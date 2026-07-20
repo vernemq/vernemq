@@ -201,12 +201,17 @@ subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun, Opts) ->
             _ = spawn(fun() -> retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts) end),
             ok;
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
@@ -222,12 +227,17 @@ retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N) ->
             timer:sleep(50),
             retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N - 1);
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
@@ -1117,8 +1127,10 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginP
                 ok;
             (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == deleted ->
                 case skip_local_feedback(OriginPid, Opts) of
-                    true -> ok;
-                    false -> safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues})
+                    true ->
+                        ok;
+                    false ->
+                        safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues})
                 end;
             (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == updated ->
                 case skip_local_feedback(OriginPid, Opts) of
@@ -1212,16 +1224,17 @@ restore_subscriptions(StoreName, State0) ->
     Entries = subs_reg_match_store(StoreName),
     {Reg1, Dead} =
         lists:foldl(
-            fun
-                ({{_Store, FullPrefix, Pid}, Subscription}, {Acc, DeadAcc}) ->
-                    case is_process_alive(Pid) of
-                        true ->
-                            PrefixMap0 = maps:get(FullPrefix, Acc, #{}),
-                            PrefixMap1 = maps:put(Pid, normalize_subscription(Subscription), PrefixMap0),
-                            {maps:put(FullPrefix, PrefixMap1, Acc), DeadAcc};
-                        false ->
-                            {Acc, [{FullPrefix, Pid} | DeadAcc]}
-                    end
+            fun({{_Store, FullPrefix, Pid}, Subscription}, {Acc, DeadAcc}) ->
+                case is_process_alive(Pid) of
+                    true ->
+                        PrefixMap0 = maps:get(FullPrefix, Acc, #{}),
+                        PrefixMap1 = maps:put(
+                            Pid, normalize_subscription(Subscription), PrefixMap0
+                        ),
+                        {maps:put(FullPrefix, PrefixMap1, Acc), DeadAcc};
+                    false ->
+                        {Acc, [{FullPrefix, Pid} | DeadAcc]}
+                end
             end,
             {#{}, []},
             Entries
@@ -1229,12 +1242,10 @@ restore_subscriptions(StoreName, State0) ->
     lists:foreach(fun({FullPrefix, Pid}) -> subs_reg_delete(StoreName, FullPrefix, Pid) end, Dead),
     State0#state{subscriptions = Reg1}.
 
-upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, #state{config = #swc_config{store = StoreName}} = State0) ->
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
 upsert_subscription(
-    FullPrefix, Pid, ConvertFun, #state{config = #swc_config{store = StoreName}} = State0
+    FullPrefix, Pid, ConvertFun, Opts, #state{config = #swc_config{store = StoreName}} = State0
 ) ->
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
     Subs0 = State0#state.subscriptions,
     PrefixMap0 = maps:get(FullPrefix, Subs0, #{}),
     PrefixMap1 = maps:put(Pid, {ConvertFun, Opts}, PrefixMap0),
