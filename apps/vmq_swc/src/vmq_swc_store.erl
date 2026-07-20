@@ -27,6 +27,7 @@
     read/2,
     fold_values/4,
     subscribe/3,
+    subscribe/4,
     dump/1,
 
     process_batch/2,
@@ -110,6 +111,7 @@
 %-define(DBG_OP(Str, Format), io:format(Str, Format)).
 -define(DBG_OP(_Str, _Format), ok).
 -define(RETAIN_DB, {vmq, retain}).
+-define(SUBSCRIBER_DB, {vmq, subscriber}).
 
 start_link(#swc_config{store = StoreName} = Config) ->
     gen_server:start_link({local, StoreName}, ?MODULE, [Config], []).
@@ -175,43 +177,67 @@ fold_values(Config, Fun, Acc, FullPrefix) ->
         ) -> any()
     )
 ) -> ok.
-subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun) ->
+subscribe(#swc_config{} = Config, FullPrefix, ConvertFun) ->
+    subscribe(Config, FullPrefix, ConvertFun, []).
+
+-spec subscribe(
+    config(),
+    key_prefix(),
+    fun(
+        (
+            {updated, key_prefix(), key_suffix(), [value()], [value()]}
+            | {deleted, key_prefix(), key_suffix(), [value()]}
+        ) -> any()
+    ),
+    list()
+) -> ok.
+subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun, Opts) ->
     Pid = self(),
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
     case whereis(StoreName) of
         undefined ->
             %% Store isn't running yet, need to retry.
-            catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
-            _ = spawn(fun() -> retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid) end),
+            catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
+            _ = spawn(fun() -> retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts) end),
             ok;
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
 
-retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid) ->
-    retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, 40).
+retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts) ->
+    retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, 40).
 
-retry_subscribe(_StoreName, _FullPrefix, _ConvertFun, _Pid, 0) ->
+retry_subscribe(_StoreName, _FullPrefix, _ConvertFun, _Pid, _Opts, 0) ->
     ok;
-retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, N) ->
+retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N) ->
     case whereis(StoreName) of
         undefined ->
             timer:sleep(50),
-            retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, N - 1);
+            retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N - 1);
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
@@ -539,7 +565,10 @@ handle_call(
     r_o_w_cache_clear(Config),
     {reply, ok, cache_node_clock(State1)};
 handle_call({subscribe, FullPrefix, ConvertFun, Pid}, _From, State0) ->
-    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, State0),
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, [], State0),
+    {reply, ok, State1};
+handle_call({subscribe, FullPrefix, ConvertFun, Pid, Opts}, _From, State0) ->
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, State0),
     {reply, ok, State1};
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
     {Peer, _Actor} = Id,
@@ -810,7 +839,10 @@ handle_cast(init_dkm, #state{config = Config} = State) ->
     DKM = init_dotkeymap(Config),
     {noreply, State#state{dotkeymap = DKM}};
 handle_cast({subscribe, FullPrefix, ConvertFun, Pid}, State0) ->
-    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, State0),
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, [], State0),
+    {noreply, State1};
+handle_cast({subscribe, FullPrefix, ConvertFun, Pid, Opts}, State0) ->
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, State0),
     {noreply, State1};
 handle_cast(Request, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
@@ -1093,6 +1125,32 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginP
                 %% RETAIN_DB is already up-to-date. In this case we must skip the feedback notification event
                 %% to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates)
                 ok;
+            (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == deleted ->
+                case skip_local_feedback(OriginPid, Opts) of
+                    true ->
+                        ok;
+                    false ->
+                        safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues})
+                end;
+            (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == updated ->
+                case skip_local_feedback(OriginPid, Opts) of
+                    true ->
+                        ok;
+                    false ->
+                        safe_deliver_event(
+                            Pid,
+                            ConvertFun,
+                            {updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)}
+                        )
+                end;
+            (Pid, {ConvertFun, _Opts}) when Type == deleted ->
+                safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues});
+            (Pid, {ConvertFun, _Opts}) when Type == updated ->
+                safe_deliver_event(
+                    Pid,
+                    ConvertFun,
+                    {updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)}
+                );
             (Pid, ConvertFun) when Type == deleted ->
                 safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues});
             (Pid, ConvertFun) when Type == updated ->
@@ -1104,6 +1162,9 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginP
         end,
         SubsForPrefix
     ).
+
+skip_local_feedback(OriginPid, Opts) ->
+    OriginPid =/= nil andalso proplists:get_value(skip_local_feedback, Opts, false) == true.
 
 safe_deliver_event(Pid, ConvertFun, Event) ->
     try
@@ -1123,9 +1184,9 @@ safe_deliver_event(Pid, ConvertFun, Event) ->
 subs_reg_key(StoreName, FullPrefix, Pid) ->
     {StoreName, FullPrefix, Pid}.
 
-subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun) ->
+subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts) ->
     try
-        ets:insert(?SUBS_REGISTRY, {subs_reg_key(StoreName, FullPrefix, Pid), ConvertFun})
+        ets:insert(?SUBS_REGISTRY, {subs_reg_key(StoreName, FullPrefix, Pid), {ConvertFun, Opts}})
     catch
         Class:Reason ->
             ?LOG_WARNING(
@@ -1163,11 +1224,13 @@ restore_subscriptions(StoreName, State0) ->
     Entries = subs_reg_match_store(StoreName),
     {Reg1, Dead} =
         lists:foldl(
-            fun({{_Store, FullPrefix, Pid}, ConvertFun}, {Acc, DeadAcc}) ->
+            fun({{_Store, FullPrefix, Pid}, Subscription}, {Acc, DeadAcc}) ->
                 case is_process_alive(Pid) of
                     true ->
                         PrefixMap0 = maps:get(FullPrefix, Acc, #{}),
-                        PrefixMap1 = maps:put(Pid, ConvertFun, PrefixMap0),
+                        PrefixMap1 = maps:put(
+                            Pid, normalize_subscription(Subscription), PrefixMap0
+                        ),
                         {maps:put(FullPrefix, PrefixMap1, Acc), DeadAcc};
                     false ->
                         {Acc, [{FullPrefix, Pid} | DeadAcc]}
@@ -1180,14 +1243,19 @@ restore_subscriptions(StoreName, State0) ->
     State0#state{subscriptions = Reg1}.
 
 upsert_subscription(
-    FullPrefix, Pid, ConvertFun, #state{config = #swc_config{store = StoreName}} = State0
+    FullPrefix, Pid, ConvertFun, Opts, #state{config = #swc_config{store = StoreName}} = State0
 ) ->
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
     Subs0 = State0#state.subscriptions,
     PrefixMap0 = maps:get(FullPrefix, Subs0, #{}),
-    PrefixMap1 = maps:put(Pid, ConvertFun, PrefixMap0),
+    PrefixMap1 = maps:put(Pid, {ConvertFun, Opts}, PrefixMap0),
     Subs1 = maps:put(FullPrefix, PrefixMap1, Subs0),
     State0#state{subscriptions = Subs1}.
+
+normalize_subscription({ConvertFun, Opts}) when is_function(ConvertFun), is_list(Opts) ->
+    {ConvertFun, Opts};
+normalize_subscription(ConvertFun) when is_function(ConvertFun) ->
+    {ConvertFun, []}.
 
 process_write_op(
     OriginPid,

@@ -27,6 +27,7 @@
 -export([
     start_link/0,
     fold/4,
+    update_subscriber/3,
     stats/0
 ]).
 
@@ -82,6 +83,19 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
         ],
         []
     ).
+
+update_subscriber(SubscriberId, OldSubs, NewSubs) ->
+    wait_until_ready(),
+    gen_server:call(?MODULE, {update_subscriber, SubscriberId, OldSubs, NewSubs}, 60000).
+
+wait_until_ready() ->
+    case persistent_term:get(subscribe_trie_ready, 0) of
+        1 ->
+            ok;
+        0 ->
+            timer:sleep(10),
+            wait_until_ready()
+    end.
 
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {Node, Group}} | MatchedTopics], Remotes) ->
     fold_(
@@ -211,6 +225,9 @@ handle_call({event, Event}, _From, #state{event_handler = Handler} = State) ->
     %% used only for testing/microbenchmarking
     handle_event(Handler, Event),
     {reply, ok, State};
+handle_call({update_subscriber, SubscriberId, OldSubs, NewSubs}, _From, State) ->
+    update_subscriber_(SubscriberId, OldSubs, NewSubs),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -305,13 +322,22 @@ handle_event(Handler, Event) ->
             ok
     end.
 
+update_subscriber_(SubscriberId, OldSubs, NewSubs) ->
+    {ToRemove, ToAdd} = vmq_subscriber:get_changes(one_pass_ordered, OldSubs, NewSubs),
+    vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
+    vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd).
+
 handle_add_event({[<<"$share">>, Group | Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
-    add_complex_topic(MP, Topic, {Node, Group}, true),
-    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
+    case add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo) of
+        true -> add_complex_topic(MP, Topic, {Node, Group}, true);
+        false -> ok
+    end,
     SubscriberId;
 handle_add_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    add_subscriber(MP, Topic, SubscriberId, SubInfo),
+    case add_subscriber(MP, Topic, SubscriberId, SubInfo) of
+        true -> add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic));
+        false -> ok
+    end,
     SubscriberId;
 handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
@@ -319,12 +345,16 @@ handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     SubscriberId.
 
 handle_delete_event({[<<"$share">>, Group | Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
-    del_complex_topic(MP, Topic, {Node, Group}, true),
-    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
+    case del_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo) of
+        true -> del_complex_topic(MP, Topic, {Node, Group}, true);
+        false -> ok
+    end,
     SubscriberId;
 handle_delete_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    del_subscriber(MP, Topic, SubscriberId, SubInfo),
+    case del_subscriber(MP, Topic, SubscriberId, SubInfo) of
+        true -> del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic));
+        false -> ok
+    end,
     SubscriberId;
 handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
@@ -529,18 +559,26 @@ insert_trie_subs(Key, Val) ->
     E = {Key, Val},
     case ets:lookup(vmq_ordered_tree_subs, Key) of
         [] ->
-            ets:insert(vmq_ordered_tree_subs, E);
+            ets:insert(vmq_ordered_tree_subs, E),
+            true;
         [E] ->
             %% duplicate - do nothing;
-            true;
+            false;
         [{Key, fanout}] ->
-            ets:insert(vmq_ordered_subs_fanout, {E});
+            case ets:member(vmq_ordered_subs_fanout, {Key, Val}) of
+                true ->
+                    false;
+                false ->
+                    ets:insert(vmq_ordered_subs_fanout, {E}),
+                    true
+            end;
         [E1] ->
             %% fanout - move to fanout table
             ets:delete(vmq_ordered_tree_subs, Key),
             ets:insert(vmq_ordered_tree_subs, {Key, fanout}),
             ets:insert(vmq_ordered_subs_fanout, {E}),
-            ets:insert(vmq_ordered_subs_fanout, {E1})
+            ets:insert(vmq_ordered_subs_fanout, {E1}),
+            true
     end.
 
 del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
@@ -552,26 +590,34 @@ del_trie_subs(Key, Val) ->
     case ets:lookup(vmq_ordered_tree_subs, Key) of
         [] ->
             %% do nothing
-            true;
+            false;
         [{Key, fanout}] ->
-            %% we optimistically delete the entry from the fanout table
-            ets:delete(vmq_ordered_subs_fanout, {Key, Val}),
+            case ets:member(vmq_ordered_subs_fanout, {Key, Val}) of
+                false ->
+                    false;
+                true ->
+                    ets:delete(vmq_ordered_subs_fanout, {Key, Val}),
 
-            %% select to retrieve max 2 results to determine if we
-            %% need to move back to the normal table.
-            MS = [{{{Key, '$1'}}, [], [{{{Key}, '$1'}}]}],
-            case ets:select(vmq_ordered_subs_fanout, MS, 2) of
-                {[E], _Continuation} ->
-                    %% last element in the fanout, move to normal table
-                    ets:delete(vmq_ordered_subs_fanout, E),
-                    ets:delete_object(vmq_ordered_tree_subs, {Key, fanout}),
-                    ets:insert(vmq_ordered_tree_subs, E);
-                {[_, _], _Continuation} ->
-                    %% not last element, do nothing
+                    %% select to retrieve max 2 results to determine if we
+                    %% need to move back to the normal table.
+                    MS = [{{{Key, '$1'}}, [], [{{{Key}, '$1'}}]}],
+                    case ets:select(vmq_ordered_subs_fanout, MS, 2) of
+                        {[E], _Continuation} ->
+                            %% last element in the fanout, move to normal table
+                            ets:delete(vmq_ordered_subs_fanout, E),
+                            ets:delete_object(vmq_ordered_tree_subs, {Key, fanout}),
+                            ets:insert(vmq_ordered_tree_subs, E);
+                        {[_, _], _Continuation} ->
+                            %% not last element, do nothing
+                            true
+                    end,
                     true
             end;
+        [{Key, Val}] ->
+            ets:delete(vmq_ordered_tree_subs, Key),
+            true;
         [{Key, _}] ->
-            ets:delete(vmq_ordered_tree_subs, Key)
+            false
     end.
 
 add_subscriber(MP, Topic, SubscriberId, QoS) ->
