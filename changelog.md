@@ -1,6 +1,7 @@
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
+- New feature: Cluster auto-balance (Layer 1). Monitors connection distribution across cluster nodes and exposes an HTTP readiness endpoint (`GET /api/balance-health`) that returns 503 when a node has more connections than the cluster average by a configurable threshold. Designed for use as a Kubernetes readiness probe or NLB health check to steer new connections away from overloaded nodes. Disabled by default (`balance_enabled = off`). New config settings: `balance_enabled`, `balance_threshold` (must be a decimal >= 1.0), `balance_hysteresis` (must be a non-negative decimal), `balance_min_connections` (non-negative integer), `balance_check_interval` (integer >= 100ms). Invalid values are rejected at boot. The HTTP response body includes `status`, `enabled`, `connections`, and `cluster_avg` (full-precision float). New Prometheus metrics: `balance_is_accepting`, `balance_local_connections`, `balance_cluster_avg` (rounded to integer for the Prometheus surface), `balance_is_enabled`.
 
 ## VerneMQ 2.1.3 RC1
 

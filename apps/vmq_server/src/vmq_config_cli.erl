@@ -66,7 +66,13 @@ register_config_() ->
             "mqtt_connect_timeout",
             "cluster_ready_rpc_timeout",
             "disconnect_on_unauthorized_publish_v3",
-            "subscriber_retain_mode"
+            "subscriber_retain_mode",
+            "balance_enabled",
+            "balance_threshold",
+            "balance_hysteresis",
+            "balance_min_connections",
+            "balance_check_interval",
+            "balance_min_visible_nodes"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)

@@ -341,7 +341,7 @@
 %% @doc specifies the modules to be enabled by the http(s) listeners. Overriding this setting is possible for specific listeners.
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http,
-                                                                vmq_http_v2_api]"},
+                                                                vmq_http_v2_api, vmq_balance_http]"},
                                                       {datatype, string},
                                                       hidden
                                                      ]}.
@@ -393,7 +393,7 @@
   fun(Conf) ->
      HTTPModules = cuttlefish_variable:filter_by_prefix("http_module",Conf),
      HTTPModulesAsAtom = lists:map(fun(Element) -> list_to_atom(lists:nth(2,element(1, Element))) end, HTTPModules),
-     KnownHttpModules = [vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http, vmq_http_v2_api, vmq_http_pub, vmq_web_ui],
+     KnownHttpModules = [vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http, vmq_http_v2_api, vmq_http_pub, vmq_web_ui, vmq_balance_http],
      UniqueModules = lists:usort(HTTPModulesAsAtom ++ KnownHttpModules),
      Map = lists:map(fun(Atom) -> String = "http_module."++atom_to_list(Atom)++".auth.mode", #{Atom => cuttlefish:conf_get(String, Conf, "noauth")} end, UniqueModules),
      Ret = maps:from_list(lists:foldl(fun(Elem, Acc) -> maps:to_list(Elem) ++ Acc end, [], Map)),
@@ -2354,3 +2354,91 @@
                                                              {commented, 0},
                                                              {datatype, integer}
                                                             ]}.
+
+%% @doc Enable cluster auto-balancing. When enabled, VerneMQ monitors
+%% connection distribution across cluster nodes and can reject new
+%% connections on overloaded nodes via the /api/balance-health HTTP endpoint.
+%% Default is off - no behavioral change for existing deployments.
+{mapping, "balance_enabled", "vmq_server.balance_enabled", [
+    {default, off},
+    {datatype, flag}
+]}.
+
+%% @doc Threshold above cluster average before rejecting new connections.
+%% A value of 1.2 means a node will stop accepting when it has 20% more
+%% connections than the cluster average. Specified as a string to support
+%% decimal values (e.g. "1.2"). Must be >= 1.0.
+{mapping, "balance_threshold", "vmq_server.balance_threshold", [
+    {default, "1.2"},
+    {datatype, string},
+    {validators, ["balance-decimal-gte-1"]}
+]}.
+
+%% @doc Hysteresis to prevent readiness flapping. Node re-accepts when
+%% connections drop below avg * (threshold - hysteresis). Specified as
+%% a string to support decimal values (e.g. "0.1"). Must be >= 0.
+{mapping, "balance_hysteresis", "vmq_server.balance_hysteresis", [
+    {default, "0.1"},
+    {datatype, string},
+    {validators, ["balance-decimal-non-negative"]}
+]}.
+
+%% @doc Minimum total cluster connections before balancing activates.
+%% Below this, all nodes accept regardless of distribution.
+{mapping, "balance_min_connections", "vmq_server.balance_min_connections", [
+    {default, 100},
+    {datatype, integer},
+    {validators, ["non-negative-integer"]}
+]}.
+
+%% @doc Interval in milliseconds between balance checks. Minimum 100ms to
+%% prevent excessive cross-cluster RPC traffic.
+{mapping, "balance_check_interval", "vmq_server.balance_check_interval", [
+    {default, 5000},
+    {datatype, integer},
+    {validators, ["balance-min-interval-ms"]}
+]}.
+
+%% @doc Optional tightening knob: minimum number of cluster-ready nodes this
+%% node must see (including itself, via RPC) before it will consider rejecting.
+%% Default 1 is a no-op (equivalent to "always make a decision if at least one
+%% peer is visible"). Raise this to 2 or more in flaky-network setups to
+%% require corroboration before flipping the readiness signal. Not a quorum
+%% requirement - below the threshold, the node simply fails open (accepts).
+{mapping, "balance_min_visible_nodes", "vmq_server.balance_min_visible_nodes", [
+    {default, 1},
+    {datatype, integer},
+    {validators, ["positive-integer"]},
+    hidden
+]}.
+
+{validator, "positive-integer", "must be a positive integer",
+ fun(Integer) ->
+         Integer > 0
+ end}.
+
+{validator, "non-negative-integer", "must be a non-negative integer",
+ fun(Integer) -> is_integer(Integer) andalso Integer >= 0 end}.
+
+{validator, "balance-min-interval-ms", "must be an integer >= 100",
+ fun(I) -> is_integer(I) andalso I >= 100 end}.
+
+{validator, "balance-decimal-gte-1", "must be a decimal >= 1.0 (e.g. \"1.2\")",
+ fun(Val) when is_list(Val) ->
+         try list_to_float(Val) >= 1.0
+         catch _:_ ->
+             try float(list_to_integer(Val)) >= 1.0
+             catch _:_ -> false end
+         end;
+    (_) -> false
+ end}.
+
+{validator, "balance-decimal-non-negative", "must be a non-negative decimal (e.g. \"0.1\")",
+ fun(Val) when is_list(Val) ->
+         try list_to_float(Val) >= 0.0
+         catch _:_ ->
+             try float(list_to_integer(Val)) >= 0.0
+             catch _:_ -> false end
+         end;
+    (_) -> false
+ end}.
