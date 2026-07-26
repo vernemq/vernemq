@@ -85,17 +85,7 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
     ).
 
 update_subscriber(SubscriberId, OldSubs, NewSubs) ->
-    wait_until_ready(),
     gen_server:call(?MODULE, {update_subscriber, SubscriberId, OldSubs, NewSubs}, 60000).
-
-wait_until_ready() ->
-    case persistent_term:get(subscribe_trie_ready, 0) of
-        1 ->
-            ok;
-        0 ->
-            timer:sleep(10),
-            wait_until_ready()
-    end.
 
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {Node, Group}} | MatchedTopics], Remotes) ->
     fold_(
@@ -204,7 +194,7 @@ init([]) ->
             Self ! subscribers_loaded
         end
     ),
-    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    EventHandler = vmq_reg:subscribe_subscriber_changes([{skip_local_feedback, true}]),
     {ok, #state{event_handler = EventHandler}}.
 
 %%--------------------------------------------------------------------
@@ -225,6 +215,10 @@ handle_call({event, Event}, _From, #state{event_handler = Handler} = State) ->
     %% used only for testing/microbenchmarking
     handle_event(Handler, Event),
     {reply, ok, State};
+handle_call(
+    {update_subscriber, _, _, _} = Update, _From, #state{status = init, event_queue = Q} = State
+) ->
+    {reply, ok, State#state{event_queue = queue:in(Update, Q)}};
 handle_call({update_subscriber, SubscriberId, OldSubs, NewSubs}, _From, State) ->
     update_subscriber_(SubscriberId, OldSubs, NewSubs),
     {reply, ok, State};
@@ -263,14 +257,14 @@ handle_info(
     } = State
 ) ->
     lists:foreach(
-        fun(Event) ->
-            handle_event(Handler, Event)
+        fun(QueuedEvent) ->
+            handle_queued_event(Handler, QueuedEvent)
         end,
         queue:to_list(Q)
     ),
     NrOfSubscribers = ets:info(vmq_ordered_tree_subs, size),
     NrOfRemoteSubscribers = ets:info(vmq_trie_remote_subs, size),
-    persistent_term:put(subscribe_trie_ready, 1),
+    persistent_term:put({subscribe_trie_ready, ?MODULE}, 1),
     ?LOG_INFO("loaded ~p local subscriptions and ~p remote subscriptions into ~p", [
         NrOfSubscribers, NrOfRemoteSubscribers, ?MODULE
     ]),
@@ -321,6 +315,11 @@ handle_event(Handler, Event) ->
         ignore ->
             ok
     end.
+
+handle_queued_event(_Handler, {update_subscriber, SubscriberId, OldSubs, NewSubs}) ->
+    update_subscriber_(SubscriberId, OldSubs, NewSubs);
+handle_queued_event(Handler, Event) ->
+    handle_event(Handler, Event).
 
 update_subscriber_(SubscriberId, OldSubs, NewSubs) ->
     {ToRemove, ToAdd} = vmq_subscriber:get_changes(one_pass_ordered, OldSubs, NewSubs),

@@ -56,6 +56,8 @@
 %% used by reg views
 -export([
     subscribe_subscriber_changes/0,
+    subscribe_subscriber_changes/1,
+    sync_reg_view_update/3,
     fold_subscriptions/2,
     fold_subscribers/2
 ]).
@@ -1089,6 +1091,9 @@ direct_plugin_exports(LogName, Opts) ->
 subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().
 
+subscribe_subscriber_changes(Opts) ->
+    vmq_subscriber_db:subscribe_db_events(Opts).
+
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
         fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
@@ -1163,7 +1168,13 @@ del_subscriptions(Topics, SubscriberId) ->
 
 sync_reg_view_update(SubscriberId, OldSubs, NewSubs) ->
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    vmq_reg_view:update_subscriber(RegView, SubscriberId, OldSubs, NewSubs).
+    try vmq_reg_view:update_subscriber(RegView, SubscriberId, OldSubs, NewSubs) of
+        ok -> ok;
+        {error, not_ready} -> ok
+    catch
+        exit:{noproc, _} -> ok;
+        exit:{normal, _} -> ok
+    end.
 
 %% the return value is used to inform the caller
 %% if a session was already present for the given
@@ -1263,7 +1274,8 @@ retain_pre(FutureRetain) when
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
-    case persistent_term:get(subscribe_trie_ready, 0) of
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    case persistent_term:get({subscribe_trie_ready, RegView}, 0) of
         1 ->
             apply(Fun, Args);
         0 ->

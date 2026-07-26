@@ -21,7 +21,8 @@
     read/1, read/2,
     fold/2,
     delete/1,
-    subscribe_db_events/0
+    subscribe_db_events/0,
+    subscribe_db_events/1
 ]).
 
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
@@ -57,7 +58,10 @@ fold(FoldFun, Acc) ->
     ).
 
 subscribe_db_events() ->
-    vmq_metadata:subscribe(?SUBSCRIBER_DB, [{skip_local_feedback, true}]),
+    subscribe_db_events([]).
+
+subscribe_db_events(Opts) ->
+    vmq_metadata:subscribe(?SUBSCRIBER_DB, Opts),
     fun
         ({deleted, ?SUBSCRIBER_DB, _, Val}) when
             (Val == ?TOMBSTONE) or (Val == undefined)
