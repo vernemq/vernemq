@@ -880,7 +880,7 @@ handle_session_down(
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, false)};
+                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, true)};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->

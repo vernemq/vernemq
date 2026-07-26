@@ -24,6 +24,7 @@
          queue_offline_online_transition_test_std/1,
          queue_offline_online_transition_test_ignore_max/1,
          queue_offline_online_transition_test_ignore_max_lifo/1,
+         queue_online_takeover_keeps_extended_queue_size_test/1,
          queue_persistent_client_expiration_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1]).
@@ -62,6 +63,7 @@ all() ->
      queue_offline_online_transition_test_std,
      queue_offline_online_transition_test_ignore_max,
      queue_offline_online_transition_test_ignore_max_lifo,
+     queue_online_takeover_keeps_extended_queue_size_test,
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
@@ -306,6 +308,55 @@ queue_offline_online_transition_test_ignore_max_lifo(_) ->
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
+queue_online_takeover_keeps_extended_queue_size_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-online-takeover-client">>},
+    application:set_env(vmq_server, override_max_online_messages, true),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{
+        cleanup_on_disconnect => false,
+        max_online_messages => 10,
+        max_offline_messages => 100,
+        queue_type => fifo,
+        queue_to_session_batch_size => 100
+    }),
+    {ok, false, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
+
+    Msgs = [
+        #deliver{qos = 1, msg = msg([<<"test">>, <<"takeover">>], payload(I), 1)}
+     || I <- lists:seq(1, 100)
+    ],
+    ok = vmq_queue:enqueue_many(QPid, Msgs),
+    {offline, fanout, 100, 0, false} = vmq_queue:status(QPid),
+
+    SessionPid1 = spawn(fun() -> passive_session(Parent) end),
+    {ok, _} = vmq_queue:add_session(QPid, SessionPid1, QueueOpts),
+    {online, fanout, 0, 1, false} = vmq_queue:status(QPid),
+
+    SessionPid2 = spawn(fun() -> passive_session(Parent) end),
+    AddSessionPid = spawn(fun() ->
+        Parent ! {add_session, vmq_queue:add_session(QPid, SessionPid2, QueueOpts)}
+    end),
+    receive
+        {passive_received, SessionPid1, QPid, 100} -> ok
+    after 1000 ->
+        exit(waiting_for_first_session_messages)
+    end,
+    SessionPid1 ! go_down,
+    receive
+        {add_session, {ok, _}} -> ok
+    after 1000 ->
+        exit(waiting_for_add_session)
+    end,
+    false = is_process_alive(AddSessionPid),
+
+    %% The takeover path should behave like offline wakeup and keep the extended online queue size.
+    receive
+        {passive_received, SessionPid2, QPid, 100} -> ok
+    after 1000 ->
+        exit(waiting_for_second_session_messages)
+    end,
+    SessionPid2 ! go_down.
+
 queue_persistent_client_expiration_test(_) ->
     Parent = self(),
     SubscriberId = {"", <<"persistent-client-expiration">>},
@@ -435,6 +486,23 @@ mock_session(Parent) ->
         _ -> % go down
             ok
     end.
+
+passive_session(Parent) ->
+    receive
+        {to_session_fsm, {mail, QPid, new_data}} ->
+            vmq_queue:active(QPid),
+            passive_session(Parent);
+        {to_session_fsm, {mail, QPid, Msgs, _, _}} ->
+            Parent ! {passive_received, self(), QPid, length(Msgs)},
+            passive_session(Parent);
+        go_down ->
+            ok;
+        _ ->
+            passive_session(Parent)
+    end.
+
+payload(I) ->
+    list_to_binary("test-message-" ++ integer_to_list(I)).
 
 msg(Topic, Payload, QoS) ->
     #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
