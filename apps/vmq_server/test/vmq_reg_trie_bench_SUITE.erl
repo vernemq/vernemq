@@ -51,12 +51,12 @@ all() ->
 duplicate_fanout_subscribe_unsubscribe_test(_Config) ->
     ok = vmq_test_utils:setup(),
     try
-        duplicate_fanout_subscribe_unsubscribe_test_()
+        run_duplicate_fanout_subscribe_unsubscribe()
     after
         ok = vmq_test_utils:teardown()
     end.
 
-duplicate_fanout_subscribe_unsubscribe_test_() ->
+run_duplicate_fanout_subscribe_unsubscribe() ->
     MP = "a",
     Topic = [<<"some">>, <<"#">>],
     Topics = [{Topic, 0}],
@@ -109,12 +109,12 @@ duplicate_fanout_subscribe_unsubscribe_test_() ->
 queued_sync_update_during_init_test(_Config) ->
     ok = vmq_test_utils:setup(),
     try
-        queued_sync_update_during_init_test_()
+        run_queued_sync_update_during_init()
     after
         ok = vmq_test_utils:teardown()
     end.
 
-queued_sync_update_during_init_test_() ->
+run_queued_sync_update_during_init() ->
     MP = "a",
     Topic = [<<"queued">>, <<"#">>],
     Topics = [{Topic, 0}],
