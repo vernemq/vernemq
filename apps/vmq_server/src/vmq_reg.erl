@@ -175,7 +175,15 @@ quota_exceeded_subscription({T, _QoS}) ->
     {T, not_allowed}.
 
 subscribable_topics(Topics) ->
-    [Topic || Topic <- Topics, subscription_topic(Topic) =/= not_allowed].
+    lists:filter(
+        fun
+            ({_, not_allowed}) -> false;
+            ({_, {not_allowed, _}}) -> false;
+            ({_, {quota_exceeded, _}}) -> false;
+            (_) -> true
+        end,
+        Topics
+    ).
 
 -spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, SubscriberId, Topics) ->
