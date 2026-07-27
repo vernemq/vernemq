@@ -664,8 +664,9 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
                     CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics
                 )
             of
-                {ok, _QoSs} ->
-                    vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]);
+                {ok, QoSs} ->
+                    vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]),
+                    {ok, replace_subscribe_qos(MaybeChangedTopics, QoSs)};
                 Res ->
                     Res
             end
@@ -1441,7 +1442,7 @@ set_sock_opts(Opts) ->
     mqtt5_properties(),
     fun(
         (username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
-            {ok, [qos() | not_allowed]} | {error, atom()}
+            {ok, [subscription()]} | {error, atom()}
     )
 ) ->
     {ok, auth_on_subscribe_m5_hook:sub_modifiers()}
@@ -1454,13 +1455,17 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
         )
     of
         ok ->
-            AuthSuccess(User, SubscriberId, Topics, Props0),
-            {ok, #{topics => Topics}};
+            case AuthSuccess(User, SubscriberId, Topics, Props0) of
+                {ok, NewTopics} -> {ok, #{topics => NewTopics}};
+                Res -> Res
+            end;
         {ok, Modifiers} ->
             NewTopics = maps:get(topics, Modifiers, []),
             NewProps = maps:get(properties, Modifiers, #{}),
-            AuthSuccess(User, SubscriberId, NewTopics, NewProps),
-            {ok, Modifiers};
+            case AuthSuccess(User, SubscriberId, NewTopics, NewProps) of
+                {ok, NewTopics1} -> {ok, Modifiers#{topics => NewTopics1}};
+                Res -> Res
+            end;
         {error, Error} ->
             {error, Error}
     end.
@@ -2313,13 +2318,29 @@ get_sub_id(_) ->
 topic_to_qos(Topics) ->
     lists:map(
         fun
+            ({_T, not_allowed}) ->
+                rcn2rc(?NOT_AUTHORIZED);
+            ({_T, quota_exceeded}) ->
+                rcn2rc(?QUOTA_EXCEEDED);
             ({_T, QoS}) when is_integer(QoS) ->
                 QoS;
+            ({_T, {not_allowed, _}}) ->
+                rcn2rc(?NOT_AUTHORIZED);
+            ({_T, {quota_exceeded, _}}) ->
+                rcn2rc(?QUOTA_EXCEEDED);
             ({_T, {QoS, _}}) ->
                 QoS
         end,
         Topics
     ).
+
+replace_subscribe_qos(Topics, QoSs) ->
+    [replace_subscribe_qos_(Topic, QoS) || {Topic, QoS} <- lists:zip(Topics, QoSs)].
+
+replace_subscribe_qos_({T, {_OldQoS, SubOpts}}, QoS) when is_map(SubOpts) ->
+    {T, {QoS, SubOpts}};
+replace_subscribe_qos_({T, _OldQoS}, QoS) ->
+    {T, QoS}.
 
 disconnect_rc2rcn(0) ->
     ?NORMAL_DISCONNECT;

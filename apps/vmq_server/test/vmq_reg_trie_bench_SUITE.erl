@@ -39,6 +39,7 @@ all() ->
     [
         duplicate_fanout_subscribe_unsubscribe_test,
         queued_sync_update_during_init_test,
+        delta_update_subscriber_test,
         reg_view_ready_flags_are_isolated_test
      % bench_vmq_trie
     ].
@@ -133,6 +134,32 @@ run_queued_sync_update_during_init() ->
     ?assertEqual([{Key, SubVal}], ets:tab2list(vmq_trie_subs)),
     ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
     assert_topic_count(Key, 1),
+
+    ok.
+
+delta_update_subscriber_test(_Config) ->
+    ok = vmq_test_utils:setup(),
+    try
+        run_delta_update_subscriber()
+    after
+        ok = vmq_test_utils:teardown()
+    end.
+
+run_delta_update_subscriber() ->
+    MP = "a",
+    SubscriberId = {MP, <<"delta-client">>},
+    ExistingTopics = [
+        {[<<"delta">>, <<"existing">>, integer_to_binary(I)], 0}
+     || I <- lists:seq(1, 100)
+    ],
+    DeltaTopic = [<<"delta">>, <<"new">>],
+    Key = {MP, DeltaTopic},
+
+    update_subscriber(SubscriberId, [], [{node(), false, ExistingTopics}]),
+    ?assertEqual([], ets:lookup(vmq_trie_subs, Key)),
+
+    update_subscriber_changes(SubscriberId, [], [{node(), [{DeltaTopic, 1}]}]),
+    ?assertEqual([{Key, {SubscriberId, 1}}], ets:lookup(vmq_trie_subs, Key)),
 
     ok.
 
@@ -335,6 +362,9 @@ bench_fanout_subs(Num) ->
 update_subscriber(SubscriberId, OldSubs, NewSubs) ->
     Event = {updated, {vmq, subscriber}, SubscriberId, OldSubs, NewSubs},
     ok = gen_server:call(vmq_reg_trie, {event, Event}).
+
+update_subscriber_changes(SubscriberId, ToRemove, ToAdd) ->
+    ok = vmq_reg_trie:update_subscriber_changes(SubscriberId, ToRemove, ToAdd).
 
 delete_subscriber(SubscriberId, Subs) ->
     Event = {deleted, {vmq, subscriber}, SubscriberId, Subs},

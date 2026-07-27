@@ -165,10 +165,18 @@
 %% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
 %% limit of 23 characters
 {mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
-                                                               {default, 100},
-                                                               {commented, 100},
-                                                               {datatype, integer}
-                                                              ]}.
+                                                                {default, 100},
+                                                                {commented, 100},
+                                                                {datatype, integer}
+                                                               ]}.
+
+%% @doc Set the maximum number of subscriptions a client can have. Existing subscriptions can
+%% be replaced even after the limit is reached. Defaults to 0, which means no limit applies.
+{mapping, "max_subscriptions_per_client", "vmq_server.max_subscriptions_per_client", [
+                                                                                       {default, 0},
+                                                                                       {commented, 0},
+                                                                                       {datatype, integer}
+                                                                                      ]}.
 
 %% @doc This option allows persistent clients ( = clean session set to
 %% false) to be removed if they do not reconnect within 'persistent_client_expiration'.

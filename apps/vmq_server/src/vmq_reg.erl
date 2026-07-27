@@ -82,7 +82,7 @@
     subscriber_id(),
     [subscription()]
 ) ->
-    {ok, [qos() | not_allowed]}
+    {ok, [qos() | not_allowed | quota_exceeded]}
     | {error, not_allowed | not_ready}.
 subscribe(false, SubscriberId, Topics) ->
     %% trade availability for consistency
@@ -93,8 +93,9 @@ subscribe(true, SubscriberId, Topics) ->
 
 subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
-    Existing = subscriptions_exist(OldSubs, Topics),
-    add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
+    LimitedTopics = enforce_subscription_limit(OldSubs, Topics),
+    Existing = subscriptions_exist(OldSubs, LimitedTopics),
+    add_subscriber(lists:usort(subscribable_topics(LimitedTopics)), OldSubs, SubscriberId),
     {QoSTable, _Ign} =
         lists:foldl(
             fun
@@ -107,6 +108,8 @@ subscribe_op(SubscriberId, Topics) ->
                 %% MQTTv5 clauses
                 ({_, {_, {not_allowed, _}}}, {AccQoSTable, WaitSync}) ->
                     {[not_allowed | AccQoSTable], WaitSync};
+                ({_, {_, {quota_exceeded, _}}}, {AccQoSTable, WaitSync}) ->
+                    {[quota_exceeded | AccQoSTable], WaitSync};
                 ({Exists, {T, {QoS, SubOpts}}}, {AccQoSTable, WaitSync}) when
                     is_integer(QoS), is_map(SubOpts)
                 ->
@@ -114,9 +117,65 @@ subscribe_op(SubscriberId, Topics) ->
                     {[QoS | AccQoSTable], WaitSync0}
             end,
             {[], (vmq_config:get_env(subscriber_retain_mode, immediate) == syncwait)},
-            lists:zip(Existing, Topics)
+            lists:zip(Existing, LimitedTopics)
         ),
     {ok, lists:reverse(QoSTable)}.
+
+enforce_subscription_limit(OldSubs, Topics) ->
+    case vmq_config:get_env(max_subscriptions_per_client, 0) of
+        Max when is_integer(Max), Max > 0 ->
+            {LimitedTopics, _} = lists:mapfoldl(
+                fun(Topic, {Count, NewTopics}) ->
+                    case subscription_topic(Topic) of
+                        not_allowed ->
+                            {Topic, {Count, NewTopics}};
+                        T ->
+                            case vmq_subscriber:exists(T, OldSubs) of
+                                true ->
+                                    {Topic, {Count, NewTopics}};
+                                false ->
+                                    case lists:member(T, NewTopics) of
+                                        true ->
+                                            {Topic, {Count, NewTopics}};
+                                        false when Count < Max ->
+                                            {Topic, {Count + 1, [T | NewTopics]}};
+                                        false ->
+                                            {quota_exceeded_subscription(Topic), {Count, NewTopics}}
+                                    end
+                            end
+                    end
+                end,
+                {subscription_count(OldSubs), []},
+                Topics
+            ),
+            LimitedTopics;
+        _ ->
+            Topics
+    end.
+
+subscription_count(Subs) ->
+    lists:sum([length(NodeSubs) || {_Node, _CleanSession, NodeSubs} <- Subs]).
+
+subscription_topic({_T, {_QoS, not_allowed}}) ->
+    not_allowed;
+subscription_topic({_T, not_allowed}) ->
+    not_allowed;
+subscription_topic({_T, {not_allowed, _SubOpts}}) ->
+    not_allowed;
+subscription_topic({_T, {quota_exceeded, _SubOpts}}) ->
+    not_allowed;
+subscription_topic({T, _SubInfo}) ->
+    T.
+
+quota_exceeded_subscription({T, {_QoS, not_allowed}}) ->
+    {T, {_QoS, not_allowed}};
+quota_exceeded_subscription({T, {_QoS, SubOpts}}) when is_map(SubOpts) ->
+    {T, {quota_exceeded, SubOpts}};
+quota_exceeded_subscription({T, _QoS}) ->
+    {T, not_allowed}.
+
+subscribable_topics(Topics) ->
+    [Topic || Topic <- Topics, subscription_topic(Topic) =/= not_allowed].
 
 -spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, SubscriberId, Topics) ->
@@ -1140,7 +1199,7 @@ add_subscriber(Topics, OldSubs, SubscriberId) ->
     case vmq_subscriber:add(OldSubs, NewSubs) of
         {NewSubs0, true} ->
             vmq_subscriber_db:store(SubscriberId, NewSubs0),
-            sync_reg_view_update(SubscriberId, OldSubs, NewSubs0);
+            sync_reg_view_changes(SubscriberId, OldSubs, NewSubs0);
         _ ->
             ok
     end.
@@ -1161,7 +1220,7 @@ del_subscriptions(Topics, SubscriberId) ->
     case vmq_subscriber:remove(OldSubs, Topics) of
         {NewSubs, true} ->
             vmq_subscriber_db:store(SubscriberId, NewSubs),
-            sync_reg_view_update(SubscriberId, OldSubs, NewSubs);
+            sync_reg_view_changes(SubscriberId, OldSubs, NewSubs);
         _ ->
             ok
     end.
@@ -1169,6 +1228,22 @@ del_subscriptions(Topics, SubscriberId) ->
 sync_reg_view_update(SubscriberId, OldSubs, NewSubs) ->
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     try vmq_reg_view:update_subscriber(RegView, SubscriberId, OldSubs, NewSubs) of
+        ok -> ok;
+        {error, not_ready} -> ok
+    catch
+        exit:{noproc, _} -> ok;
+        exit:{normal, _} -> ok
+    end.
+
+sync_reg_view_changes(SubscriberId, OldSubs, NewSubs) ->
+    {ToRemove, ToAdd} = vmq_subscriber:get_changes(one_pass_ordered, OldSubs, NewSubs),
+    sync_reg_view_delta(SubscriberId, ToRemove, ToAdd).
+
+sync_reg_view_delta(_SubscriberId, [], []) ->
+    ok;
+sync_reg_view_delta(SubscriberId, ToRemove, ToAdd) ->
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    try vmq_reg_view:update_subscriber_changes(RegView, SubscriberId, ToRemove, ToAdd) of
         ok -> ok;
         {error, not_ready} -> ok
     catch

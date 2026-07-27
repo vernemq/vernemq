@@ -28,6 +28,7 @@
     start_link/0,
     fold/4,
     update_subscriber/3,
+    update_subscriber_changes/3,
     stats/0,
     init_subscriptions/0
 ]).
@@ -90,6 +91,9 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
 
 update_subscriber(SubscriberId, OldSubs, NewSubs) ->
     gen_server:call(?MODULE, {update_subscriber, SubscriberId, OldSubs, NewSubs}, 60000).
+
+update_subscriber_changes(SubscriberId, ToRemove, ToAdd) ->
+    gen_server:call(?MODULE, {update_subscriber_changes, SubscriberId, ToRemove, ToAdd}, 60000).
 
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {Node, Group}} | MatchedTopics], Remotes) ->
     fold_(
@@ -226,8 +230,17 @@ handle_call(
     {update_subscriber, _, _, _} = Update, _From, #state{status = init, event_queue = Q} = State
 ) ->
     {reply, ok, State#state{event_queue = queue:in(Update, Q)}};
+handle_call(
+    {update_subscriber_changes, _, _, _} = Update,
+    _From,
+    #state{status = init, event_queue = Q} = State
+) ->
+    {reply, ok, State#state{event_queue = queue:in(Update, Q)}};
 handle_call({update_subscriber, SubscriberId, OldSubs, NewSubs}, _From, State) ->
     update_subscriber_(SubscriberId, OldSubs, NewSubs),
+    {reply, ok, State};
+handle_call({update_subscriber_changes, SubscriberId, ToRemove, ToAdd}, _From, State) ->
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd),
     {reply, ok, State};
 handle_call(init_subs, _From, State) ->
     spawn_link(
@@ -333,11 +346,16 @@ handle_event(Handler, Event) ->
 
 handle_queued_event(_Handler, {update_subscriber, SubscriberId, OldSubs, NewSubs}) ->
     update_subscriber_(SubscriberId, OldSubs, NewSubs);
+handle_queued_event(_Handler, {update_subscriber_changes, SubscriberId, ToRemove, ToAdd}) ->
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd);
 handle_queued_event(Handler, Event) ->
     handle_event(Handler, Event).
 
 update_subscriber_(SubscriberId, OldSubs, NewSubs) ->
     {ToRemove, ToAdd} = vmq_subscriber:get_changes(OldSubs, NewSubs),
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd).
+
+update_subscriber_changes_(SubscriberId, ToRemove, ToAdd) ->
     vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
     vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd).
 

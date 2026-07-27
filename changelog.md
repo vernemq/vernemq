@@ -1,3 +1,5 @@
+- Performance (throughput) improvements for high-frequency SUBSCRIBES.
+- New global setting: ``max_subscriptions_per_client` 
 - Reduce memory effect of high-frequency SUBSCRIBES. (#2507)
 - Send out SUBACK only after local trie is updated. During trie initialization, update events are still buffered.
 - Set SWC init_sync procedure to off as a default.
