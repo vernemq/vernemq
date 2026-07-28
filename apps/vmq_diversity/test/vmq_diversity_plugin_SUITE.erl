@@ -188,6 +188,13 @@ auth_hooks_continue_on_script_error_test(_) ->
         ),
         next = vmq_diversity_plugin:auth_on_subscribe_m5(
             username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props()
+        ),
+        next = vmq_diversity_plugin:on_auth_m5(
+            username(), ignored_subscriber_id(),
+            #{
+                ?P_AUTHENTICATION_METHOD => <<"AUTH_METHOD">>,
+                ?P_AUTHENTICATION_DATA => <<"AUTH_DATA0">>
+            }
         )
     after
         ok = vmq_diversity:unload_script(Script)

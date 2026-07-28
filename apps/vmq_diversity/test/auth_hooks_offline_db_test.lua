@@ -43,11 +43,23 @@ function auth_on_subscribe_m5(sub)
     return true
 end
 
+function on_auth_m5(auth)
+    fail_with_offline_db()
+    return {
+        reason_code = 0,
+        properties = {
+            p_authentication_method = auth.properties.p_authentication_method,
+            p_authentication_data = auth.properties.p_authentication_data
+        }
+    }
+end
+
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
     auth_on_subscribe = auth_on_subscribe,
     auth_on_register_m5 = auth_on_register_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
-    auth_on_subscribe_m5 = auth_on_subscribe_m5
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
+    on_auth_m5 = on_auth_m5
 }

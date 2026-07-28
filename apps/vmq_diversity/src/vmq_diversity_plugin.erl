@@ -724,6 +724,8 @@ is_auth_hook(auth_on_subscribe) ->
     true;
 is_auth_hook(auth_on_subscribe_m5) ->
     true;
+is_auth_hook(on_auth_m5) ->
+    true;
 is_auth_hook(_) ->
     false.
 
