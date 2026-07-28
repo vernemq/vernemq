@@ -1,3 +1,5 @@
+- Add minimal Prometheus alarming template example
+
 ## VerneMQ 2.1.2
 
 - HTTP status page: Full-page container for improved status page view - especially helpful on wider monitors.
