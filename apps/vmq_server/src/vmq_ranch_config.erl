@@ -198,9 +198,15 @@ listeners(select, AddTLSInfo, AddMQTTInfo) ->
                             _ -> inet:ntoa(Ip)
                         end,
                     StrPort = integer_to_list(Port),
-                    AllowedProtocolVersionsList = proplists:get_value(allowed_protocol_versions, Opts, ""),
-                    AllowedProtocolVersions = vmq_util:mqtt_version_to_string(AllowedProtocolVersionsList),
-                    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, ""),
+                    AllowedProtocolVersionsList = proplists:get_value(
+                        allowed_protocol_versions, Opts, ""
+                    ),
+                    AllowedProtocolVersions = vmq_util:mqtt_version_to_string(
+                        AllowedProtocolVersionsList
+                    ),
+                    AllowAnonymousOverride = proplists:get_value(
+                        allow_anonymous_override, Opts, ""
+                    ),
                     % TLS
                     CertFile = proplists:get_value(certfile, Opts, ""),
                     TLS = proplists:get_value(tls_version, Opts, ""),
