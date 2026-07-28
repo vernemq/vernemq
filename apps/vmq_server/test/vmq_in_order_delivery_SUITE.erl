@@ -7,13 +7,20 @@
 
 -define(RETRY_INTERVAL, 2).
 -define(NR_OF_MSGS, 400).
+-define(FANOUT_NR_OF_MSGS, 10).
+-define(FANOUT_NR_OF_SUBS, 8).
+-define(FANOUT_SHARD_COUNT, 8).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(Config) ->
     cover:start(),
+    ok = ensure_vmq_server_loaded(),
+    application:set_env(vmq_server, fanout_shard_count, ?FANOUT_SHARD_COUNT),
+    application:set_env(vmq_server, fanout_async_handoff, true),
     vmq_test_utils:setup(),
+    persistent_term:put({vmq_reg_trie, fanout_shard_count}, ?FANOUT_SHARD_COUNT),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
 
     enable_on_subscribe(),
@@ -24,6 +31,9 @@ end_per_suite(_Config) ->
     disable_on_subscribe(),
     disable_on_publish(),
     vmq_test_utils:teardown(),
+    persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
+    application:unset_env(vmq_server, fanout_shard_count),
+    application:unset_env(vmq_server, fanout_async_handoff),
     _Config.
 
 init_per_group(mqttv4, Config) ->
@@ -38,6 +48,7 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, ?RETRY_INTERVAL),
     vmq_server_cmd:set_config(max_client_id_size, 100),
+    vmq_server_cmd:set_config(receive_max_broker, 16#FFFF),
     Config.
 
 end_per_testcase(_, Config) ->
@@ -54,7 +65,13 @@ groups() ->
         [qos1_online,
          qos2_online,
          qos1_offline,
-         qos2_offline],
+         qos2_offline,
+         async_sharded_fanout_qos0,
+         async_sharded_fanout_qos1,
+         async_sharded_fanout_qos2,
+         async_sharded_fanout_burst_qos0,
+         async_sharded_fanout_burst_qos1,
+         async_sharded_fanout_burst_qos2],
     [
      {mqttv4, [shuffle], Tests},
      {mqttv5, [shuffle], [receive_max_broker | Tests]}
@@ -75,6 +92,54 @@ qos1_offline(Config) ->
 
 qos2_offline(Config) ->
     lists:foreach(fun(I) -> qos2_offline_test(I, Config) end, lists:seq(1, 30)).
+
+async_sharded_fanout_qos0(Config) ->
+    async_sharded_fanout_test(0, Config).
+
+async_sharded_fanout_qos1(Config) ->
+    async_sharded_fanout_test(1, Config).
+
+async_sharded_fanout_qos2(Config) ->
+    async_sharded_fanout_test(2, Config).
+
+async_sharded_fanout_burst_qos0(Config) ->
+    async_sharded_fanout_burst_test(0, Config).
+
+async_sharded_fanout_burst_qos1(Config) ->
+    async_sharded_fanout_burst_test(1, Config).
+
+async_sharded_fanout_burst_qos2(Config) ->
+    async_sharded_fanout_burst_test(2, Config).
+
+async_sharded_fanout_test(QoS, Config) ->
+    Topic = vmq_cth:utopic(Config) ++ "/async/sharded/fanout/qos" ++ integer_to_list(QoS),
+    SubSockets = setup_fanout_subs(Topic, QoS, Config),
+    ok = ensure_sharded_fanout(Topic),
+    PubSocket = setup_fanout_pub(Config),
+    try
+        lists:foreach(
+            fun(I) ->
+                ok = publish_fanout_msg(PubSocket, Topic, QoS, I, Config),
+                ok = recv_fanout_msg(SubSockets, Topic, QoS, I, Config)
+            end,
+            lists:seq(1, ?FANOUT_NR_OF_MSGS)
+        )
+    after
+        lists:foreach(fun gen_tcp:close/1, [PubSocket | SubSockets])
+    end.
+
+async_sharded_fanout_burst_test(QoS, Config) ->
+    Topic = vmq_cth:utopic(Config) ++ "/async/sharded/fanout/burst/qos" ++ integer_to_list(QoS),
+    SubSockets = setup_fanout_subs(Topic, QoS, Config),
+    ok = ensure_sharded_fanout(Topic),
+    PubSocket = setup_fanout_pub(Config),
+    try
+        ok = publish_fanout_burst(PubSocket, Topic, QoS, Config),
+        ExpectedPayloads = [fanout_payload(I) || I <- lists:seq(1, ?FANOUT_NR_OF_MSGS)],
+        ok = recv_fanout_burst(SubSockets, ExpectedPayloads, QoS, Config)
+    after
+        lists:foreach(fun gen_tcp:close/1, [PubSocket | SubSockets])
+    end.
 
 receive_max_broker(Config) ->
     ReceiveMax = ?NR_OF_MSGS div 2,
@@ -139,6 +204,12 @@ qos2_offline_test(MaxInflightMsgs, Config) ->
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+ensure_vmq_server_loaded() ->
+    case application:load(vmq_server) of
+        ok -> ok;
+        {error, {already_loaded, vmq_server}} -> ok
+    end.
+
 set_flow_control_config(MaxInflightMsgs, Config) ->
     case mqtt5_v4compat:protover(Config) of
         4 ->
@@ -181,6 +252,233 @@ setup_pub_qos2(Socket, Topic, I, Config) ->
     ok = mqtt5_v4compat:expect_packet(Socket, "pubrec", mqtt5_v4compat:gen_pubrec(I, Config), Config),
     ok = gen_tcp:send(Socket, packet:gen_pubrel(I)),
     ok = mqtt5_v4compat:expect_packet(Socket, "pubcomp", mqtt5_v4compat:gen_pubcomp(I, Config), Config).
+
+setup_fanout_pub(Config) ->
+    ClientId = vmq_cth:ustr(Config) ++ "async-fanout-pub-" ++ unique_id_part(),
+    Connect = mqtt5_v4compat:gen_connect(ClientId, [{keepalive, 60}, {clean_session, true}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    Socket.
+
+setup_fanout_subs(Topic, QoS, Config) ->
+    [setup_fanout_sub(Topic, QoS, I, Config) || I <- lists:seq(1, ?FANOUT_NR_OF_SUBS)].
+
+setup_fanout_sub(Topic, QoS, I, Config) ->
+    ClientId = vmq_cth:ustr(Config) ++ "async-fanout-sub-" ++ integer_to_list(I) ++ "-" ++ unique_id_part(),
+    Connect = mqtt5_v4compat:gen_connect(ClientId, [{keepalive, 60}, {clean_session, true}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    SubscribeId = 1000 + I,
+    Subscribe = mqtt5_v4compat:gen_subscribe(SubscribeId, Topic, QoS, Config),
+    Suback = mqtt5_v4compat:gen_suback(SubscribeId, QoS, Config),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Config),
+    Socket.
+
+ensure_sharded_fanout(Topic) ->
+    Key = {"", topic_words(Topic)},
+    true = ets:lookup(vmq_trie_subs, Key) =:= [{Key, fanout}],
+    Shards = lists:usort([
+        Shard
+     || {{Shard, EntryKey}, _Val} <- ets:tab2list(vmq_trie_subs_fanout),
+        EntryKey =:= Key
+    ]),
+    true = length(Shards) > 1,
+    ok.
+
+topic_words(Topic) ->
+    [list_to_binary(Word) || Word <- string:tokens(Topic, "/")].
+
+publish_fanout_msg(Socket, Topic, 0, I, Config) ->
+    Payload = fanout_payload(I),
+    Pub = mqtt5_v4compat:gen_publish(Topic, 0, Payload, [], Config),
+    gen_tcp:send(Socket, Pub);
+publish_fanout_msg(Socket, Topic, 1, I, Config) ->
+    Payload = fanout_payload(I),
+    Pub = mqtt5_v4compat:gen_publish(Topic, 1, Payload, [{mid, I}], Config),
+    ok = gen_tcp:send(Socket, Pub),
+    mqtt5_v4compat:expect_packet(Socket, "puback", mqtt5_v4compat:gen_puback(I, Config), Config);
+publish_fanout_msg(Socket, Topic, 2, I, Config) ->
+    Payload = fanout_payload(I),
+    Pub = mqtt5_v4compat:gen_publish(Topic, 2, Payload, [{mid, I}], Config),
+    ok = gen_tcp:send(Socket, Pub),
+    ok = mqtt5_v4compat:expect_packet(Socket, "pubrec", mqtt5_v4compat:gen_pubrec(I, Config), Config),
+    ok = gen_tcp:send(Socket, packet:gen_pubrel(I)),
+    mqtt5_v4compat:expect_packet(Socket, "pubcomp", mqtt5_v4compat:gen_pubcomp(I, Config), Config).
+
+publish_fanout_burst(Socket, Topic, 0, Config) ->
+    lists:foreach(
+        fun(I) ->
+            Payload = fanout_payload(I),
+            Pub = mqtt5_v4compat:gen_publish(Topic, 0, Payload, [], Config),
+            ok = gen_tcp:send(Socket, Pub)
+        end,
+        lists:seq(1, ?FANOUT_NR_OF_MSGS)
+    );
+publish_fanout_burst(Socket, Topic, 1, Config) ->
+    lists:foreach(
+        fun(I) ->
+            Payload = fanout_payload(I),
+            Pub = mqtt5_v4compat:gen_publish(Topic, 1, Payload, [{mid, I}], Config),
+            ok = gen_tcp:send(Socket, Pub)
+        end,
+        lists:seq(1, ?FANOUT_NR_OF_MSGS)
+    ),
+    ok = receive_pubacks(Socket, 1, <<>>, Config);
+publish_fanout_burst(Socket, Topic, 2, Config) ->
+    lists:foreach(
+        fun(I) ->
+            Payload = fanout_payload(I),
+            Pub = mqtt5_v4compat:gen_publish(Topic, 2, Payload, [{mid, I}], Config),
+            ok = gen_tcp:send(Socket, Pub)
+        end,
+        lists:seq(1, ?FANOUT_NR_OF_MSGS)
+    ),
+    {ok, Rest} = receive_pubrecs_send_pubrels(Socket, 1, <<>>, Config),
+    ok = receive_pubcomps(Socket, 1, Rest, Config).
+
+receive_pubacks(_Socket, I, _Rest, _Config) when I > ?FANOUT_NR_OF_MSGS ->
+    ok;
+receive_pubacks(Socket, I, Rest0, Config) ->
+    {Frame, Rest1} = receive_frame(Socket, Rest0, Config),
+    I = frame_message_id(Frame),
+    puback = frame_type(Frame),
+    receive_pubacks(Socket, I + 1, Rest1, Config).
+
+receive_pubrecs_send_pubrels(_Socket, I, Rest, _Config) when I > ?FANOUT_NR_OF_MSGS ->
+    {ok, Rest};
+receive_pubrecs_send_pubrels(Socket, I, Rest0, Config) ->
+    {Frame, Rest1} = receive_frame(Socket, Rest0, Config),
+    I = frame_message_id(Frame),
+    pubrec = frame_type(Frame),
+    ok = gen_tcp:send(Socket, mqtt5_v4compat:gen_pubrel(I, Config)),
+    receive_pubrecs_send_pubrels(Socket, I + 1, Rest1, Config).
+
+receive_pubcomps(_Socket, I, _Rest, _Config) when I > ?FANOUT_NR_OF_MSGS ->
+    ok;
+receive_pubcomps(Socket, I, Rest0, Config) ->
+    {Frame, Rest1} = receive_frame(Socket, Rest0, Config),
+    I = frame_message_id(Frame),
+    pubcomp = frame_type(Frame),
+    receive_pubcomps(Socket, I + 1, Rest1, Config).
+
+recv_fanout_msg(SubSockets, Topic, QoS, I, Config) ->
+    lists:foreach(
+        fun(Socket) ->
+            recv_fanout_msg_for_sub(Socket, Topic, QoS, I, Config)
+        end,
+        SubSockets
+    ).
+
+recv_fanout_msg_for_sub(Socket, Topic, 0, I, Config) ->
+    Pub = mqtt5_v4compat:gen_publish(Topic, 0, fanout_payload(I), [], Config),
+    mqtt5_v4compat:expect_packet(Socket, "publish", Pub, Config);
+recv_fanout_msg_for_sub(Socket, Topic, 1, I, Config) ->
+    Pub = mqtt5_v4compat:gen_publish(Topic, 1, fanout_payload(I), [{mid, I}], Config),
+    ok = mqtt5_v4compat:expect_packet(Socket, "publish", Pub, Config),
+    gen_tcp:send(Socket, mqtt5_v4compat:gen_puback(I, Config));
+recv_fanout_msg_for_sub(Socket, Topic, 2, I, Config) ->
+    Pub = mqtt5_v4compat:gen_publish(Topic, 2, fanout_payload(I), [{mid, I}], Config),
+    ok = mqtt5_v4compat:expect_packet(Socket, "publish", Pub, Config),
+    ok = gen_tcp:send(Socket, mqtt5_v4compat:gen_pubrec(I, Config)),
+    ok = mqtt5_v4compat:expect_packet(Socket, "pubrel", packet:gen_pubrel(I), Config),
+    gen_tcp:send(Socket, mqtt5_v4compat:gen_pubcomp(I, Config)).
+
+recv_fanout_burst(SubSockets, ExpectedPayloads, QoS, Config) ->
+    lists:foreach(
+        fun(Socket) ->
+            ExpectedPayloads = recv_fanout_burst_for_sub(Socket, QoS, Config)
+        end,
+        SubSockets
+    ).
+
+recv_fanout_burst_for_sub(Socket, 0, Config) ->
+    recv_publish_payloads(Socket, 0, ?FANOUT_NR_OF_MSGS, <<>>, [], Config);
+recv_fanout_burst_for_sub(Socket, 1, Config) ->
+    recv_publish_payloads(Socket, 1, ?FANOUT_NR_OF_MSGS, <<>>, [], Config);
+recv_fanout_burst_for_sub(Socket, 2, Config) ->
+    recv_qos2_publish_payloads(Socket, ?FANOUT_NR_OF_MSGS, ?FANOUT_NR_OF_MSGS, <<>>, [], Config).
+
+recv_publish_payloads(_Socket, _QoS, 0, _Rest, Acc, _Config) ->
+    lists:reverse(Acc);
+recv_publish_payloads(Socket, QoS, Count, Rest0, Acc, Config) ->
+    {Frame, Rest1} = receive_frame(Socket, Rest0, Config),
+    publish = frame_type(Frame),
+    QoS = frame_qos(Frame),
+    ok = maybe_ack_publish(Socket, QoS, frame_message_id(Frame), Config),
+    recv_publish_payloads(Socket, QoS, Count - 1, Rest1, [frame_payload(Frame) | Acc], Config).
+
+recv_qos2_publish_payloads(_Socket, 0, 0, _Rest, Acc, _Config) ->
+    lists:reverse(Acc);
+recv_qos2_publish_payloads(Socket, PublishCount, PubrelCount, Rest0, Acc, Config) ->
+    {Frame, Rest1} = receive_frame(Socket, Rest0, Config),
+    case frame_type(Frame) of
+        publish ->
+            2 = frame_qos(Frame),
+            ok = gen_tcp:send(Socket, mqtt5_v4compat:gen_pubrec(frame_message_id(Frame), Config)),
+            recv_qos2_publish_payloads(
+                Socket, PublishCount - 1, PubrelCount, Rest1, [frame_payload(Frame) | Acc], Config
+            );
+        pubrel ->
+            ok = gen_tcp:send(Socket, mqtt5_v4compat:gen_pubcomp(frame_message_id(Frame), Config)),
+            recv_qos2_publish_payloads(Socket, PublishCount, PubrelCount - 1, Rest1, Acc, Config)
+    end.
+
+maybe_ack_publish(_Socket, 0, _MessageId, _Config) ->
+    ok;
+maybe_ack_publish(Socket, 1, MessageId, Config) ->
+    gen_tcp:send(Socket, mqtt5_v4compat:gen_puback(MessageId, Config)).
+
+receive_frame(Socket, Rest, Config) ->
+    case mqtt5_v4compat:protover(Config) of
+        4 -> receive_frame_v4(Socket, Rest);
+        5 ->
+            {ok, Frame, Rest1} = packetv5:receive_frame(gen_tcp, Socket, 5000, Rest),
+            {Frame, Rest1}
+    end.
+
+receive_frame_v4(Socket, Incomplete) ->
+    case vmq_parser:parse(Incomplete) of
+        more ->
+            {ok, Data} = gen_tcp:recv(Socket, 0, 5000),
+            receive_frame_v4(Socket, <<Incomplete/binary, Data/binary>>);
+        {Frame, Rest} ->
+            {Frame, Rest}
+    end.
+
+frame_type(#mqtt_publish{}) -> publish;
+frame_type(#mqtt5_publish{}) -> publish;
+frame_type(#mqtt_puback{}) -> puback;
+frame_type(#mqtt5_puback{}) -> puback;
+frame_type(#mqtt_pubrec{}) -> pubrec;
+frame_type(#mqtt5_pubrec{}) -> pubrec;
+frame_type(#mqtt_pubrel{}) -> pubrel;
+frame_type(#mqtt5_pubrel{}) -> pubrel;
+frame_type(#mqtt_pubcomp{}) -> pubcomp;
+frame_type(#mqtt5_pubcomp{}) -> pubcomp.
+
+frame_message_id(#mqtt_publish{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt5_publish{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt_puback{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt5_puback{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt_pubrec{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt5_pubrec{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt_pubrel{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt5_pubrel{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt_pubcomp{message_id = MessageId}) -> MessageId;
+frame_message_id(#mqtt5_pubcomp{message_id = MessageId}) -> MessageId.
+
+frame_qos(#mqtt_publish{qos = QoS}) -> QoS;
+frame_qos(#mqtt5_publish{qos = QoS}) -> QoS.
+
+frame_payload(#mqtt_publish{payload = Payload}) -> Payload;
+frame_payload(#mqtt5_publish{payload = Payload}) -> Payload.
+
+fanout_payload(I) ->
+    list_to_binary("fanout-msg" ++ integer_to_list(I)).
+
+unique_id_part() ->
+    integer_to_list(erlang:unique_integer([positive])).
 
 setup_con(Topic, Qos, Config) ->
     setup_con(Topic, Qos, false, Config).

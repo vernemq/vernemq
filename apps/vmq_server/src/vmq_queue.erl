@@ -44,6 +44,7 @@
     notify/1,
     notify_recv/1,
     enqueue/2,
+    enqueue_deliver/3,
     front/2,
     status/1,
     info/1,
@@ -141,6 +142,13 @@ notify_recv(Queue) when is_pid(Queue) ->
 
 enqueue(Queue, Msg) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, {enqueue, to_internal(Msg)}).
+
+enqueue_deliver(Queue, 0, Msg) when is_pid(Queue) ->
+    Queue ! {'$gen_event', {enqueue_qos0, Msg}},
+    ok;
+enqueue_deliver(Queue, QoS, Msg) when is_pid(Queue) ->
+    Queue ! {'$gen_event', {enqueue, #deliver{qos = QoS, msg = Msg}}},
+    ok.
 
 front(Queue, Msg) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, {front, to_internal(Msg)}).
@@ -251,6 +259,9 @@ online({notify_recv, SessionPid}, #state{id = SId, sessions = Sessions} = State)
 online({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, online, insert(Msg, State)};
+online({enqueue_qos0, Msg}, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    {next_state, online, insert(#deliver{qos = 0, msg = Msg}, State)};
 online({front, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     State0 = State#state{insert_fun = front},
@@ -312,6 +323,9 @@ online(Event, _From, State) ->
 wait_for_offline({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, wait_for_offline, insert(Msg, State)};
+wait_for_offline({enqueue_qos0, Msg}, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    {next_state, wait_for_offline, insert(#deliver{qos = 0, msg = Msg}, State)};
 wait_for_offline(Event, State) ->
     ?LOG_ERROR("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
@@ -438,6 +452,14 @@ drain({enqueue, Msg}, #state{drain_over_timer = TRef} = State) ->
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(),
     {next_state, drain, insert(Msg, State)};
+drain({enqueue_qos0, Msg}, #state{drain_over_timer = TRef} = State) ->
+    %% even in drain state it is possible that an enqueue message
+    %% reaches this process, so we've to queue this message otherwise
+    %% it would be lost.
+    gen_fsm:cancel_timer(TRef),
+    gen_fsm:send_event(self(), drain_start),
+    _ = vmq_metrics:incr_queue_in(),
+    {next_state, drain, insert(#deliver{qos = 0, msg = Msg}, State)};
 drain(
     drain_over,
     #state{waiting_call = {migrate, _, From}} =
@@ -505,6 +527,9 @@ offline({enqueue, Enq}, #state{id = SId} = State) ->
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
     {next_state, offline, insert(Enq, State)};
+offline({enqueue_qos0, Msg}, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    {next_state, offline, insert(#deliver{qos = 0, msg = Msg}, State)};
 offline(expire_session, #state{id = SId, offline = #queue{queue = Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
@@ -880,7 +905,7 @@ handle_session_down(
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, false)};
+                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, true)};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->

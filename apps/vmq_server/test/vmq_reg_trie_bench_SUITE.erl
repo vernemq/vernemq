@@ -35,13 +35,111 @@ groups() ->
     [].
 
 all() ->
-    [%bench_vmq_trie
+    [
+     fanout_compaction_keeps_topic_key,
+     sharded_fanout_keeps_all_matches,
+     async_sharded_fanout_dispatches_all_matches
     ].
 
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+fanout_compaction_keeps_topic_key(_Config) ->
+    ok = vmq_test_utils:setup(),
+    Topic = [{[<<"some">>, <<"topic">>], 0}],
+    Hour = 1000 * 3600,
+    ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", 1, Topic)}, Hour),
+    ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", 2, Topic)}, Hour),
+    [_, _] = lists:sort(vmq_reg_trie:fold(
+        {"a", <<"publisher">>},
+        [<<"some">>, <<"topic">>],
+        fun(E, _, Acc) -> [E | Acc] end,
+        []
+    )),
+
+    ok = gen_server:call(vmq_reg_trie, {event, deleted_event("a", 1, Topic)}, Hour),
+    [{{"a", <<"2">>}, 0, _QPid}] = vmq_reg_trie:fold(
+        {"a", <<"publisher">>},
+        [<<"some">>, <<"topic">>],
+        fun(E, _, Acc) -> [E | Acc] end,
+        []
+    ),
+    [{_, {{"a", <<"2">>}, 0, _}}] = ets:tab2list(vmq_trie_subs),
+    [] = ets:tab2list(vmq_trie_subs_fanout),
+    ok = vmq_test_utils:teardown(),
+    ok.
+
+sharded_fanout_keeps_all_matches(_Config) ->
+    application:set_env(vmq_server, fanout_shard_count, 8),
+    try
+        ok = vmq_test_utils:setup(),
+        persistent_term:put({vmq_reg_trie, fanout_shard_count}, 8),
+        Topic = [{[<<"some">>, <<"topic">>], 0}],
+        Hour = 1000 * 3600,
+        lists:foreach(
+          fun(I) ->
+                  ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", I, Topic)}, Hour)
+          end,
+          lists:seq(1, 16)),
+        16 = length(vmq_reg_trie:fold(
+                      {"a", <<"publisher">>},
+                      [<<"some">>, <<"topic">>],
+                      fun(E, _, Acc) -> [E | Acc] end,
+                      [])),
+        Shards = lists:usort([
+            Shard
+         || {{Shard, _Key}, _Val} <- ets:tab2list(vmq_trie_subs_fanout)
+        ]),
+        true = length(Shards) > 1
+    after
+        catch vmq_test_utils:teardown(),
+        persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
+        application:unset_env(vmq_server, fanout_shard_count)
+    end,
+    ok.
+
+async_sharded_fanout_dispatches_all_matches(_Config) ->
+    application:set_env(vmq_server, fanout_shard_count, 8),
+    application:set_env(vmq_server, fanout_async_handoff, true),
+    try
+        ok = vmq_test_utils:setup(),
+        persistent_term:put({vmq_reg_trie, fanout_shard_count}, 8),
+        Topic = [{[<<"some">>, <<"topic">>], 0}],
+        Hour = 1000 * 3600,
+        lists:foreach(
+          fun(I) ->
+                  ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", I, Topic)}, Hour)
+          end,
+          lists:seq(1, 16)),
+        TestPid = self(),
+        [] = vmq_reg_trie:fold(
+               {"a", <<"publisher">>},
+               [<<"some">>, <<"topic">>],
+               fun(E, _, Acc) -> TestPid ! {fanout_match, E}, Acc end,
+               []),
+        16 = receive_fanout_matches(16)
+    after
+        catch vmq_test_utils:teardown(),
+        persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
+        application:unset_env(vmq_server, fanout_shard_count),
+        application:unset_env(vmq_server, fanout_async_handoff)
+    end,
+    ok.
+
+receive_fanout_matches(Count) ->
+    receive_fanout_matches(Count, 0).
+
+receive_fanout_matches(0, Acc) ->
+    Acc;
+receive_fanout_matches(Count, Acc) ->
+    receive
+        {fanout_match, _} ->
+            receive_fanout_matches(Count - 1, Acc + 1)
+    after 1000 ->
+        Acc
+    end.
 
 bench_ets(_Config) ->
     %%bench_ets_(5).
@@ -137,10 +235,10 @@ bench_single_lookups(Num) ->
     [
      begin
          IB = integer_to_binary(I),
-         [{{"a", IB},0}] =
-             vmq_reg_trie:fold({"a", <<"whatever">>}, LookupTopicF(I),
-                               fun(E, _, Acc) -> [E|Acc] end,
-                               [])
+         [{{"a", IB}, 0, _QPid}] =
+              vmq_reg_trie:fold({"a", <<"whatever">>}, LookupTopicF(I),
+                                fun(E, _, Acc) -> [E|Acc] end,
+                                [])
      end
      || I <- lists:seq(1,Num)
     ],

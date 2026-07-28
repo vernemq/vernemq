@@ -437,12 +437,14 @@ default_session_opts(Opts) ->
     MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    ActiveN = proplists:get_value(active_n, Opts, 1),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
-        {buffer_sizes, BufferSizes}
+        {buffer_sizes, BufferSizes},
+        {active_n, ActiveN}
         | MaybeProxyDefaults2
     ].
 

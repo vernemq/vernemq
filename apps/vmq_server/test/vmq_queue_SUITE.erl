@@ -43,13 +43,17 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    ok = ensure_vmq_server_loaded(),
+    reset_queue_test_env(),
     vmq_test_utils:setup(),
+    persistent_term:put({vmq_reg_trie, fanout_shard_count}, 1),
     vmq_config:set_env(queue_deliver_mode, fanout, false),
     enable_hooks(),
     Config.
 
 end_per_testcase(_, Config) ->
     vmq_test_utils:teardown(),
+    persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
     Config.
 
 all() ->
@@ -396,6 +400,24 @@ queue_force_disconnect_cleanup_test(_) ->
 publish_multi({_, ClientId}, Topic) ->
     publish_multi(ClientId, Topic, []).
 
+ensure_vmq_server_loaded() ->
+    case application:load(vmq_server) of
+        ok -> ok;
+        {error, {already_loaded, vmq_server}} -> ok
+    end.
+
+reset_queue_test_env() ->
+    application:set_env(vmq_server, fanout_shard_count, 1),
+    application:set_env(vmq_server, fanout_async_handoff, false),
+    application:set_env(vmq_server, override_max_online_messages, false),
+    application:set_env(vmq_server, persistent_client_expiration, 0),
+    application:set_env(vmq_server, max_online_messages, 30000),
+    application:set_env(vmq_server, max_offline_messages, -1),
+    application:set_env(vmq_server, queue_deliver_mode, fanout),
+    application:set_env(vmq_server, queue_type, fifo),
+    application:set_env(vmq_server, max_drain_time, 100),
+    application:set_env(vmq_server, max_msgs_per_drain_step, 10).
+
 publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
     {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
@@ -418,6 +440,8 @@ receive_multi(QPid, Msgs) ->
             end;
         M ->
             exit({wrong_message, M})
+    after 60000 ->
+            exit({receive_multi_timeout, QPid, Msgs, vmq_queue:status(QPid)})
     end.
 
 mock_session(Parent) ->

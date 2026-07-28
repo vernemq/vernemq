@@ -1,3 +1,6 @@
+
+- New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
+- New per listener setting `active_n` to define the number of incoming TCP packets read 
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
