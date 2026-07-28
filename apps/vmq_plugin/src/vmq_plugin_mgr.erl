@@ -78,9 +78,9 @@
     | {atom(), atom(), atom(), non_neg_integer()}.
 
 -type raw_hook() ::
-    {atom(), module(), atom(), non_neg_integer()}
+    {atom(), module(), atom(), non_neg_integer(), atom() | undefined}
     | {compat, N :: atom(), M :: module(), F :: atom(), A :: non_neg_integer(), CH :: atom(),
-        CM :: module(), CF :: atom(), CA :: non_neg_integer()}.
+        CM :: module(), CF :: atom(), CA :: non_neg_integer(), P :: atom() | undefined}.
 
 -type hook() :: #hook{}.
 
@@ -737,7 +737,7 @@ load_app_modules(App) ->
 
 check_app_hooks(App, Hooks, Options) ->
     Compat = proplists:get_value(compat, Options, undefined),
-    ConvHooks = convert_to_rec(Hooks, Compat),
+    ConvHooks = convert_to_rec(Hooks, Compat, App),
     case check_app_hooks(App, ConvHooks) of
         hooks_ok ->
             {application, App, [{hooks, ConvHooks} | Options]};
@@ -761,17 +761,49 @@ check_app_hooks(App, [#hook{module = Module, function = Fun, arity = Arity, opts
 check_app_hooks(_, []) ->
     hooks_ok.
 
-convert_to_rec(Hooks, Compat) ->
+convert_to_rec(Hooks, Compat, Plugin) ->
     lists:map(
         fun
             ({M, F, A}) ->
-                #hook{name = F, module = M, function = F, arity = A, opts = [], compat = Compat};
+                #hook{
+                    name = F,
+                    plugin = Plugin,
+                    module = M,
+                    function = F,
+                    arity = A,
+                    opts = [],
+                    compat = Compat
+                };
             ({M, F, A, Opts}) when is_list(Opts) ->
-                #hook{name = F, module = M, function = F, arity = A, opts = Opts, compat = Compat};
+                #hook{
+                    name = F,
+                    plugin = Plugin,
+                    module = M,
+                    function = F,
+                    arity = A,
+                    opts = Opts,
+                    compat = Compat
+                };
             ({N, M, F, A}) ->
-                #hook{name = N, module = M, function = F, arity = A, opts = [], compat = Compat};
+                #hook{
+                    name = N,
+                    plugin = Plugin,
+                    module = M,
+                    function = F,
+                    arity = A,
+                    opts = [],
+                    compat = Compat
+                };
             ({N, M, F, A, Opts}) ->
-                #hook{name = N, module = M, function = F, arity = A, opts = Opts, compat = Compat}
+                #hook{
+                    name = N,
+                    plugin = Plugin,
+                    module = M,
+                    function = F,
+                    arity = A,
+                    opts = Opts,
+                    compat = Compat
+                }
         end,
         Hooks
     ).
@@ -810,11 +842,13 @@ compile_hooks(CheckedPlugins) ->
     {ok, M3} = smerl:add_func(M2, {function, 1, all, 2, AllClauses}),
     AllTillOkClauses = all_till_ok_clauses(1, Hooks, []),
     {ok, M4} = smerl:add_func(M3, {function, 1, all_till_ok, 2, AllTillOkClauses}),
+    AllTillOkPluginClauses = all_till_ok_plugin_clauses(1, Hooks, []),
+    {ok, M4a} = smerl:add_func(M4, {function, 1, all_till_ok, 4, AllTillOkPluginClauses}),
     InfoOnlyClause = info_only_clause(OnlyInfo),
     InfoAllClause = info_all_clause(AllInfo),
     InfoRawClause = info_raw_clause(CheckedPlugins),
     {ok, M5} = smerl:add_func(
-        M4, {function, 1, info, 1, [InfoOnlyClause, InfoAllClause, InfoRawClause]}
+        M4a, {function, 1, info, 1, [InfoOnlyClause, InfoAllClause, InfoRawClause]}
     ),
     smerl:compile(M5).
 
@@ -911,6 +945,28 @@ all_till_ok_clauses(I, [_ | _] = Hooks, Acc) ->
 all_till_ok_clauses(I, [], Acc) ->
     lists:reverse([not_found_clause(I) | Acc]).
 
+all_till_ok_plugin_clauses(I, [_ | _] = Hooks, Acc) ->
+    {Name, Arity, EmbedHooks} = partition_hooks(Hooks),
+    Clause =
+        clause_all_till_ok_plugin(
+            I,
+            Name,
+            Arity,
+            [
+                {call, 1, {atom, 1, apply}, [
+                    {atom, 1, vmq_plugin_helper},
+                    {atom, 1, all_till_ok},
+                    {cons, 1, list_const(with_plugin, embed_hooks(EmbedHooks)),
+                        {cons, 1, {var, 1, 'Params'},
+                            {cons, 1, {var, 1, 'Plugins'},
+                                {cons, 1, {var, 1, 'NonMatchingResponse'}, {nil, 1}}}}}
+                ]}
+            ]
+        ),
+    all_till_ok_plugin_clauses(I + 1, Hooks -- EmbedHooks, [Clause | Acc]);
+all_till_ok_plugin_clauses(I, [], Acc) ->
+    lists:reverse([not_found_clause_all_till_ok_plugin(I) | Acc]).
+
 partition_hooks([#hook{compat = {Name, _, _, Arity}} | _] = Hooks) ->
     {Name, Arity, [
         H
@@ -951,7 +1007,7 @@ clause(I, Name, Arity, Body) ->
 
 list_const(_, []) ->
     {nil, 1};
-list_const(false, [{compat, N, M, F, _A, _CH, CM, CF, _CA} | Rest]) ->
+list_const(false, [{compat, N, M, F, _A, _CH, CM, CF, _CA, _P} | Rest]) ->
     {cons, 1,
         {tuple, 1, [
             {atom, 1, compat},
@@ -962,14 +1018,34 @@ list_const(false, [{compat, N, M, F, _A, _CH, CM, CF, _CA} | Rest]) ->
             {atom, 1, F}
         ]},
         list_const(false, Rest)};
-list_const(false, [{_, Module, Fun, _} | Rest]) ->
+list_const(false, [{_, Module, Fun, _, _P} | Rest]) ->
     {cons, 1,
         {tuple, 1, [
             {atom, 1, Module},
             {atom, 1, Fun}
         ]},
         list_const(false, Rest)};
-list_const(true, [{compat, _N, _M, _F, _A, CH, CM, CF, CA} | Rest]) ->
+list_const(with_plugin, [{compat, N, M, F, _A, _CH, CM, CF, _CA, P} | Rest]) ->
+    {cons, 1,
+        {tuple, 1, [
+            {atom, 1, compat},
+            {atom, 1, N},
+            {atom, 1, CM},
+            {atom, 1, CF},
+            {atom, 1, P},
+            {atom, 1, M},
+            {atom, 1, F}
+        ]},
+        list_const(with_plugin, Rest)};
+list_const(with_plugin, [{_, Module, Fun, _, P} | Rest]) ->
+    {cons, 1,
+        {tuple, 1, [
+            {atom, 1, P},
+            {atom, 1, Module},
+            {atom, 1, Fun}
+        ]},
+        list_const(with_plugin, Rest)};
+list_const(true, [{compat, _N, _M, _F, _A, CH, CM, CF, CA, _P} | Rest]) ->
     {cons, 1,
         {tuple, 1, [
             {atom, 1, CH},
@@ -978,7 +1054,7 @@ list_const(true, [{compat, _N, _M, _F, _A, CH, CM, CF, CA} | Rest]) ->
             {integer, 1, CA}
         ]},
         list_const(true, Rest)};
-list_const(true, [{Name, Module, Fun, Arity} | Rest]) ->
+list_const(true, [{Name, Module, Fun, Arity, _P} | Rest]) ->
     {cons, 1,
         {tuple, 1, [
             {atom, 1, Name},
@@ -995,6 +1071,7 @@ embed_hooks(Hooks) ->
             (
                 #hook{
                     name = N,
+                    plugin = P,
                     module = M,
                     function = F,
                     arity = A,
@@ -1004,12 +1081,36 @@ embed_hooks(Hooks) ->
                 CM =/= undefined,
                 CF =/= undefined
             ->
-                {compat, N, M, F, A, CH, CM, CF, CA};
-            (#hook{name = N, module = M, function = F, arity = A}) ->
-                {N, M, F, A}
+                {compat, N, M, F, A, CH, CM, CF, CA, P};
+            (#hook{name = N, plugin = P, module = M, function = F, arity = A}) ->
+                {N, M, F, A, P}
         end,
         Hooks
     ).
+
+not_found_clause_all_till_ok_plugin(I) ->
+    {clause, I, [{var, 1, '_'}, {var, 1, '_'}, {var, 1, '_'}, {var, 1, 'NonMatchingResponse'}], [],
+        [
+            {var, 1, 'NonMatchingResponse'}
+        ]}.
+
+clause_all_till_ok_plugin(I, Name, Arity, Body) ->
+    {clause, I,
+        [
+            {atom, 1, Name},
+            {var, 1, 'Params'},
+            {var, 1, 'Plugins'},
+            {var, 1, 'NonMatchingResponse'}
+        ],
+        [
+            [
+                {op, 1, 'and', {call, 1, {atom, 1, is_list}, [{var, 1, 'Params'}]},
+                    {op, 1, '==', {call, 1, {atom, 1, length}, [{var, 1, 'Params'}]},
+                        {integer, 1, Arity}}}
+            ],
+            [{call, 1, {atom, 1, is_list}, [{var, 1, 'Plugins'}]}]
+        ],
+        Body}.
 
 -ifdef(TEST).
 %%%===================================================================
@@ -1090,24 +1191,28 @@ check_plugin_for_app_plugins_test() ->
                 {hooks, [
                     #hook{
                         name = sample_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = sample_hook,
                         arity = 0
                     },
                     #hook{
                         name = sample_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = sample_hook,
                         arity = 1
                     },
                     #hook{
                         name = sample_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = sample_hook,
                         arity = 2
                     },
                     #hook{
                         name = sample_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = sample_hook,
                         arity = 3
@@ -1115,18 +1220,21 @@ check_plugin_for_app_plugins_test() ->
 
                     #hook{
                         name = sample_all_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = other_sample_hook_a,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = other_sample_hook_b,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = other_sample_hook_c,
                         arity = 1
@@ -1134,24 +1242,28 @@ check_plugin_for_app_plugins_test() ->
 
                     #hook{
                         name = sample_all_till_ok_ok_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_next_1,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_ok_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_next_2,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_ok_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_ok_1,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_ok_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_throw_1,
                         arity = 1
@@ -1159,24 +1271,28 @@ check_plugin_for_app_plugins_test() ->
 
                     #hook{
                         name = sample_all_till_ok_error_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_next_1,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_error_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_next_2,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_error_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_error_1,
                         arity = 1
                     },
                     #hook{
                         name = sample_all_till_ok_error_hook,
+                        plugin = vmq_plugin,
                         module = vmq_plugin_mgr,
                         function = all_till_ok_throw_1,
                         arity = 1
@@ -1286,6 +1402,7 @@ vmq_plugin_test() ->
     ),
 
     call_hooks(),
+    call_hooks_filtered_application(),
 
     %% Disable Plugin
     ?assertEqual(ok, vmq_plugin_mgr:disable_plugin(vmq_plugin)),
@@ -1380,7 +1497,7 @@ vmq_module_plugin_test() ->
     ),
     vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_ok_1, 1),
     vmq_plugin_mgr:disable_module_plugin(
-        sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_trow_1, 1
+        sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_throw_1, 1
     ),
     vmq_plugin_mgr:disable_module_plugin(
         sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_1, 1
@@ -1392,7 +1509,7 @@ vmq_module_plugin_test() ->
         sample_all_till_ok_error_hook, ?MODULE, all_till_ok_error_1, 1
     ),
     vmq_plugin_mgr:disable_module_plugin(
-        sample_all_till_ok_error_hook, ?MODULE, all_till_ok_trow_1, 1
+        sample_all_till_ok_error_hook, ?MODULE, all_till_ok_throw_1, 1
     ),
     call_no_hooks().
 
@@ -1460,4 +1577,16 @@ call_hooks() ->
     %% ALL_TILL_OK Hook Tests
     ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_ok_hook, [10])),
     ?assertEqual({error, error}, vmq_plugin:all_till_ok(sample_all_till_ok_error_hook, [10])).
+
+call_hooks_filtered_application() ->
+    ?assertEqual(
+        ok,
+        vmq_plugin:all_till_ok(sample_all_till_ok_ok_hook, [10], [vmq_plugin], {error, no_match})
+    ),
+    ?assertEqual(
+        {error, no_match},
+        vmq_plugin:all_till_ok(
+            sample_all_till_ok_ok_hook, [10], [unknown_plugin], {error, no_match}
+        )
+    ).
 -endif.

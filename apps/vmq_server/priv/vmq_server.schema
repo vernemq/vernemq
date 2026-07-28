@@ -1044,6 +1044,44 @@
   {datatype, flag}
  ]}.
 
+%% @doc Per-listener authentication plugin chain.
+%% The configured order is preserved and used as plugin chain order.
+{mapping, "listener.tcp.$name.auth_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.ssl.$name.auth_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.ws.$name.auth_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.wss.$name.auth_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+
+%% @doc Per-listener authorization plugin chain.
+%% The configured order is preserved and used as plugin chain order.
+{mapping, "listener.tcp.$name.authz_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.ssl.$name.authz_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.ws.$name.authz_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+{mapping, "listener.wss.$name.authz_plugins", "vmq_server.listeners", [
+  {datatype, string},
+  hidden
+ ]}.
+
 %% @doc 'listener.tcp.allowed_protocol_versions' configures which
 %% protocol versions are allowed for an MQTT listener. The allowed
 %% protocol versions can be specified the tcp, websocket or ssl level:
@@ -2248,13 +2286,13 @@
                                   cuttlefish:conf_get("plugins." ++ Name, Conf, false)
                           end,
                           PluginNames),
-         Plugins =
-             [ {cuttlefish:conf_get("plugins." ++ Name ++ ".priority", Conf, Name),
-                #{path => cuttlefish:conf_get("plugins." ++ Name ++ ".path", Conf, undefined),
-                  name => erlang:list_to_atom(Name)}}
-               || Name <- EnabledPlugins ],
-         lists:keysort(1, Plugins)
- end}.
+          Plugins =
+              [ {cuttlefish:conf_get("plugins." ++ Name ++ ".priority", Conf, Name),
+                 #{path => cuttlefish:conf_get("plugins." ++ Name ++ ".path", Conf, undefined),
+                   name => erlang:list_to_atom(Name)}}
+                || Name <- EnabledPlugins ],
+          lists:keysort(1, Plugins)
+  end}.
 
 %% @doc Specifies the maximum incoming topic alias range on the broker for each
 %% client. A value of 0 means topic aliases are not allowed.

@@ -138,32 +138,37 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(nr_of_acceptors)
     ),
-    ProtocolOpts = protocol_opts_for_type(Type, Opts),
-    TransportMod = transport_for_type(Type),
-    TransportOptions = maps:from_list(
-        [
-            {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
-            {num_acceptors, NrOfAcceptors},
-            {max_connections, MaxConns}
-            | transport_opts_for_type(Type, Opts)
-        ]
-    ),
-    case protocol_for_type(Type) of
-        cowboy_clear ->
-            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
-        _ ->
-            case
-                ranch:start_listener(
-                    Ref,
-                    TransportMod,
-                    TransportOptions,
-                    protocol_for_type(Type),
-                    ProtocolOpts
-                )
-            of
-                {ok, _} -> ok;
-                Error -> Error
-            end
+    case validate_plugin_chains(Opts) of
+        ok ->
+            ProtocolOpts = protocol_opts_for_type(Type, Opts),
+            TransportMod = transport_for_type(Type),
+            TransportOptions = maps:from_list(
+                [
+                    {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
+                    {num_acceptors, NrOfAcceptors},
+                    {max_connections, MaxConns}
+                    | transport_opts_for_type(Type, Opts)
+                ]
+            ),
+            case protocol_for_type(Type) of
+                cowboy_clear ->
+                    start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+                _ ->
+                    case
+                        ranch:start_listener(
+                            Ref,
+                            TransportMod,
+                            TransportOptions,
+                            protocol_for_type(Type),
+                            ProtocolOpts
+                        )
+                    of
+                        {ok, _} -> ok;
+                        Error -> Error
+                    end
+            end;
+        {error, _} = Error ->
+            Error
     end.
 listeners() ->
     listeners(select, false, false).
@@ -437,14 +442,55 @@ default_session_opts(Opts) ->
     MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
+    AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
-        {buffer_sizes, BufferSizes}
+        {buffer_sizes, BufferSizes},
+        {auth_plugins, AuthPlugins},
+        {authz_plugins, AuthzPlugins}
         | MaybeProxyDefaults2
     ].
+
+validate_plugin_chains(Opts) ->
+    {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
+    EnabledPlugins = enabled_plugin_names(Plugins),
+    case
+        validate_plugin_chain(auth_plugins, proplists:get_value(auth_plugins, Opts), EnabledPlugins)
+    of
+        ok ->
+            validate_plugin_chain(
+                authz_plugins, proplists:get_value(authz_plugins, Opts), EnabledPlugins
+            );
+        {error, _} = Error ->
+            Error
+    end.
+
+enabled_plugin_names(Plugins) ->
+    [Name || {application, Name, _} <- Plugins].
+
+validate_plugin_chain(_Key, undefined, _EnabledPlugins) ->
+    ok;
+validate_plugin_chain(Key, Plugins, EnabledPlugins) when is_list(Plugins) ->
+    case Plugins -- lists:usort(Plugins) of
+        [] -> validate_plugin_chain_members(Key, Plugins, EnabledPlugins);
+        [Duplicate | _] -> {error, {duplicate_plugin, Key, Duplicate}}
+    end;
+validate_plugin_chain(Key, Plugins, _EnabledPlugins) ->
+    {error, {invalid_plugin_chain, Key, Plugins}}.
+
+validate_plugin_chain_members(Key, [Plugin | Rest], EnabledPlugins) when is_atom(Plugin) ->
+    case lists:member(Plugin, EnabledPlugins) of
+        true -> validate_plugin_chain_members(Key, Rest, EnabledPlugins);
+        false -> {error, {unknown_or_disabled_plugin, Key, Plugin}}
+    end;
+validate_plugin_chain_members(Key, [Plugin | _], _EnabledPlugins) ->
+    {error, {invalid_plugin_name, Key, Plugin}};
+validate_plugin_chain_members(_Key, [], _EnabledPlugins) ->
+    ok.
 
 %%%===================================================================
 %%% gen_server callbacks

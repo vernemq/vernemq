@@ -53,6 +53,8 @@
         | username()
         | {preauth, string() | undefined},
     conn_opts :: undefined | map(),
+    auth_plugins = undefined :: undefined | [atom()],
+    authz_plugins = undefined :: undefined | [atom()],
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     retry_queue = queue:new() :: queue:queue(),
@@ -126,6 +128,8 @@ init(
             {_, PreAuth} -> {preauth, PreAuth}
         end,
     ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
+    AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
+    AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -170,6 +174,8 @@ init(
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
         conn_opts = ConnOpts,
+        auth_plugins = AuthPlugins,
+        authz_plugins = AuthzPlugins,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -455,7 +461,7 @@ connected(
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess, State) of
         {ok, QoSs} ->
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
@@ -811,7 +817,8 @@ check_will(
                 retain = unflag(IsRetain),
                 mountpoint = MountPoint
             },
-            fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end
+            fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end,
+            State
         )
     of
         {ok, Msg, SessCtrl} ->
@@ -851,7 +858,7 @@ auth_on_register(Password, State) ->
             M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
             _ -> BasicHookArgs
         end,
-    case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
+    case plugin_all_till_ok(auth_on_register, HookArgs, State, auth) of
         ok ->
             {ok, queue_opts(State, []), State};
         {ok, Args} ->
@@ -896,13 +903,16 @@ set_sock_opts(Opts) ->
     fun(
         (username(), subscriber_id(), [{topic(), qos()}]) ->
             {ok, [qos() | not_allowed]} | {error, atom()}
-    )
+    ),
+    state()
 ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
-auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
+auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess, State) ->
     case
-        vmq_plugin:all_till_ok(
+        plugin_all_till_ok(
             auth_on_subscribe,
-            [User, SubscriberId, Topics]
+            [User, SubscriberId, Topics],
+            State,
+            authz
         )
     of
         ok ->
@@ -931,7 +941,7 @@ unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
         end,
     UnsubFun(SubscriberId, TTopics).
 
--spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun()) ->
+-spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun(), state() | undefined) ->
     {ok, msg(), session_ctrl()}
     | {error, atom()}.
 auth_on_publish(
@@ -943,10 +953,11 @@ auth_on_publish(
         qos = QoS,
         retain = IsRetain
     } = Msg,
-    AuthSuccess
+    AuthSuccess,
+    State
 ) ->
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
-    case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
+    case plugin_all_till_ok(auth_on_publish, HookArgs, State, authz) of
         ok ->
             AuthSuccess(Msg, HookArgs, #{});
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
@@ -1020,8 +1031,21 @@ publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg) ->
                 E ->
                     E
             end
-        end
+        end,
+        undefined
     ).
+
+plugin_all_till_ok(Hook, HookArgs, #state{auth_plugins = Plugins}, auth) ->
+    fallback_all_till_ok(Hook, HookArgs, Plugins);
+plugin_all_till_ok(Hook, HookArgs, #state{authz_plugins = Plugins}, authz) ->
+    fallback_all_till_ok(Hook, HookArgs, Plugins);
+plugin_all_till_ok(Hook, HookArgs, undefined, _Mode) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs).
+
+fallback_all_till_ok(Hook, HookArgs, undefined) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs);
+fallback_all_till_ok(Hook, HookArgs, Plugins) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs, Plugins, {error, plugin_chain_exhausted}).
 
 -spec on_publish_hook({ok, {integer(), integer()}} | {error, _}, list()) -> ok | {error, _}.
 on_publish_hook({ok, _NumMatched}, HookParams) ->
