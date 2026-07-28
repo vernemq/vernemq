@@ -1,3 +1,4 @@
+- Bugfix: Make `vmq_diversity` more robust in case of script errors and plugin chains.
 - Add minimal Prometheus alarming template example
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
