@@ -22,7 +22,8 @@
     get/2,
     delete/2,
     fold/3,
-    subscribe/1
+    subscribe/1,
+    subscribe/2
 ]).
 
 start() ->
@@ -62,3 +63,6 @@ fold(FullPrefix, Fun, Acc) ->
 
 subscribe(FullPrefix) ->
     vmq_plugin:only(metadata_subscribe, [FullPrefix]).
+
+subscribe(FullPrefix, Opts) ->
+    vmq_plugin:only(metadata_subscribe, [FullPrefix, Opts]).
