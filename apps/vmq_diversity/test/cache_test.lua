@@ -48,7 +48,11 @@ pub_modifiers_acls = {
             payload = "hello world",
             qos = 1,
             retain = true,
-            mountpoint = "override-mountpoint2"
+            mountpoint = "override-mountpoint2",
+            properties = {
+                p_content_type = "cache-content-type",
+                p_user_property = {{k1 = "v3"}, {k3 = "v3"}}
+            }
         }
     }
 }
@@ -71,6 +75,7 @@ assert(ret.payload == "hello world")
 assert(ret.qos == 1)
 assert(ret.retain == true)
 assert(ret.mountpoint == "override-mountpoint2")
+assert(ret.properties.p_content_type == "cache-content-type")
 
 function auth_on_register(reg)
     if reg.client_id == "allowed-subscriber-id" then
@@ -83,13 +88,17 @@ function auth_on_register(reg)
           },
           {
              pattern = "modifiers",
-             modifiers = {
-                topic = "hello/world",
-                payload = "hello world",
-                qos = 1,
-                retain = true,
-                mountpoint = "override-mountpoint2"
-             }
+              modifiers = {
+                 topic = "hello/world",
+                 payload = "hello world",
+                 qos = 1,
+                 retain = true,
+                 mountpoint = "override-mountpoint2",
+                 properties = {
+                    p_content_type = "cache-content-type",
+                    p_user_property = {{k1 = "v3"}, {k3 = "v3"}}
+                  }
+               }
 
           }
        }

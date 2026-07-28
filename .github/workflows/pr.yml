@@ -17,7 +17,7 @@ env:
 jobs:
   code_checks:
     name: Check code style and quality
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Install dependencies
         run: |
@@ -58,7 +58,7 @@ jobs:
 
   coverage:
     name: Run tests with coverage
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     services:
       postgres:
@@ -171,10 +171,10 @@ jobs:
         os:
           - ubuntu-24.04
           # Sonoma
-          - macos-13
+          - macos-15
         otp:
           - "28.4"
-          - "27.2"
+          - "27.3"
           - "26.2"
         exclude:
           - os: macos-12
