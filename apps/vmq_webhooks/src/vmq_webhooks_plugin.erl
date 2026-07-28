@@ -676,7 +676,9 @@ uncheck_exported_callback(HookName, [_ | Exports]) ->
 uncheck_exported_callback(_, []) ->
     {error, no_matching_callback_found}.
 
--spec all_till_ok(hook_name(), [any()]) -> 'next' | 'ok' | {'error', _} | {'ok', _}.
+-type hook_arg() :: {atom(), _} | map().
+
+-spec all_till_ok(hook_name(), [hook_arg(), ...]) -> 'next' | 'ok' | {'error', _} | {'ok', _}.
 all_till_ok(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] -> next;
@@ -1002,19 +1004,31 @@ is_auth_register_hook(_) ->
     any().
 call_endpoint_sync(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
     case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
-        {ok, 200, RespHeaders, CRef} ->
-            case hackney:body(CRef) of
+        {ok, 200, RespHeaders, RespBodyOrRef} ->
+            case response_body(RespBodyOrRef) of
                 {ok, Body} ->
                     decode_endpoint_response(Hook, RespHeaders, Body, EOpts);
                 {error, _} = E ->
                     E
             end;
-        {ok, Code, _, CRef} ->
-            hackney:close(CRef),
+        {ok, Code, _, RespBodyOrRef} ->
+            maybe_close_response(RespBodyOrRef),
             {error, {invalid_response_code, Code}};
         {error, _} = E ->
             E
     end.
+
+-spec response_body(pid() | binary()) -> {ok, binary()} | {error, any()}.
+response_body(CRef) when is_pid(CRef) ->
+    hackney:body(CRef);
+response_body(Body) when is_binary(Body) ->
+    {ok, Body}.
+
+-spec maybe_close_response(any()) -> ok.
+maybe_close_response(CRef) when is_pid(CRef) ->
+    hackney:close(CRef);
+maybe_close_response(_) ->
+    ok.
 
 -spec call_endpoint_auth_with_cancel(
     atom(),
@@ -1028,9 +1042,10 @@ call_endpoint_sync(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
 call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
     case hackney:request(Method, Endpoint, Headers, Payload, [async | Opts]) of
         {ok, ReqRef} ->
+            Deadline = auth_response_deadline(maps:get(response_timeout, EOpts)),
             wait_auth_endpoint_response(
                 ReqRef,
-                maps:get(response_timeout, EOpts),
+                Deadline,
                 Hook,
                 EOpts,
                 undefined,
@@ -1046,29 +1061,28 @@ call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, E
 
 -spec wait_auth_endpoint_response(
     pid(),
-    timeout() | infinity,
+    integer() | infinity,
     hook_name(),
     map(),
     undefined | integer(),
     undefined | list(),
     [binary()]
 ) -> any().
-wait_auth_endpoint_response(ReqRef, Timeout, Hook, EOpts, StatusCode, RespHeaders, BodyChunks) when
-    is_integer(Timeout)
-->
+wait_auth_endpoint_response(ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks) ->
+    Timeout = remaining_auth_response_timeout(Deadline),
     receive
         {hackney_response, ReqRef, {status, Code, _Reason}} ->
             wait_auth_endpoint_response(
-                ReqRef, Timeout, Hook, EOpts, Code, RespHeaders, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, Code, RespHeaders, BodyChunks
             );
         {hackney_response, ReqRef, {headers, Headers}} ->
             wait_auth_endpoint_response(
-                ReqRef, Timeout, Hook, EOpts, StatusCode, Headers, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, StatusCode, Headers, BodyChunks
             );
         {hackney_response, ReqRef, BodyChunk} when is_binary(BodyChunk) ->
             wait_auth_endpoint_response(
                 ReqRef,
-                Timeout,
+                Deadline,
                 Hook,
                 EOpts,
                 StatusCode,
@@ -1097,57 +1111,24 @@ wait_auth_endpoint_response(ReqRef, Timeout, Hook, EOpts, StatusCode, RespHeader
             {error, request_cancelled_client_closed};
         _Other ->
             wait_auth_endpoint_response(
-                ReqRef, Timeout, Hook, EOpts, StatusCode, RespHeaders, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks
             )
     after Timeout ->
         cancel_async_request(ReqRef),
         {error, timeout}
-    end;
-wait_auth_endpoint_response(ReqRef, infinity, Hook, EOpts, StatusCode, RespHeaders, BodyChunks) ->
-    receive
-        {hackney_response, ReqRef, {status, Code, _Reason}} ->
-            wait_auth_endpoint_response(
-                ReqRef, infinity, Hook, EOpts, Code, RespHeaders, BodyChunks
-            );
-        {hackney_response, ReqRef, {headers, Headers}} ->
-            wait_auth_endpoint_response(
-                ReqRef, infinity, Hook, EOpts, StatusCode, Headers, BodyChunks
-            );
-        {hackney_response, ReqRef, BodyChunk} when is_binary(BodyChunk) ->
-            wait_auth_endpoint_response(
-                ReqRef,
-                infinity,
-                Hook,
-                EOpts,
-                StatusCode,
-                RespHeaders,
-                [BodyChunk | BodyChunks]
-            );
-        {hackney_response, ReqRef, done} ->
-            finalize_auth_endpoint_response(StatusCode, RespHeaders, BodyChunks, Hook, EOpts);
-        {hackney_response, ReqRef, {error, Reason}} ->
-            {error, Reason};
-        {tcp_closed, _} = Msg ->
-            cancel_async_request(ReqRef),
-            self() ! Msg,
-            {error, request_cancelled_client_closed};
-        {ssl_closed, _} = Msg ->
-            cancel_async_request(ReqRef),
-            self() ! Msg,
-            {error, request_cancelled_client_closed};
-        {tcp_error, _, _} = Msg ->
-            cancel_async_request(ReqRef),
-            self() ! Msg,
-            {error, request_cancelled_client_closed};
-        {ssl_error, _, _} = Msg ->
-            cancel_async_request(ReqRef),
-            self() ! Msg,
-            {error, request_cancelled_client_closed};
-        _Other ->
-            wait_auth_endpoint_response(
-                ReqRef, infinity, Hook, EOpts, StatusCode, RespHeaders, BodyChunks
-            )
     end.
+
+-spec auth_response_deadline(timeout() | infinity) -> integer() | infinity.
+auth_response_deadline(infinity) ->
+    infinity;
+auth_response_deadline(Timeout) when is_integer(Timeout) ->
+    erlang:monotonic_time(millisecond) + Timeout.
+
+-spec remaining_auth_response_timeout(integer() | infinity) -> timeout() | infinity.
+remaining_auth_response_timeout(infinity) ->
+    infinity;
+remaining_auth_response_timeout(Deadline) when is_integer(Deadline) ->
+    erlang:max(0, Deadline - erlang:monotonic_time(millisecond)).
 
 -spec finalize_auth_endpoint_response(
     undefined | integer(),

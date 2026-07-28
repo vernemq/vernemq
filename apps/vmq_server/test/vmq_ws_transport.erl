@@ -26,12 +26,15 @@ connect(Host, Port, Opts, Timeout) ->
     Opts2 = proplists:delete(proxy_info, Opts1),
     XFFUsername = proplists:get_value(xff_username, Opts, undefined),
     Opts3 = proplists:delete(xff_username, Opts2),
-    case gen_tcp:connect(Host, Port, Opts3, Timeout) of
+    IsSSL = proplists:get_value(ssl, Opts3, false),
+    Transport = transport(IsSSL),
+    SocketOpts = proplists:delete(ssl, Opts3),
+    case Transport:connect(Host, Port, SocketOpts, Timeout) of
         {ok, Socket} ->
             case ProxyInfo of
                 undefined -> ignore;
                 ProxyInfo -> Header = ranch_proxy_header:header(ProxyInfo),
-                             gen_tcp:send(Socket, Header)
+                             Transport:send(Socket, Header)
             end,
             WSProtocolsStr = string:join(WSProtocols, ","),
             Hello = 
@@ -62,8 +65,8 @@ connect(Host, Port, Opts, Timeout) ->
                             "Upgrade: websocket\r\n"
                             "\r\n"]
                         end,
-            ok = gen_tcp:send(Socket, Hello),
-            {ok, Handshake} = gen_tcp:recv(Socket, 0, 6000),
+            ok = Transport:send(Socket, Hello),
+            {ok, Handshake} = Transport:recv(Socket, 0, 6000),
             {ok, {http_response, {1, 1}, 101, "Switching Protocols"}, Rest}
 		= erlang:decode_packet(http, Handshake, []),
             [Headers, <<>>] = do_decode_headers(
@@ -72,9 +75,10 @@ connect(Host, Port, Opts, Timeout) ->
             {'Upgrade', "websocket"} = lists:keyfind('Upgrade', 1, Headers),
             {"sec-websocket-accept", "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="}
 		= lists:keyfind("sec-websocket-accept", 1, Headers),
+            ReturnSocket = return_socket(IsSSL, Socket),
             case lists:keyfind("sec-websocket-protocol", 1, Headers) of
-                {"sec-websocket-protocol", "mqtt"} -> {ok, Socket};
-                {"sec-websocket-protocol", "mqttv3.1"} -> {ok, Socket};
+                {"sec-websocket-protocol", "mqtt"} -> {ok, ReturnSocket};
+                {"sec-websocket-protocol", "mqttv3.1"} -> {ok, ReturnSocket};
                 false -> {error, unknown_websocket_protocol}
             end;
         E ->
@@ -86,7 +90,7 @@ send(Socket, Data) ->
     MaskedData = do_mask(Data, Mask, <<>>),
     EncLen = enc_len(byte_size(MaskedData)),
     Frame = <<16#82, EncLen/binary, Mask:32, MaskedData/binary>>,
-    gen_tcp:send(Socket, Frame).
+    transport_send(Socket, Frame).
 
 recv(Socket, Length, Timeout) when Length > 0 ->
     %% TODO: handle case when Length =:= 0.
@@ -97,22 +101,22 @@ recv(Socket, Length, Timeout) when Length > 0 ->
     receive_data(Socket, Length, Timeout, 0, Acc).
 
 close(Socket) ->
-    gen_tcp:close(Socket).
+    transport_close(Socket).
 
 %%% Internal functions
 receive_data(Socket, _Length, Timeout, Elapsed, Acc) when Elapsed > Timeout ->
     store_rest(Socket, Acc),
     {error, timeout};
 receive_data(Socket, Length, Timeout, Elapsed, Acc) ->
-    case gen_tcp:recv(Socket, 0, 5) of
+    case transport_recv(Socket, 0, 5) of
         {ok, RecvData} ->
             Data = <<Acc/binary, RecvData/binary>>,
             case parse(Data) of
                 {close, <<ParsedData:Length/binary>>, _Rest} ->
-                    gen_tcp:close(Socket),
+                    transport_close(Socket),
                     {ok, ParsedData};
                 {close, <<>>, _Rest} ->
-                    gen_tcp:close(Socket),
+                    transport_close(Socket),
                     {error, closed};
                 {ok, <<ParsedData:Length/binary>>,  Rest} ->
                     store_rest(Socket, Rest),
@@ -182,6 +186,21 @@ get_payload(<<0:1, Len:7, Data:Len/binary, Rest/binary>>) ->
     {Data, Rest};
 get_payload(_) ->
     more.
+
+transport(true) -> ssl;
+transport(false) -> gen_tcp.
+
+return_socket(true, Socket) -> {ssl, Socket};
+return_socket(false, Socket) -> Socket.
+
+transport_send({ssl, Socket}, Data) -> ssl:send(Socket, Data);
+transport_send(Socket, Data) -> gen_tcp:send(Socket, Data).
+
+transport_recv({ssl, Socket}, Length, Timeout) -> ssl:recv(Socket, Length, Timeout);
+transport_recv(Socket, Length, Timeout) -> gen_tcp:recv(Socket, Length, Timeout).
+
+transport_close({ssl, Socket}) -> ssl:close(Socket);
+transport_close(Socket) -> gen_tcp:close(Socket).
 
 
 %% The `do_decode_headers/2` and `do_mask/3` functions were borrowed

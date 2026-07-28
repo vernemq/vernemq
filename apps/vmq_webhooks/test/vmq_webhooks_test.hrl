@@ -16,6 +16,7 @@
 -define(CHANGED_CLIENT_ID, <<"changed-subscriber-id">>).
 -define(CANCEL_CLIENT_ID, <<"cancel-auth-register">>).
 -define(CANCEL_CLIENT_ID_M5, <<"cancel-auth-register-m5">>).
+-define(TIMEOUT_CLIENT_ID, <<"timeout-auth-register">>).
 -define(USERNAME, <<"test-user">>).
 -define(CHANGED_USERNAME, <<"changed-user">>).
 -define(PASSWORD, <<"test-password">>).

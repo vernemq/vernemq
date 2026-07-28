@@ -1,35 +1,35 @@
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 5 (0x5)
+        Serial Number: 6 (0x6)
         Signature Algorithm: sha256WithRSAEncryption
         Issuer: C=CH, ST=Basel-Town, O=Erlio MQTT Project, OU=Testing, CN=Signing CA
         Validity
-            Not Before: Apr 11 06:54:28 2024 GMT
-            Not After : Apr 10 06:54:28 2029 GMT
+            Not Before: Jul 17 16:01:00 2026 GMT
+            Not After : Jul 16 16:01:00 2031 GMT
         Subject: C=CH, ST=Basel-Town, L=Basel, O=Server, OU=Production, CN=test client revoked
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)
                 Modulus:
-                    00:9b:1e:63:19:70:b4:49:bb:be:66:67:cd:63:d1:
-                    df:f3:59:e9:1d:32:a0:d7:46:98:62:62:a0:b7:40:
-                    c3:86:89:17:cf:e7:68:2b:ed:9e:2e:8d:78:79:df:
-                    7c:a2:5a:38:b6:20:73:4b:c2:3b:3e:b2:35:bc:b0:
-                    43:e6:68:76:be:d7:e9:30:0b:09:fb:e0:7a:20:5b:
-                    a6:e5:d1:fc:0a:68:b1:89:ca:e6:07:a9:95:04:87:
-                    be:01:3c:6f:4f:ef:ba:0c:66:43:a3:c6:73:e8:c9:
-                    28:34:fd:87:e5:3a:31:6d:d9:20:85:32:cb:24:d8:
-                    5d:32:80:4a:66:7b:46:e7:33:0c:c0:49:35:11:db:
-                    15:42:08:d6:92:bb:b5:5d:d3:eb:dc:08:44:d3:89:
-                    00:b1:72:7a:01:9d:8b:c8:c7:59:41:4d:6c:96:de:
-                    2d:3c:e7:7e:d1:ce:37:26:40:18:c4:26:8a:b9:f2:
-                    7f:05:b6:09:c1:d3:a3:97:0b:32:17:5a:b7:4b:87:
-                    94:44:fd:a6:56:61:bc:b4:3c:84:bd:0a:82:9b:c5:
-                    42:12:98:9d:73:54:e5:88:3f:ca:10:87:ef:f0:49:
-                    1f:c0:be:67:a3:72:eb:5a:87:5f:2c:b1:d7:46:e7:
-                    27:18:bd:d7:ad:9c:d1:cb:a8:86:2f:5a:bb:1d:27:
-                    08:2b
+                    00:b3:97:6e:11:91:27:0d:2e:76:be:d6:8d:8c:28:
+                    5b:49:a0:15:0a:c8:65:bd:e4:d4:7c:fa:d1:13:20:
+                    2e:5d:04:5e:c4:0c:bb:1f:cf:d2:78:3d:f9:bb:f8:
+                    3b:2c:39:84:1b:ec:e7:44:58:7a:f2:52:93:43:36:
+                    50:8f:aa:6f:46:65:a0:70:86:b0:d6:b5:5c:8e:c5:
+                    32:b9:a3:4e:00:c7:eb:a0:72:9d:80:72:77:ff:f5:
+                    6f:cd:94:a0:a4:dd:20:ed:53:69:61:7d:08:71:b8:
+                    57:df:a8:8c:64:d5:32:75:b1:1e:25:c4:3b:42:cd:
+                    13:8a:1f:c6:3c:e1:31:14:b0:d4:43:00:a3:3f:3a:
+                    9a:b4:17:8d:40:66:53:80:13:e1:08:2f:a4:49:fb:
+                    47:4c:de:62:09:ef:92:4e:fb:5a:d6:83:bd:b4:fd:
+                    fe:4b:6c:08:62:3c:a5:5d:c0:68:fd:52:4c:e0:ed:
+                    30:c5:19:e9:8a:20:df:57:69:73:47:2b:9d:a4:98:
+                    a3:86:20:59:95:17:29:54:a9:1a:91:c9:dc:c2:ae:
+                    f9:02:be:b7:71:10:73:bc:a8:1e:28:4b:3d:92:ee:
+                    ce:c3:43:e1:de:b5:8d:ca:50:67:f9:05:65:d8:ff:
+                    be:ae:e7:92:de:c3:c3:4e:e8:b2:c1:95:db:ff:6f:
+                    3d:79
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
             X509v3 Basic Constraints: 
@@ -37,46 +37,46 @@ Certificate:
             Netscape Comment: 
                 OpenSSL Generated Certificate
             X509v3 Subject Key Identifier: 
-                6A:42:25:E2:B8:FC:70:3B:E4:9A:FF:EB:CE:CB:94:08:DC:AE:42:C1
+                ED:FE:6C:F6:91:1C:F5:96:30:51:6A:3E:A6:CB:C2:74:52:39:C2:9C
             X509v3 Authority Key Identifier: 
-                60:0D:CB:87:6C:97:8D:46:84:11:8D:75:31:03:A4:69:63:69:96:CF
+                CE:03:2C:59:77:DB:FE:9E:01:8E:BF:40:94:FC:6C:22:77:BD:DB:47
     Signature Algorithm: sha256WithRSAEncryption
     Signature Value:
-        6c:f3:4c:f1:67:3d:db:69:48:88:46:d9:c8:ee:2d:9f:3f:71:
-        bf:3a:5f:5a:9d:8d:42:99:9e:f3:35:95:fc:02:f4:31:41:72:
-        64:bd:4a:08:61:55:bd:04:17:b7:fb:65:b0:9c:94:13:5e:de:
-        7c:f2:2a:8f:48:66:20:a5:b2:47:71:1e:7d:b2:6d:fc:a1:4c:
-        96:8c:16:0d:65:28:70:35:6f:5f:1d:4e:27:3c:96:ee:5b:69:
-        b7:93:4e:86:d8:fe:01:73:9e:8d:bf:cb:d2:ab:3f:90:17:8d:
-        72:b3:08:48:84:fd:ce:9a:c3:5a:29:3e:46:b3:e8:79:ee:2c:
-        55:a5:df:66:03:21:37:15:2f:ea:ab:a2:51:8f:56:8d:ad:74:
-        09:94:6f:2c:7d:d7:c2:d7:68:ad:96:be:19:b9:37:6b:b8:7f:
-        7c:15:eb:46:18:69:72:4b:bf:0d:f3:c2:aa:a2:30:f0:2d:9d:
-        77:92:bf:57:1e:52:1e:99:66:85:64:47:56:4e:c4:30:76:54:
-        70:c9:91:cb:32:7b:ea:ee:c3:30:a0:fa:f8:b4:bf:b9:e5:c8:
-        2a:fc:b6:88:4b:93:85:70:61:2b:b8:6e:34:28:ec:1b:6a:81:
-        a0:44:3a:97:16:da:9a:6b:8b:e2:55:44:83:af:49:3a:35:4d:
-        38:0f:3e:c4
+        6e:45:11:a1:77:dd:5e:7e:cc:1e:37:d8:69:98:52:e3:81:30:
+        f5:f1:53:0c:67:7f:42:0d:90:21:9b:2a:e3:93:aa:63:56:15:
+        a4:9f:7a:9f:12:69:62:32:fd:7e:44:a2:aa:44:04:ea:4b:80:
+        74:45:72:b7:8b:d6:fa:45:48:db:1f:61:bf:f0:d0:ec:76:f5:
+        28:00:ff:e4:c4:cc:e5:fc:c7:40:72:e9:62:b9:ca:80:61:25:
+        de:62:a8:94:e2:13:fe:22:e7:ea:38:7e:68:bc:56:70:1e:1e:
+        d6:3a:50:76:eb:63:3e:80:2a:92:fa:14:aa:99:0b:0e:d4:c3:
+        e9:2c:65:88:cb:8a:7e:51:23:a6:79:7f:4d:70:ef:89:d2:63:
+        e6:c7:83:88:40:14:e5:ef:78:7d:74:31:30:72:23:27:d7:b2:
+        b4:80:61:b1:70:42:d3:24:51:c1:17:5b:81:22:f9:e5:c5:21:
+        40:1f:35:00:92:ea:84:c3:cf:f8:eb:13:30:87:33:18:5b:9f:
+        0f:2b:01:1e:c8:a6:93:09:e9:fd:0b:12:5f:3b:fd:a2:14:27:
+        9d:f0:8e:b6:31:e5:03:ae:96:1a:8d:f6:71:a3:90:ee:34:74:
+        c2:de:29:a7:a4:32:d2:d7:5d:0d:4e:5a:9e:8c:d2:d6:54:93:
+        89:63:e9:5c
 -----BEGIN CERTIFICATE-----
-MIID0jCCArqgAwIBAgIBBTANBgkqhkiG9w0BAQsFADBmMQswCQYDVQQGEwJDSDET
+MIID0jCCArqgAwIBAgIBBjANBgkqhkiG9w0BAQsFADBmMQswCQYDVQQGEwJDSDET
 MBEGA1UECAwKQmFzZWwtVG93bjEbMBkGA1UECgwSRXJsaW8gTVFUVCBQcm9qZWN0
-MRAwDgYDVQQLDAdUZXN0aW5nMRMwEQYDVQQDDApTaWduaW5nIENBMB4XDTI0MDQx
-MTA2NTQyOFoXDTI5MDQxMDA2NTQyOFowdjELMAkGA1UEBhMCQ0gxEzARBgNVBAgM
+MRAwDgYDVQQLDAdUZXN0aW5nMRMwEQYDVQQDDApTaWduaW5nIENBMB4XDTI2MDcx
+NzE2MDEwMFoXDTMxMDcxNjE2MDEwMFowdjELMAkGA1UEBhMCQ0gxEzARBgNVBAgM
 CkJhc2VsLVRvd24xDjAMBgNVBAcMBUJhc2VsMQ8wDQYDVQQKDAZTZXJ2ZXIxEzAR
 BgNVBAsMClByb2R1Y3Rpb24xHDAaBgNVBAMME3Rlc3QgY2xpZW50IHJldm9rZWQw
-ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCbHmMZcLRJu75mZ81j0d/z
-WekdMqDXRphiYqC3QMOGiRfP52gr7Z4ujXh533yiWji2IHNLwjs+sjW8sEPmaHa+
-1+kwCwn74HogW6bl0fwKaLGJyuYHqZUEh74BPG9P77oMZkOjxnPoySg0/YflOjFt
-2SCFMssk2F0ygEpme0bnMwzASTUR2xVCCNaSu7Vd0+vcCETTiQCxcnoBnYvIx1lB
-TWyW3i08537RzjcmQBjEJoq58n8FtgnB06OXCzIXWrdLh5RE/aZWYby0PIS9CoKb
-xUISmJ1zVOWIP8oQh+/wSR/Avmejcutah18ssddG5ycYvdetnNHLqIYvWrsdJwgr
+ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCzl24RkScNLna+1o2MKFtJ
+oBUKyGW95NR8+tETIC5dBF7EDLsfz9J4Pfm7+DssOYQb7OdEWHryUpNDNlCPqm9G
+ZaBwhrDWtVyOxTK5o04Ax+ugcp2Acnf/9W/NlKCk3SDtU2lhfQhxuFffqIxk1TJ1
+sR4lxDtCzROKH8Y84TEUsNRDAKM/Opq0F41AZlOAE+EIL6RJ+0dM3mIJ75JO+1rW
+g720/f5LbAhiPKVdwGj9Ukzg7TDFGemKIN9XaXNHK52kmKOGIFmVFylUqRqRydzC
+rvkCvrdxEHO8qB4oSz2S7s7DQ+HetY3KUGf5BWXY/76u55Lew8NO6LLBldv/bz15
 AgMBAAGjezB5MAkGA1UdEwQCMAAwLAYJYIZIAYb4QgENBB8WHU9wZW5TU0wgR2Vu
-ZXJhdGVkIENlcnRpZmljYXRlMB0GA1UdDgQWBBRqQiXiuPxwO+Sa/+vOy5QI3K5C
-wTAfBgNVHSMEGDAWgBRgDcuHbJeNRoQRjXUxA6RpY2mWzzANBgkqhkiG9w0BAQsF
-AAOCAQEAbPNM8Wc922lIiEbZyO4tnz9xvzpfWp2NQpme8zWV/AL0MUFyZL1KCGFV
-vQQXt/tlsJyUE17efPIqj0hmIKWyR3EefbJt/KFMlowWDWUocDVvXx1OJzyW7ltp
-t5NOhtj+AXOejb/L0qs/kBeNcrMISIT9zprDWik+RrPoee4sVaXfZgMhNxUv6qui
-UY9Wja10CZRvLH3XwtdorZa+Gbk3a7h/fBXrRhhpcku/DfPCqqIw8C2dd5K/Vx5S
-HplmhWRHVk7EMHZUcMmRyzJ76u7DMKD6+LS/ueXIKvy2iEuThXBhK7huNCjsG2qB
-oEQ6lxbammuL4lVEg69JOjVNOA8+xA==
+ZXJhdGVkIENlcnRpZmljYXRlMB0GA1UdDgQWBBTt/mz2kRz1ljBRaj6my8J0UjnC
+nDAfBgNVHSMEGDAWgBTOAyxZd9v+ngGOv0CU/Gwid73bRzANBgkqhkiG9w0BAQsF
+AAOCAQEAbkURoXfdXn7MHjfYaZhS44Ew9fFTDGd/Qg2QIZsq45OqY1YVpJ96nxJp
+YjL9fkSiqkQE6kuAdEVyt4vW+kVI2x9hv/DQ7Hb1KAD/5MTM5fzHQHLpYrnKgGEl
+3mKolOIT/iLn6jh+aLxWcB4e1jpQdutjPoAqkvoUqpkLDtTD6SxliMuKflEjpnl/
+TXDvidJj5seDiEAU5e94fXQxMHIjJ9eytIBhsXBC0yRRwRdbgSL55cUhQB81AJLq
+hMPP+OsTMIczGFufDysBHsimkwnp/QsSXzv9ohQnnfCOtjHlA66WGo32caOQ7jR0
+wt4pp6Qy0tddDU5anozS1lSTiWPpXA==
 -----END CERTIFICATE-----

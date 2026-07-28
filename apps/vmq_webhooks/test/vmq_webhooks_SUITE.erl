@@ -113,7 +113,8 @@ http() ->
      cache_expired_entry,
      cli_allow_query_parameters_test,
      metrics_test,
-     auth_register_cancel_metrics_test
+     auth_register_cancel_metrics_test,
+     auth_register_timeout_metrics_test
      ].
 
 https() ->
@@ -699,6 +700,27 @@ auth_register_cancel_metrics_test(_) ->
     end,
     deregister_hook(auth_on_register, ?ENDPOINT).
 
+auth_register_timeout_metrics_test(_) ->
+    Endpoint = ?ENDPOINT ++ "/slow_chunks",
+    register_hook(auth_on_register, Endpoint, ["--response_timeout=100"]),
+    StartCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    StartTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    StartElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    Start = erlang:monotonic_time(millisecond),
+    {error, timeout} = vmq_plugin:all_till_ok(
+        auth_on_register,
+        [?PEER, {?MOUNTPOINT, ?TIMEOUT_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]
+    ),
+    Elapsed = erlang:monotonic_time(millisecond) - Start,
+    true = Elapsed < 700,
+    EndCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    EndTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    EndElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    0 = EndCancelled - StartCancelled,
+    1 = EndTimeouts - StartTimeouts,
+    true = EndElapsed > StartElapsed,
+    deregister_hook(auth_on_register, Endpoint).
+
 find_metric_value(Id) ->
     Metrics = vmq_metrics:metrics(),
     {value, {_MetricDef, Value}} = lists:search(fun({Metric, _V}) ->
@@ -806,8 +828,11 @@ cert_path(Config, Filename) ->
     FullCertPath.
 
 register_hook(Hook, Endpoint) ->
+    register_hook(Hook, Endpoint, []).
+
+register_hook(Hook, Endpoint, Opts) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"]).
+                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"] ++ Opts).
 
 deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",

@@ -26,8 +26,9 @@ start_endpoint_clear(HTTPPort) ->
 
 route() -> cowboy_router:compile(
                  [{'_', [{"/", ?MODULE, []},
-                         {"/cache", ?MODULE, []},
-                         {"/cache1s", ?MODULE, []}]}]).
+                          {"/cache", ?MODULE, []},
+                          {"/cache1s", ?MODULE, []},
+                          {"/slow_chunks", ?MODULE, []}]}]).
 
 stop_endpoint_tls() ->
     cowboy:stop_listener(https).
@@ -59,9 +60,16 @@ init(Req, State) ->
             {Code, Resp} = process_cache_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
             Req2 =
                 cowboy_req:reply(Code,
-                                 #{<<"content-type">> => <<"text/json">>,
-                                   <<"Cache-control">> => <<"max-age=1">>},
-                                 encode(Resp), Req1),
+                                  #{<<"content-type">> => <<"text/json">>,
+                                    <<"Cache-control">> => <<"max-age=1">>},
+                                  encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/slow_chunks">> ->
+            Req2 = cowboy_req:stream_reply(200, #{<<"content-type">> => <<"text/json">>}, Req1),
+            timer:sleep(60),
+            ok = cowboy_req:stream_body(<<"{\"result\"">>, nofin, Req2),
+            timer:sleep(60),
+            ok = cowboy_req:stream_body(<<":\"ok\"}">>, fin, Req2),
             {ok, Req2, State}
     end.
 
