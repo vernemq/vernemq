@@ -321,6 +321,15 @@
                                                                           hidden
                                                                          ]}.
 
+%% @doc specifies the timeout in milliseconds for the parallel RPC used
+%% during cluster readiness checks. This is a total timeout for all nodes,
+%% not per-node. The previous sequential approach had no timeout (infinity).
+{mapping, "cluster_ready_rpc_timeout", "vmq_server.cluster_ready_rpc_timeout", [
+                                                                                 {default, 5000},
+                                                                                 {datatype, integer},
+                                                                                 hidden
+                                                                                ]}.
+
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},
@@ -1007,6 +1016,8 @@
 %%
 %%     - listener.tcp.my_listener.allow_anonymous_override
 %%     - listener.ssl.my_listener.allow_anonymous_override
+%%     - listener.ws.my_listener.allow_anonymous_override
+%%     - listener.wss.my_listener.allow_anonymous_override
 %%
 %% Allowed values are 'on' or 'off'. The default value for an unconfigured listener will be 'off'.
 {mapping, "listener.tcp.$name.allow_anonymous_override", "vmq_server.listeners",
@@ -1016,6 +1027,18 @@
  ]}.
 
  {mapping, "listener.ssl.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
+
+ {mapping, "listener.ws.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
+
+ {mapping, "listener.wss.$name.allow_anonymous_override", "vmq_server.listeners",
  [
   {default, off},
   {datatype, flag}
@@ -2327,7 +2350,7 @@
 %% when you never overwrite or consume retained messages; usually
 %% expired retained messages are cleaned up at the next delivery attempt.
 {mapping, "expire_retain_cache", "vmq_server.expire_retain_cache", [
-                                                             {default, 60},
-                                                             {commented, 60},
+                                                             {default, 0},
+                                                             {commented, 0},
                                                              {datatype, integer}
                                                             ]}.

@@ -104,6 +104,10 @@ start_node(Name, Config, Case) ->
             BatchSize = proplists:get_value(exchange_batch_size, Config, 100),
             ok = rpc:call(Node, application, set_env, [vmq_swc, exchange_batch_size, BatchSize]),
 
+            InitSyncProcedure = proplists:get_value(init_sync_procedure, Config, false),
+            ok = rpc:call(Node, application, set_env, [vmq_swc, init_sync_procedure,
+                                                       InitSyncProcedure]),
+
             SwcGroup = proplists:get_value(swc_group, Config, local),
             ok = rpc:call(Node, vmq_swc_plugin, plugin_start, [[SwcGroup]]),
             ok = wait_until(fun() ->

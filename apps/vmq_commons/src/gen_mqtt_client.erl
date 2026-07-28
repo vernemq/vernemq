@@ -149,7 +149,7 @@
     pubrel_queue = #queue{} :: queue(),
     waiting_acks = maps:new() :: map(),
     unacked_msgs = maps:new() :: map(),
-    ping_tref :: timer:ref() | undefined,
+    ping_tref :: reference() | undefined,
     reconnect_timeout,
     keepalive_interval = 60000,
     retry_interval = 10000,

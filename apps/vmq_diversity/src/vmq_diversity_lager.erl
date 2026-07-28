@@ -17,6 +17,8 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
+-compile({no_auto_import, [error/2]}).
+
 -export([install/1]).
 
 install(St) ->
