@@ -1004,31 +1004,13 @@ is_auth_register_hook(_) ->
     any().
 call_endpoint_sync(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
     case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
-        {ok, 200, RespHeaders, RespBodyOrRef} ->
-            case response_body(RespBodyOrRef) of
-                {ok, Body} ->
-                    decode_endpoint_response(Hook, RespHeaders, Body, EOpts);
-                {error, _} = E ->
-                    E
-            end;
-        {ok, Code, _, RespBodyOrRef} ->
-            maybe_close_response(RespBodyOrRef),
+        {ok, 200, RespHeaders, RespBody} ->
+            decode_endpoint_response(Hook, RespHeaders, RespBody, EOpts);
+        {ok, Code, _, _RespBody} ->
             {error, {invalid_response_code, Code}};
         {error, _} = E ->
             E
     end.
-
--spec response_body(pid() | binary()) -> {ok, binary()} | {error, any()}.
-response_body(CRef) when is_pid(CRef) ->
-    hackney:body(CRef);
-response_body(Body) when is_binary(Body) ->
-    {ok, Body}.
-
--spec maybe_close_response(any()) -> ok.
-maybe_close_response(CRef) when is_pid(CRef) ->
-    hackney:close(CRef);
-maybe_close_response(_) ->
-    ok.
 
 -spec call_endpoint_auth_with_cancel(
     atom(),
@@ -1052,8 +1034,7 @@ call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, E
                 undefined,
                 []
             );
-        {ok, _Code, _RespHeaders, CRef} ->
-            hackney:close(CRef),
+        {ok, _Code, _RespHeaders, _RespBody} ->
             {error, invalid_response};
         {error, _} = E ->
             E

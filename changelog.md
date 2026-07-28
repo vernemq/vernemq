@@ -1,3 +1,6 @@
+
+- Dependency: Update Hackney to 4.7.2.
+- vmq_webhooks: Improve webhook request handling by supporting cancellable auth webhook calls.
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
