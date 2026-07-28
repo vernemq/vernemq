@@ -80,7 +80,9 @@ init(Ref, Parent, Transport, Opts) ->
                     end;
                 [SndBuf, RecBuf, Buffer] ->
                     setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
-                    start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN)
+                    start_accepting_messages(
+                        MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN
+                    )
             end;
         {error, enotconn} ->
             %% If the client already disconnected we don't want to
@@ -253,7 +255,9 @@ handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod
 handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
-handle_message({ProtoPassive, _}, #st{proto_tag = {_, _, _, ProtoPassive}, throttled = true} = State) ->
+handle_message(
+    {ProtoPassive, _}, #st{proto_tag = {_, _, _, ProtoPassive}, throttled = true} = State
+) ->
     State;
 handle_message(
     {ProtoPassive, _},

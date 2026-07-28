@@ -146,7 +146,9 @@ fold_local(Key, SubscriberId, FoldFun, Acc) ->
                                     ),
                                     Acc;
                                 false ->
-                                    vmq_fanout_shard_sup:fold(Key, SubscriberId, FoldFun, Acc, ShardCount)
+                                    vmq_fanout_shard_sup:fold(
+                                        Key, SubscriberId, FoldFun, Acc, ShardCount
+                                    )
                             end;
                         false ->
                             fold__(FoldFun, SubscriberId, Acc, fanout_entries(Key))
@@ -750,7 +752,9 @@ fanout_entries(Key) ->
 fanout_entries(_Key, Shard, ShardCount, Acc) when Shard >= ShardCount ->
     Acc;
 fanout_entries(Key, Shard, ShardCount, Acc) ->
-    fanout_entries(Key, Shard + 1, ShardCount, ets:lookup(vmq_trie_subs_fanout, {Shard, Key}) ++ Acc).
+    fanout_entries(
+        Key, Shard + 1, ShardCount, ets:lookup(vmq_trie_subs_fanout, {Shard, Key}) ++ Acc
+    ).
 
 delete_local_fanout_entry(Key, SubscriberId, QoS) ->
     ShardKey = fanout_key(Key, SubscriberId),
