@@ -219,6 +219,12 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLAllowAnonymousOverride} = lists:unzip(
         extract("listener.ssl", "allow_anonymous_override", BoolVal, Conf)
     ),
+    {WSIPs, WSAllowAnonymousOverride} = lists:unzip(
+        extract("listener.ws", "allow_anonymous_override", BoolVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLAllowAnonymousOverride} = lists:unzip(
+        extract("listener.wss", "allow_anonymous_override", BoolVal, Conf)
+    ),
 
     {TCPIPs, TCPBufferSizes} = lists:unzip(
         extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)
@@ -414,7 +420,8 @@ translate_listeners(Conf) ->
             WSProxyXFF_CN_HEADER,
             WSMaxLengths,
             WSHeaderLengths,
-            WSAllowedProto
+            WSAllowedProto,
+            WSAllowAnonymousOverride
         ])
     ),
     VMQ = lists:zip(
@@ -496,7 +503,8 @@ translate_listeners(Conf) ->
             WS_SSLForwardClientCerts,
             WS_SSLMaxLengths,
             WS_SSLHeaderLengths,
-            WS_SSLAllowedProto
+            WS_SSLAllowedProto,
+            WS_SSLAllowAnonymousOverride
         ])
     ),
     VMQS = lists:zip(
