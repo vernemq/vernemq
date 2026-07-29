@@ -354,7 +354,20 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
             {encrypted, _} -> credentials_obfuscation:decrypt(Password);
             A -> A
         end,
-    all_till_ok(auth_on_register_m5, [
+    ListenerAddr =
+        case maps:get(listener_addr, Opts, undefined) of
+            undefined -> null;
+            {local, _} -> <<"local">>;
+            LAddr when is_tuple(LAddr) -> list_to_binary(inet:ntoa(LAddr))
+        end,
+    ListenerPort = nullify(maps:get(listener_port, Opts, undefined)),
+    ListenerType =
+        case maps:get(listener_type, Opts, undefined) of
+            undefined -> null;
+            LT -> atom_to_binary(LT, utf8)
+        end,
+    FilteredOpts = maps:without([listener_addr, listener_port, listener_type], Opts),
+    BaseArgs = [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
@@ -363,8 +376,16 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
         {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
         {properties, Props},
-        Opts
-    ]).
+        {listener_addr, ListenerAddr},
+        {listener_port, ListenerPort},
+        {listener_type, ListenerType}
+    ],
+    FullArgs =
+        case map_size(FilteredOpts) of
+            0 -> BaseArgs;
+            _ -> BaseArgs ++ [FilteredOpts]
+        end,
+    all_till_ok(auth_on_register_m5, FullArgs).
 
 -spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
     'next' | 'ok' | {'error', any()} | {'ok', payload() | [auth_on_publish_hook:msg_modifier()]}.

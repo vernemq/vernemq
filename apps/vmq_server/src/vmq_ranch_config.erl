@@ -139,7 +139,8 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     ),
     case validate_plugin_chains(Opts) of
         ok ->
-            ProtocolOpts = protocol_opts_for_type(Type, Opts),
+            ListenerOpts = [{listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts],
+            ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
             TransportMod = transport_for_type(Type),
             TransportOptions = maps:from_list(
                 [
@@ -479,6 +480,9 @@ default_session_opts(Opts) ->
     ActiveN = proplists:get_value(active_n, Opts, 1),
     AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
     AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
+    ListenerAddr = proplists:get_value(listener_addr, Opts, undefined),
+    ListenerPort = proplists:get_value(listener_port, Opts, undefined),
+    ListenerType = proplists:get_value(listener_type, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
@@ -487,7 +491,10 @@ default_session_opts(Opts) ->
         {buffer_sizes, BufferSizes},
         {active_n, ActiveN},
         {auth_plugins, AuthPlugins},
-        {authz_plugins, AuthzPlugins}
+        {authz_plugins, AuthzPlugins},
+        {listener_addr, ListenerAddr},
+        {listener_port, ListenerPort},
+        {listener_type, ListenerType}
         | MaybeProxyDefaults2
     ].
 
