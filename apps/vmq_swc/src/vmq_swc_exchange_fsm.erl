@@ -49,32 +49,58 @@ start_link(#swc_config{} = Config, Peer, Timeout) ->
 
 % State functions
 prepare(
-    internal, start, #state{config = Config, group = Group, peer = Peer, timeout = Timeout} = State
+    internal, start, #state{config = Config, timeout = Timeout} = State
 ) ->
-    case vmq_swc_store:lock(Config) of
-        ok ->
-            %% get remote lock
-            ?LOG_DEBUG("Replica ~p: AE exchange with ~p successfully acquired local lock", [
-                Group, Peer
-            ]),
-            NodeClock = vmq_swc_store:node_clock(Config),
-            remote_clock_request(Config, Peer),
-            {next_state, prepare, State#state{local_clock = NodeClock}, [
-                {state_timeout, Timeout, remote_node_clock}
-            ]};
-        {error, already_locked} ->
-            ?LOG_DEBUG(
-                "Replica ~p: AE exchange with ~p terminated due to local store is locked", [
-                    Group, Peer
-                ]
-            ),
-            {stop, normal, State};
-        Error ->
-            ?LOG_ERROR("Replica ~p: AE exchange with ~p can't acquire local lock due to ~p", [
-                Group, Peer, Error
-            ]),
-            {stop, normal, State}
-    end;
+    as_event(fun() ->
+        case store_result(fun() -> vmq_swc_store:lock(Config) end) of
+            {ok, ok} ->
+                case store_result(fun() -> vmq_swc_store:node_clock(Config) end) of
+                    {ok, NodeClock} -> {local_node_clock, NodeClock};
+                    {error, timeout} -> {local_store_timeout, node_clock}
+                end;
+            {ok, Error} ->
+                {local_lock, Error};
+            {error, timeout} ->
+                {local_store_timeout, lock}
+        end
+    end),
+    {next_state, prepare, State, [{state_timeout, Timeout, local_store}]};
+prepare(
+    cast,
+    {local_node_clock, NodeClock},
+    #state{group = Group, peer = Peer, config = Config, timeout = Timeout} = State
+) ->
+    %% get remote lock
+    ?LOG_DEBUG("Replica ~p: AE exchange with ~p successfully acquired local lock", [
+        Group, Peer
+    ]),
+    remote_clock_request(Config, Peer),
+    {next_state, prepare, State#state{local_clock = NodeClock}, [
+        {state_timeout, Timeout, remote_node_clock}
+    ]};
+prepare(cast, {local_lock, {error, already_locked}}, #state{group = Group, peer = Peer} = State) ->
+    ?LOG_DEBUG(
+        "Replica ~p: AE exchange with ~p terminated due to local store is locked", [
+            Group, Peer
+        ]
+    ),
+    {stop, normal, State};
+prepare(cast, {local_lock, Error}, #state{group = Group, peer = Peer} = State) ->
+    ?LOG_ERROR("Replica ~p: AE exchange with ~p can't acquire local lock due to ~p", [
+        Group, Peer, Error
+    ]),
+    {stop, normal, State};
+prepare(cast, {local_store_timeout, lock}, #state{group = Group, peer = Peer} = State) ->
+    ?LOG_WARNING("Replica ~p: AE exchange with ~p can't acquire local lock due to timeout", [
+        Group, Peer
+    ]),
+    {stop, normal, State};
+prepare(cast, {local_store_timeout, node_clock}, #state{group = Group, peer = Peer} = State) ->
+    ?LOG_WARNING(
+        "Replica ~p: AE exchange with ~p couldn't read local node clock due to timeout",
+        [Group, Peer]
+    ),
+    {stop, normal, State};
 prepare(state_timeout, PrepStep, #state{group = Group, peer = Peer} = State) ->
     ?LOG_WARNING("Replica ~p: AE exchange with ~p prepare step timed out in ~p", [
         Group, Peer, PrepStep
@@ -130,6 +156,7 @@ initial_sync_new(
         fun() ->
             R = vmq_swc_store:remote_sync_missing_init(Config, RemotePeer, BatchSize, first),
             case R of
+                {error, timeout} -> {error, remote_sync_missing_init_timeout};
                 {first, []} -> {sync_finished, no_keys};
                 {last, N, ObjsA} -> {last, N, ObjsA};
                 {NextKey, Objs} -> {NextKey, Objs}
@@ -163,14 +190,20 @@ initial_sync_new(
         State
 ) ->
     as_event(fun() ->
-        vmq_swc_store:sync_repair_init(
-            Config,
-            RemainingObjs,
-            RemotePeer,
-            swc_node:base(RemoteClock),
-            {true, RemoteWatermark}
-        ),
-        {sync_finished, 0}
+        case
+            store_result(fun() ->
+                vmq_swc_store:sync_repair_init(
+                    Config,
+                    RemainingObjs,
+                    RemotePeer,
+                    swc_node:base(RemoteClock),
+                    {true, RemoteWatermark}
+                )
+            end)
+        of
+            {ok, ok} -> {sync_finished, 0};
+            {error, timeout} -> {error, sync_repair_init_timeout}
+        end
     end),
     {next_state, initial_sync_new, State#state{obj_cnt = ObjCount + N}, [
         {state_timeout, State#state.timeout, init_sync}
@@ -188,6 +221,7 @@ initial_sync_new(
                 Config, RemotePeer, BatchSize, NextKey1
             ),
             case R of
+                {error, timeout} -> {error, remote_sync_missing_init_timeout};
                 {last, N, ObjsA} -> {last, N, ObjsA};
                 {NextKey2, Objs} -> {NextKey2, Objs}
             end
@@ -208,14 +242,36 @@ initial_sync_new(
     } = State
 ) ->
     as_event(fun() ->
-        vmq_swc_store:sync_repair_init(
-            Config, Objs, RemotePeer, swc_node:base(RemoteClock), false
-        ),
-        {continue, NextKey}
+        case
+            store_result(fun() ->
+                vmq_swc_store:sync_repair_init(
+                    Config, Objs, RemotePeer, swc_node:base(RemoteClock), false
+                )
+            end)
+        of
+            {ok, ok} -> {continue, NextKey};
+            {error, timeout} -> {error, sync_repair_init_timeout}
+        end
     end),
     {next_state, initial_sync_new, State#state{obj_cnt = LOCount + BatchSize}, [
         {state_timeout, State#state.timeout, init_sync}
     ]};
+initial_sync_new(
+    cast, {error, remote_sync_missing_init_timeout}, #state{group = Group, peer = Peer} = State
+) ->
+    ?LOG_WARNING(
+        "Replica ~p: AE exchange with ~p couldn't fetch init sync objects due to timeout",
+        [Group, Peer]
+    ),
+    teardown(State);
+initial_sync_new(
+    cast, {error, sync_repair_init_timeout}, #state{group = Group, peer = Peer} = State
+) ->
+    ?LOG_WARNING(
+        "Replica ~p: AE exchange with ~p couldn't sync repair (init) local store due to timeout",
+        [Group, Peer]
+    ),
+    teardown(State);
 initial_sync_new(cast, Msg, #state{group = Group, peer = Peer} = State) ->
     ?LOG_ERROR(
         "Replica ~p: AE exchange with ~p received unknown message during local init sync repair: ~p",
@@ -285,13 +341,23 @@ local_sync_repair(
     {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
     as_event(
         fun() ->
-            MissingObjects = vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots),
-            {ok, MissingObjects}
+            case vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots) of
+                {error, timeout} -> {error, remote_sync_missing_timeout};
+                MissingObjects -> {ok, MissingObjects}
+            end
         end
     ),
     {next_state, local_sync_repair, State#state{missing_dots = Rest}, [
         {state_timeout, State#state.timeout, sync_repair}
     ]};
+local_sync_repair(
+    cast, {error, remote_sync_missing_timeout}, #state{group = Group, peer = Peer} = State
+) ->
+    ?LOG_WARNING(
+        "Replica ~p: AE exchange with ~p couldn't fetch missing objects due to timeout",
+        [Group, Peer]
+    ),
+    teardown(State);
 local_sync_repair(
     cast,
     {ok, MissingObjects},
@@ -299,27 +365,59 @@ local_sync_repair(
         config = Config,
         peer = RemotePeer,
         remote_clock = RemoteClock,
-        remote_watermark = RemoteWatermark,
-        obj_cnt = ObjCnt
+        remote_watermark = RemoteWatermark
     } = State
 ) ->
     case State#state.missing_dots of
         [] ->
-            vmq_swc_store:sync_repair(
-                Config,
-                MissingObjects,
-                RemotePeer,
-                swc_node:base(RemoteClock),
-                {true, RemoteWatermark}
-            ),
-            teardown(State#state{obj_cnt = ObjCnt + length(MissingObjects)});
+            as_event(fun() ->
+                case
+                    store_result(fun() ->
+                        vmq_swc_store:sync_repair(
+                            Config,
+                            MissingObjects,
+                            RemotePeer,
+                            swc_node:base(RemoteClock),
+                            {true, RemoteWatermark}
+                        )
+                    end)
+                of
+                    {ok, ok} -> {sync_repair_done, length(MissingObjects)};
+                    {error, timeout} -> {error, sync_repair_timeout}
+                end
+            end),
+            {next_state, local_sync_repair, State, [
+                {state_timeout, State#state.timeout, sync_repair}
+            ]};
         _ ->
-            vmq_swc_store:sync_repair(
-                Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), false
-            ),
-            {next_state, local_sync_repair, State#state{obj_cnt = ObjCnt + length(MissingObjects)},
-                [{next_event, internal, start}]}
+            as_event(fun() ->
+                case
+                    store_result(fun() ->
+                        vmq_swc_store:sync_repair(
+                            Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), false
+                        )
+                    end)
+                of
+                    {ok, ok} -> {sync_repair_continue, length(MissingObjects)};
+                    {error, timeout} -> {error, sync_repair_timeout}
+                end
+            end),
+            {next_state, local_sync_repair, State, [
+                {state_timeout, State#state.timeout, sync_repair}
+            ]}
     end;
+local_sync_repair(cast, {sync_repair_done, ObjCntDelta}, #state{obj_cnt = ObjCnt} = State) ->
+    teardown(State#state{obj_cnt = ObjCnt + ObjCntDelta});
+local_sync_repair(cast, {sync_repair_continue, ObjCntDelta}, #state{obj_cnt = ObjCnt} = State) ->
+    {next_state, local_sync_repair, State#state{obj_cnt = ObjCnt + ObjCntDelta}, [
+        {next_event, internal, start}
+    ]};
+local_sync_repair(cast, {error, sync_repair_timeout}, #state{group = Group, peer = Peer} = State) ->
+    ?LOG_WARNING(
+        "Replica ~p: AE exchange with ~p couldn't sync repair local store due to timeout",
+        [Group, Peer]
+    ),
+    teardown(State);
 local_sync_repair(cast, Msg, #state{group = Group, peer = Peer} = State) ->
     ?LOG_ERROR(
         "Replica ~p: AE exchange with ~p received unknown message during local sync repair: ~p", [
@@ -457,3 +555,11 @@ set_init_sync(#swc_config{group = Group} = Config, Bool) ->
     ok = vmq_swc_store:set_init_sync_by_groupname(Group, Bool),
     ok = vmq_swc_db:put(Config, default, <<"ISY">>, term_to_binary(Bool)),
     vmq_swc_group_coordinator:group_initialized(Group, Bool).
+
+store_result(Fun) ->
+    try
+        {ok, Fun()}
+    catch
+        exit:{timeout, {gen_server, call, _}} ->
+            {error, timeout}
+    end.

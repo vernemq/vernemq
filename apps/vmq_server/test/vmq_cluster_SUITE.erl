@@ -90,6 +90,8 @@ all() ->
      shared_subs_prefer_local_policy_test,
      shared_subs_local_only_policy_test,
      cross_node_publish_subscribe,
+     late_join_node_syncs_subscriptions,
+     late_join_node_syncs_retained_messages,
      restarted_node_has_no_stale_sessions,
      routing_table_survives_node_restart,
      convert_new_msgs_to_old_format].
@@ -857,6 +859,95 @@ cross_node_publish_subscribe(Config) ->
     receive_msgs(Payloads ++ Payloads ++ Payloads ++ Payloads ++ Payloads),
     receive_nothing(200).
 
+late_join_node_syncs_subscriptions(Config) ->
+    ok = ensure_cluster(Config),
+    [{LatePeer, LateNode, LatePort}, {_, _Node1, Port1} | _] = Nodes = nodes_(Config),
+    ok = allow_metadata_writes_during_netsplit(Nodes),
+    OnlineNodes = tl(Nodes),
+    ok = vmq_cluster_test_utils:stop_peer(LatePeer, LateNode),
+    ok = allow_metadata_writes_during_netsplit(OnlineNodes),
+
+    ClientSubscriptions = [
+        begin
+            ClientId = "late-join-subscription-client-" ++ integer_to_list(ClientNr),
+            Topics = [
+                iolist_to_binary([
+                    "late/join/subscription/",
+                    integer_to_list(ClientNr),
+                    "/",
+                    integer_to_list(TopicNr)
+                ])
+             || TopicNr <- lists:seq(1, 10)
+            ],
+            Socket = connect(Port1, ClientId, [{keepalive, 60}, {clean_session, false}]),
+            subscribe_many(Socket, Topics, 1),
+            ok = gen_tcp:send(Socket, packet:gen_disconnect()),
+            ok = gen_tcp:close(Socket),
+            {{"", list_to_binary(ClientId)}, Topics}
+        end
+     || ClientNr <- lists:seq(1, 10)
+    ],
+
+    ok =
+        wait_until_converged(
+            OnlineNodes,
+            fun(N) -> client_subscriptions_synced(N, ClientSubscriptions) end,
+            true
+        ),
+
+    {ok, _, _LateNode} = vmq_cluster_test_utils:start_node(LateNode, Config, ?FUNCTION_NAME),
+    {ok, _} = rpc:call(LateNode, vmq_server_cmd, listener_start, [LatePort, []]),
+    ok = rpc:call(LateNode, vmq_auth, register_hooks, []),
+    ok =
+        wait_until_converged(
+            Nodes,
+            fun(N) -> client_subscriptions_synced(N, ClientSubscriptions) end,
+            true
+        ).
+
+late_join_node_syncs_retained_messages(Config) ->
+    ok = ensure_cluster(Config),
+    [{LatePeer, LateNode, LatePort}, {_, _Node1, Port1} | _] = Nodes = nodes_(Config),
+    ok = allow_metadata_writes_during_netsplit(Nodes),
+    OnlineNodes = tl(Nodes),
+    ok = vmq_cluster_test_utils:stop_peer(LatePeer, LateNode),
+    ok = allow_metadata_writes_during_netsplit(OnlineNodes),
+
+    Topic = "late/join/retain",
+    Payload = <<"retained message from existing cluster">>,
+    Publisher = connect(Port1, "late-join-retain-publisher", [{keepalive, 60}]),
+    Publish = packet:gen_publish(Topic, 0, Payload, [{retain, true}]),
+    ok = gen_tcp:send(Publisher, Publish),
+    ok = gen_tcp:send(Publisher, packet:gen_disconnect()),
+    ok = gen_tcp:close(Publisher),
+
+    ok =
+        wait_until_converged(
+            OnlineNodes,
+            fun(N) -> retained_count(N) end,
+            1
+        ),
+
+    {ok, _, _LateNode} = vmq_cluster_test_utils:start_node(LateNode, Config, ?FUNCTION_NAME),
+    {ok, _} = rpc:call(LateNode, vmq_server_cmd, listener_start, [LatePort, []]),
+    ok = rpc:call(LateNode, vmq_auth, register_hooks, []),
+    ok =
+        wait_until_converged(
+            Nodes,
+            fun(N) -> retained_count(N) end,
+            1
+        ),
+
+    Subscriber = connect(LatePort, "late-join-retain-subscriber", [{keepalive, 60}]),
+    Subscribe = packet:gen_subscribe(1, Topic, 0),
+    Suback = packet:gen_suback(1, 0),
+    RetainedPublish = packet:gen_publish(Topic, 0, Payload, [{retain, true}]),
+    ok = gen_tcp:send(Subscriber, Subscribe),
+    ok = packet:expect_packet(Subscriber, "suback", Suback),
+    ok = packet:expect_packet(Subscriber, "retained publish", RetainedPublish),
+    ok = gen_tcp:send(Subscriber, packet:gen_disconnect()),
+    ok = gen_tcp:close(Subscriber).
+
 convert_new_msgs_to_old_format(_Config) ->
     %% create a #vmq_msg{} as a raw tuple.
     Orig =
@@ -1117,8 +1208,85 @@ subscribe(Socket, Topic, QoS) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback).
 
+subscribe_many(Socket, Topics, QoS) ->
+    subscribe_many(Socket, Topics, QoS, 1).
+
+subscribe_many(_Socket, [], _QoS, _MsgId) ->
+    ok;
+subscribe_many(Socket, Topics, QoS, MsgId) ->
+    {Batch, Rest} = lists:split(min(100, length(Topics)), Topics),
+    Subscribe = packet:gen_subscribe(MsgId, [{Topic, QoS} || Topic <- Batch]),
+    Suback = packet:gen_suback(MsgId, [QoS || _ <- Batch]),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    subscribe_many(Socket, Rest, QoS, MsgId + 1).
+
 ensure_cluster(Config) ->
     vmq_cluster_test_utils:ensure_cluster(Config).
+
+allow_metadata_writes_during_netsplit(Nodes) ->
+    set_config(Nodes, allow_register_during_netsplit, true),
+    set_config(Nodes, allow_subscribe_during_netsplit, true),
+    set_config(Nodes, allow_publish_during_netsplit, true),
+    set_local_config(Nodes, allow_register_during_netsplit, true),
+    set_local_config(Nodes, allow_subscribe_during_netsplit, true),
+    set_local_config(Nodes, allow_publish_during_netsplit, true),
+    ok.
+
+set_config(Nodes, Key, Val) ->
+    lists:foreach(
+        fun({_Peer, Node, _Port}) ->
+            {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [Key, Val])
+        end,
+        Nodes
+    ).
+
+set_local_config(Nodes, Key, Val) ->
+    lists:foreach(
+        fun({_Peer, Node, _Port}) ->
+            ok = rpc:call(Node, application, set_env, [vmq_server, Key, Val])
+        end,
+        Nodes
+    ).
+
+client_subscriptions_synced(Node, ClientSubscriptions) ->
+    lists:all(
+        fun({SubscriberId, Topics}) ->
+            subscription_count(Node, SubscriberId) =:= length(Topics) andalso
+                subscriptions_exist(Node, SubscriberId, Topics)
+        end,
+        ClientSubscriptions
+    ).
+
+subscription_count(Node, SubscriberId) ->
+    case rpc:call(Node, vmq_subscriber_db, read, [SubscriberId]) of
+        undefined ->
+            0;
+        Subs ->
+            vmq_subscriber:fold(fun(_, Acc) -> Acc + 1 end, 0, Subs)
+    end.
+
+subscriptions_exist(Node, SubscriberId, Topics) ->
+    ExpectedTopics = sets:from_list([topic_words(Topic) || Topic <- Topics], [{version, 2}]),
+    case rpc:call(Node, vmq_subscriber_db, read, [SubscriberId]) of
+        undefined ->
+            false;
+        Subs ->
+            ExistingTopics =
+                vmq_subscriber:fold(
+                    fun({SubTopic, _SubInfo, _SubNode}, Acc) -> sets:add_element(SubTopic, Acc) end,
+                    sets:new([{version, 2}]),
+                    Subs
+                ),
+            sets:is_subset(ExpectedTopics, ExistingTopics)
+    end.
+
+topic_words(Topic) ->
+    binary:split(iolist_to_binary(Topic), <<"/">>, [global]).
+
+retained_count(Node) ->
+    {Count, _Memory} = rpc:call(Node, vmq_retain_srv, stats, []),
+    Count.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

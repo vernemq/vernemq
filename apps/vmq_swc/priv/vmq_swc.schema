@@ -63,6 +63,13 @@
                                              {datatype, integer},
                                              hidden
                                             ]}.
+%% @doc Timeout for fast SWC store calls.
+%% Value in milliseconds. Default: 5000
+{mapping, "vmq_swc.fast_call_timeout", "vmq_swc.fast_call_timeout", [
+                                             {default, 5000},
+                                             {datatype, integer},
+                                             hidden
+                                            ]}.
 %% @doc Enable SWC broadcast. Default: on
 {mapping, "vmq_swc.enable_broadcast", "vmq_swc.enable_broadcast", [
                                              {default, on},
