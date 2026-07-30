@@ -85,7 +85,7 @@ groups() ->
         ],
     [
      {mqttv4, [shuffle,sequence],
-      [auth_on_register_change_username_test|Tests]},
+      [auth_on_register_change_username_test, auth_on_register_listener_info_test | Tests]},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttws_allow_anonymous_override, [], [anon_success_test]},
@@ -95,7 +95,11 @@ groups() ->
      {mqttwsx, [], [ws_xff_peer_test, ws_xff_peer_reject_no_user_test]},
                     %ws_xff_trusted_intermediate_ok_test, ws_xff_trusted_intermediate_fail_test,
                     %ws_xff_cn_as_username_test]},
-     {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]}
+     {mqttv5, [
+      auth_on_register_change_username_test,
+      auth_on_register_listener_info_m5_test,
+      uname_anon_username_test_m5
+     ]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -241,6 +245,34 @@ auth_on_register_change_username_test(Config) ->
       auth_on_register, ?MODULE, hook_change_username, 5),
     ok = close(Socket, Config).
 
+auth_on_register_listener_info_test(Config) ->
+    Connect = packet:gen_connect("listener-info-test", [{keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_listener_info_legacy, 5),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_listener_info, 6),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_listener_info, 6),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_listener_info_legacy, 5),
+    ok = close(Socket, Config).
+
+auth_on_register_listener_info_m5_test(Config) ->
+    Connect = mqtt5_v4compat:gen_connect("listener-info-m5-test", [{keepalive, 10}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_listener_info_m5_legacy, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_listener_info_m5, 7),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_listener_info_m5, 7),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_listener_info_m5_legacy, 6),
+    ok = close(Socket, Config).
+
 ws_protocols_list_test(Config) ->
     Connect = packet:gen_connect("ws_protocols_list_test", [{keepalive,10}]),
     Connack = packet:gen_connack(5),
@@ -352,6 +384,41 @@ hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _)
 hook_change_username(_, _, <<"old_username">>, _, _) ->
     {ok, [{username, <<"new_username">>}]}.
 hook_on_register_changed_username(_, _, <<"new_username">>) ->
+    ok.
+
+hook_listener_info(
+    _,
+    {"", <<"listener-info-test">>},
+    _,
+    _,
+    _,
+    #{
+        listener_addr := {127, 0, 0, 1},
+        listener_port := 1888,
+        listener_type := mqtt
+    }
+) ->
+    next.
+
+hook_listener_info_legacy(_, {"", <<"listener-info-test">>}, _, _, _) ->
+    ok.
+
+hook_listener_info_m5(
+    _,
+    {"", <<"listener-info-m5-test">>},
+    _,
+    _,
+    _,
+    _,
+    #{
+        listener_addr := {127, 0, 0, 1},
+        listener_port := 1887,
+        listener_type := mqtt
+    }
+) ->
+    next.
+
+hook_listener_info_m5_legacy(_, {"", <<"listener-info-m5-test">>}, _, _, _, _) ->
     ok.
 
 hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->

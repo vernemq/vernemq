@@ -55,6 +55,9 @@
     conn_opts :: undefined | map(),
     auth_plugins = undefined :: undefined | [atom()],
     authz_plugins = undefined :: undefined | [atom()],
+    listener_addr :: undefined | tuple() | {local, string()},
+    listener_port :: undefined | non_neg_integer(),
+    listener_type :: undefined | atom(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     retry_queue = queue:new() :: queue:queue(),
@@ -130,6 +133,9 @@ init(
     ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
     AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
     AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
+    ListenerAddr = proplists:get_value(listener_addr, Opts, undefined),
+    ListenerPort = proplists:get_value(listener_port, Opts, undefined),
+    ListenerType = proplists:get_value(listener_type, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -176,6 +182,9 @@ init(
         conn_opts = ConnOpts,
         auth_plugins = AuthPlugins,
         authz_plugins = AuthzPlugins,
+        listener_addr = ListenerAddr,
+        listener_port = ListenerPort,
+        listener_type = ListenerType,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -857,15 +866,33 @@ auth_on_register(Password, State) ->
         cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
         username = User,
-        conn_opts = ConnOpts
+        conn_opts = ConnOpts,
+        listener_addr = ListenerAddr,
+        listener_port = ListenerPort,
+        listener_type = ListenerType
     } = State,
     BasicHookArgs = [Peer, SubscriberId, User, Password, Clean],
-    HookArgs =
+    ListenerInfo = #{
+        listener_addr => ListenerAddr,
+        listener_port => ListenerPort,
+        listener_type => ListenerType
+    },
+    ExtendedOpts =
         case ConnOpts of
-            M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
-            _ -> BasicHookArgs
+            M when is_map(M) -> maps:merge(M, ListenerInfo);
+            _ -> ListenerInfo
         end,
-    case plugin_all_till_ok(auth_on_register, HookArgs, State, auth) of
+    HookArgs6 = lists:flatten([BasicHookArgs | [ExtendedOpts]]),
+    HookResult =
+        case plugin_all_till_ok(auth_on_register, HookArgs6, State, auth) of
+            {error, no_matching_hook_found} ->
+                plugin_all_till_ok(auth_on_register, BasicHookArgs, State, auth);
+            {error, plugin_chain_exhausted} ->
+                plugin_all_till_ok(auth_on_register, BasicHookArgs, State, auth);
+            Res ->
+                Res
+        end,
+    case HookResult of
         ok ->
             {ok, queue_opts(State, []), State};
         {ok, Args} ->

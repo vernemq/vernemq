@@ -107,6 +107,19 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
+                   client_id := ?LISTENER_INFO_CLIENT_ID,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := ?USERNAME,
+                   password := ?PASSWORD,
+                   clean_session := true,
+                   client_cert := <<"client cert">>,
+                   listener_addr := ?PEER_BIN,
+                   listener_port := 1883,
+                   listener_type := <<"mqtt">>
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
                    client_id := ?ALLOWED_CLIENT_ID,
                    mountpoint := ?MOUNTPOINT_BIN,
                    username := ?USERNAME,
@@ -549,4 +562,3 @@ process_hook(<<"on_deliver_m5">>, Body) ->
     on_deliver_m5(Body);
 process_hook(<<"on_auth_m5">>, Body) ->
     on_auth_m5(Body).
-

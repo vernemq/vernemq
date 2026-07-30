@@ -303,7 +303,20 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
             {encrypted, _} -> credentials_obfuscation:decrypt(Password);
             A -> A
         end,
-    all_till_ok(auth_on_register, [
+    ListenerAddr =
+        case maps:get(listener_addr, Opts, undefined) of
+            undefined -> null;
+            {local, _} -> <<"local">>;
+            LAddr when is_tuple(LAddr) -> list_to_binary(inet:ntoa(LAddr))
+        end,
+    ListenerPort = nullify(maps:get(listener_port, Opts, undefined)),
+    ListenerType =
+        case maps:get(listener_type, Opts, undefined) of
+            undefined -> null;
+            LT -> atom_to_binary(LT, utf8)
+        end,
+    FilteredOpts = maps:without([listener_addr, listener_port, listener_type], Opts),
+    BaseArgs = [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
@@ -311,9 +324,16 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
         {clean_session, CleanSession},
-        % Opts will have the form #{client_cert => Cert}
-        Opts
-    ]).
+        {listener_addr, ListenerAddr},
+        {listener_port, ListenerPort},
+        {listener_type, ListenerType}
+    ],
+    FullArgs =
+        case map_size(FilteredOpts) of
+            0 -> BaseArgs;
+            _ -> BaseArgs ++ [FilteredOpts]
+        end,
+    all_till_ok(auth_on_register, FullArgs).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
     'next'

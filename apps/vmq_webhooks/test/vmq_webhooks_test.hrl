@@ -6,6 +6,7 @@
 -define(PEER, {{127,0,0,1}, ?PEERPORT}).
 -define(IGNORED_CLIENT_ID, <<"ignored-subscriber-id">>).
 -define(ALLOWED_CLIENT_ID, <<"allowed-subscriber-id">>).
+-define(LISTENER_INFO_CLIENT_ID, <<"listener-info">>).
 -define(BASE64_PAYLOAD_CLIENT_ID, <<"payload-is-base64-encoded">>).
 -define(NO_PAYLOAD_CLIENT_ID, <<"no-payload">>).
 -define(WITH_PROPERTIES, <<"with_properties">>).
@@ -19,4 +20,9 @@
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
--define(OPTS, {conn_opts, #{client_cert => <<"client cert">>}}).
+-define(OPTS, #{
+    client_cert => <<"client cert">>,
+    listener_addr => {127, 0, 0, 1},
+    listener_port => 1883,
+    listener_type => mqtt
+}).
