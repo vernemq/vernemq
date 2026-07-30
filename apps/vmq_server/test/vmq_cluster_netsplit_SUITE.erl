@@ -53,6 +53,7 @@ init_per_testcase(Case, Config) ->
                                     NodeWithPorts),
     {_, CoverNodes, _} = lists:unzip3(Nodes),
     {ok, _} = ct_cover:add_nodes(CoverNodes),
+    ok = vmq_cluster_test_utils:refresh_plugin_hooks(Nodes),
     [{nodes, Nodes} | Config].
 
 end_per_testcase(_, Config) ->

@@ -31,6 +31,7 @@
     wait_until_offline/1,
     wait_until_disconnected/2,
     wait_until_connected/2,
+    refresh_plugin_hooks/1,
     start_node/3,
     start_peer/2,
     stop_peer/2,
@@ -115,6 +116,17 @@ wait_until_connected(Node1, Node2) ->
     wait_until(fun() ->
                 pong == rpc:call(Node1, net_adm, ping, [Node2])
         end, 60*2, 500).
+
+refresh_plugin_hooks(Nodes) ->
+    pmap(
+        fun({_Peer, Node, _Port}) ->
+            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin, [
+                cluster_join, vmq_swc_plugin, cluster_join, 1
+            ])
+        end,
+        Nodes
+    ),
+    ok.
 
 start_node(Name, _Config, Case) ->
     ct:pal("Start Node ~p for Case ~p~n", [Name, Case]),
@@ -288,7 +300,7 @@ heal_cluster(ANodes, BNodes) ->
 ensure_cluster(Config) ->
     [{_, Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
     [begin
-         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
+         ok = ensure_node_joined(Node, Node1)
      end || {_Peer, Node, _} <- OtherNodes],
     {_, NodeNames, _} = lists:unzip3(Nodes),
     Expected = lists:sort(NodeNames),
@@ -298,6 +310,15 @@ ensure_cluster(Config) ->
      || Node <- NodeNames],
     vmq_cluster_test_utils:wait_until_ready(NodeNames),
     ok.
+
+ensure_node_joined(Node, DiscoveryNode) ->
+    case rpc:call(Node, vmq_server_cmd, node_join, [DiscoveryNode]) of
+        {ok, _} ->
+            ok;
+        {error, Error} ->
+            DirectResult = rpc:call(Node, vmq_peer_service, join, [DiscoveryNode]),
+            ct:fail({cluster_join_failed, Node, DiscoveryNode, Error, DirectResult})
+    end.
 
 random_node_with_port(Case) ->
     Name =

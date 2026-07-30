@@ -57,10 +57,11 @@ init_per_testcase(Case, Config) ->
                                        %% allow all
                                        ok = rpc:call(Node, vmq_auth, register_hooks, []),
                                        {Peer, Node, Port}
-                                    end,
-                                    NodeWithPorts),
+                                     end,
+                                     NodeWithPorts),
     {_, CoverNodes, _} = lists:unzip3(Nodes),
-    {ok, _} = cover:start([node() | CoverNodes]),
+    {ok, _} = ct_cover:add_nodes(CoverNodes),
+    ok = vmq_cluster_test_utils:refresh_plugin_hooks(Nodes),
     [{nodes, Nodes}| Config1].
 
 end_per_testcase(convert_new_msgs_to_old_format, Config) ->
