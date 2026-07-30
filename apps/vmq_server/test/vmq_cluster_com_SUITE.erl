@@ -15,7 +15,7 @@ init_per_suite(Config) ->
     ct:pal("This is the default NODE : ~p~n", [Node]),
     {ok, _} = ct_cover:add_nodes([Node]),
     vmq_cluster_test_utils:wait_until_ready([Node]),
-    [{peer, Peer}, {node, Node}, S| Config0].
+    [{peer, Peer}, {node, Node}, S | Config0].
 
 end_per_suite(Config) ->
     {_, Peer} = lists:keyfind(peer, 1, Config),
@@ -23,26 +23,40 @@ end_per_suite(Config) ->
     ok = vmq_cluster_test_utils:stop_peer(Peer, Node),
     Config.
 
+init_per_testcase(reconnect_backoff_test, Config) ->
+    vmq_test_utils:seed_rand(Config),
+    Node = proplists:get_value(node, Config),
+    %% Use short delays so the test runs quickly.
+    ok = rpc:block_call(Node, vmq_config, set_env, [
+        outgoing_clustering_reconnect_base_delay, 100, false
+    ]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [
+        outgoing_clustering_reconnect_max_delay, 800, false
+    ]),
+    ClusterNodePid = setup_mock_vmq_cluster_node(Config),
+    [{cluster_node_pid, ClusterNodePid} | Config];
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     ClusterNodePid = setup_mock_vmq_cluster_node(Config),
-    [{cluster_node_pid, ClusterNodePid}|Config].
+    [{cluster_node_pid, ClusterNodePid} | Config].
 
 end_per_testcase(_Case, Config) ->
     terminate_mock_vmq_cluster_node(Config),
     ok.
 
 all() ->
-    [connect_success_test,
-     connect_success_send_error,
-     connect_success_send_error_timeout
+    [
+        connect_success_test,
+        connect_success_send_error,
+        connect_success_send_error_timeout,
+        reconnect_backoff_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connect_params(_RemoteNode) ->
-    {gen_tcp, {127,0,0,1}, 12345}.
+    {gen_tcp, {127, 0, 0, 1}, 12345}.
 
 connect_success_test(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
@@ -94,14 +108,54 @@ connect_success_send_error_timeout(Config) ->
     recv_message(Socket2, <<1:10000, N:32>>),
     {error, timeout} = gen_tcp:recv(Socket2, 0, 1000).
 
+reconnect_backoff_test(Config) ->
+    %% Configured with base_delay=100, max_delay=800 in init_per_testcase.
+    %% Verify that successive reconnects take progressively longer.
+    _ClusterNodePid = cluster_node_pid(Config),
+    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+
+    %% Accept initial connection.
+    {ok, Socket0} = gen_tcp:accept(ListenSocket, 5000),
+    recv_connect(Socket0, Config),
+    gen_tcp:close(Socket0),
+
+    %% Measure time for 3 successive reconnects.
+    Delays = measure_reconnect_delays(ListenSocket, Config, 3, []),
+    ct:pal("Measured reconnect delays: ~p ms", [Delays]),
+
+    %% Verify backoff: each delay should be greater than the previous.
+    true = is_increasing(Delays),
+
+    %% Verify the first delay is roughly in the base range (100ms +/- 20% jitter = 80-120ms).
+    %% Allow generous bounds since timer precision and scheduling add noise.
+    [First | _] = Delays,
+    true = First >= 50,
+    true = First =< 300,
+
+    gen_tcp:close(ListenSocket),
+    ok.
+
+measure_reconnect_delays(_ListenSocket, _Config, 0, Acc) ->
+    lists:reverse(Acc);
+measure_reconnect_delays(ListenSocket, Config, N, Acc) ->
+    T0 = erlang:monotonic_time(millisecond),
+    {ok, Socket} = gen_tcp:accept(ListenSocket, 10000),
+    T1 = erlang:monotonic_time(millisecond),
+    recv_connect(Socket, Config),
+    gen_tcp:close(Socket),
+    measure_reconnect_delays(ListenSocket, Config, N - 1, [T1 - T0 | Acc]).
+
+is_increasing([_]) -> true;
+is_increasing([A, B | Rest]) when B > A -> is_increasing([B | Rest]);
+is_increasing(_) -> false.
 
 send_until_tcp_buffer_full(ClusterNodePid) ->
-   send_until_tcp_buffer_full(ClusterNodePid, 0).
+    send_until_tcp_buffer_full(ClusterNodePid, 0).
 send_until_tcp_buffer_full(ClusterNodePid, MsgsAcc) ->
     % the only way we detect that the buffer is full is that vmq_cluster_node will close
     % the connection and will reconnect
     case send_message(ClusterNodePid, <<1:10000, MsgsAcc:32>>) of
-        ok  ->
+        ok ->
             send_until_tcp_buffer_full(ClusterNodePid, MsgsAcc + 1);
         {error, msg_dropped} ->
             MsgsAcc - 1
@@ -113,8 +167,8 @@ recv_until_tcp_buffer_empty(Socket, N) ->
 recv_until_tcp_buffer_empty(Socket, I, N) when I =< N ->
     recv_message(Socket, <<1:10000, I:32>>),
     recv_until_tcp_buffer_empty(Socket, I + 1, N);
-recv_until_tcp_buffer_empty(_, _, _) -> ok.
-
+recv_until_tcp_buffer_empty(_, _, _) ->
+    ok.
 
 setup_mock_vmq_cluster_node(Config) ->
     setup_mock_vmq_cluster_node(Config, []).
@@ -122,7 +176,11 @@ setup_mock_vmq_cluster_node(Config) ->
 setup_mock_vmq_cluster_node(Config, Opts) ->
     Node = proplists:get_value(node, Config),
     % make the test_com1 node connect to myself
-    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_options, lists:flatten([[{keepalive, true}, {send_timeout, 0}] | Opts]), false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [
+        outgoing_connect_options,
+        lists:flatten([[{keepalive, true}, {send_timeout, 0}] | Opts]),
+        false
+    ]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
@@ -145,7 +203,6 @@ recv_connect(Socket, Config) ->
     {ok, HandshakeMsg} = gen_tcp:recv(Socket, byte_size(HandshakeMsg)),
     ok.
 
-
 send_message(ClusterNodePid, Msg) ->
     rpc:call(node(ClusterNodePid), vmq_cluster_node, publish, [ClusterNodePid, Msg]).
 
@@ -155,7 +212,8 @@ recv_message(Socket, Term) ->
     Msg = <<"msg", L:32, TermBin/binary>>,
     BatchMsg = <<"vmq-send", (byte_size(Msg)):32, Msg/binary>>,
     case gen_tcp:recv(Socket, byte_size(BatchMsg)) of
-        {ok, BatchMsg} -> ok;
+        {ok, BatchMsg} ->
+            ok;
         E ->
             io:format(user, "got ~p instead of ~p~n", [E, {ok, BatchMsg}]),
             E

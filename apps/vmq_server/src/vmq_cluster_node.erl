@@ -47,11 +47,13 @@
     max_queue_size,
     reconnect_tref,
     async_connect_pid,
+    backoff_count = 0,
     bytes_dropped = {os:timestamp(), 0},
     bytes_send = {os:timestamp(), 0}
 }).
 
--define(RECONNECT, 1000).
+-define(DEFAULT_RECONNECT_BASE, 1000).
+-define(DEFAULT_RECONNECT_MAX, 10000).
 
 %%%===================================================================
 %%% API
@@ -123,7 +125,10 @@ init([Parent, RemoteNode]) ->
     % cluster node setup, where multiple nodes are concurrently setup.
     % Without a delay a node may try to connect to a cluster node that
     % hasn't finished setting up the vmq cluster listener.
-    erlang:send_after(1000, self(), reconnect),
+    InitDelay = vmq_config:get_env(
+        outgoing_clustering_reconnect_base_delay, ?DEFAULT_RECONNECT_BASE
+    ),
+    erlang:send_after(InitDelay, self(), reconnect),
     loop(#state{parent = Parent, node = RemoteNode, max_queue_size = MaxQueueSize}).
 
 loop(#state{pending = Pending, reachable = Reachable} = State) when
@@ -223,7 +228,8 @@ handle_message(
                 transport = Transport,
                 %% !!! remote node is reachable
                 async_connect_pid = undefined,
-                reachable = true
+                reachable = true,
+                backoff_count = 0
             };
         {error, Reason} ->
             ?LOG_WARNING("can't initiate connect to cluster node ~p due to ~p", [
@@ -250,24 +256,29 @@ handle_message({status, CallerPid, Ref}, #state{socket = Socket, reachable = Rea
     State;
 handle_message({system, From, Request}, #state{parent = Parent} = State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
-handle_message({NetEvClosed, Socket}, #state{node = RemoteNode, socket = Socket} = State) when
+handle_message(
+    {NetEvClosed, Socket}, #state{node = RemoteNode, socket = Socket, backoff_count = Count} = State
+) when
     NetEvClosed == tcp_closed;
     NetEvClosed == ssl_closed
 ->
+    NextDelay = reconnect_delay(Count + 1),
     ?LOG_WARNING(
         "connection to node ~p has been closed, reconnect in ~pms",
-        [RemoteNode, ?RECONNECT]
+        [RemoteNode, NextDelay]
     ),
     close_reconnect(State);
 handle_message(
-    {NetEvError, Socket, Reason}, #state{node = RemoteNode, socket = Socket} = State
+    {NetEvError, Socket, Reason},
+    #state{node = RemoteNode, socket = Socket, backoff_count = Count} = State
 ) when
     NetEvError == tcp_error;
     NetEvError == ssl_error
 ->
+    NextDelay = reconnect_delay(Count + 1),
     ?LOG_WARNING(
         "connection to node ~p has been closed due to error ~p, reconnect in ~pms",
-        [RemoteNode, Reason, ?RECONNECT]
+        [RemoteNode, Reason, NextDelay]
     ),
     close_reconnect(State);
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
@@ -377,17 +388,32 @@ connect_async(ParentPid, RemoteNode) ->
         end,
     ParentPid ! {connect_async_done, self(), Reply}.
 
-close_reconnect(#state{transport = Transport, socket = Socket} = State) ->
+close_reconnect(#state{transport = Transport, socket = Socket, backoff_count = Count} = State) ->
     close(Transport, Socket),
+    NewCount = Count + 1,
     State#state{
         async_connect_pid = undefined,
         reachable = false,
         socket = undefined,
-        reconnect_tref = reconnect_timer()
+        backoff_count = NewCount,
+        reconnect_tref = reconnect_timer(NewCount)
     }.
 
-reconnect_timer() ->
-    erlang:send_after(?RECONNECT, self(), reconnect).
+reconnect_delay(Count) ->
+    Base = vmq_config:get_env(
+        outgoing_clustering_reconnect_base_delay, ?DEFAULT_RECONNECT_BASE
+    ),
+    Max = vmq_config:get_env(
+        outgoing_clustering_reconnect_max_delay, ?DEFAULT_RECONNECT_MAX
+    ),
+    min(Base bsl min(Count - 1, 14), Max).
+
+reconnect_timer(Count) ->
+    Delay = reconnect_delay(Count),
+    %% Add +/- 20% jitter to prevent synchronized reconnect storms.
+    Jitter = Delay div 5,
+    JitteredDelay = Delay - Jitter + rand:uniform(2 * Jitter + 1) - 1,
+    erlang:send_after(JitteredDelay, self(), reconnect).
 
 %% connect_params is called by a RPC
 connect_params(_Node) ->
