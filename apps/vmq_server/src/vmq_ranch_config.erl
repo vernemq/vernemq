@@ -139,7 +139,9 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     ),
     case validate_plugin_chains(Opts) of
         ok ->
-            ListenerOpts = [{listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts],
+            ListenerOpts = [
+                {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
+            ],
             ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
             TransportMod = transport_for_type(Type),
             TransportOptions = maps:from_list(
