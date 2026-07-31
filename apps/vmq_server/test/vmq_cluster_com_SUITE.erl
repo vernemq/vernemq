@@ -8,6 +8,7 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(Config) ->
+    {ok, _} = application:ensure_all_started(ssl),
     S = vmq_test_utils:get_suite_rand_seed(),
     Config0 = vmq_cluster_test_utils:init_distribution(Config),
     ct:log("node name ~p", [node()]),
@@ -23,28 +24,62 @@ end_per_suite(Config) ->
     ok = vmq_cluster_test_utils:stop_peer(Peer, Node),
     Config.
 
+init_per_testcase(Case, Config) when
+    Case == connect_success_ssl_test;
+    Case == invalid_initial_cluster_frame_test;
+    Case == partial_initial_cluster_frame_test;
+    Case == oversized_initial_cluster_frame_test;
+    Case == oversized_send_cluster_frame_test;
+    Case == invalid_connect_term_test;
+    Case == invalid_msg_term_test;
+    Case == invalid_enq_term_test;
+    Case == invalid_inner_cluster_frame_test
+->
+    persistent_term:erase({?MODULE, transport}),
+    persistent_term:erase({?MODULE, cluster_node_pid}),
+    vmq_test_utils:seed_rand(Config),
+    Config;
 init_per_testcase(_Case, Config) ->
+    persistent_term:erase({?MODULE, transport}),
+    persistent_term:erase({?MODULE, cluster_node_pid}),
     vmq_test_utils:seed_rand(Config),
     ClusterNodePid = setup_mock_vmq_cluster_node(Config),
     [{cluster_node_pid, ClusterNodePid}|Config].
 
 end_per_testcase(_Case, Config) ->
-    terminate_mock_vmq_cluster_node(Config),
+    case persistent_term:get({?MODULE, cluster_node_pid}, cluster_node_pid(Config)) of
+        undefined -> ok;
+        ClusterNodePid -> terminate_cluster_node_pid(Config, ClusterNodePid)
+    end,
+    persistent_term:erase({?MODULE, transport}),
+    persistent_term:erase({?MODULE, cluster_node_pid}),
     ok.
 
 all() ->
     [connect_success_test,
+     connect_success_ssl_test,
      connect_success_delays_publish_until_ack,
      connect_success_legacy_fallback,
      connect_success_send_error,
-     connect_success_send_error_timeout
+     connect_success_send_error_timeout,
+     invalid_initial_cluster_frame_test,
+     partial_initial_cluster_frame_test,
+     oversized_initial_cluster_frame_test,
+     oversized_send_cluster_frame_test,
+     invalid_connect_term_test,
+     invalid_msg_term_test,
+     invalid_enq_term_test,
+     invalid_inner_cluster_frame_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connect_params(_RemoteNode) ->
-    {gen_tcp, {127,0,0,1}, 12345}.
+    case persistent_term:get({?MODULE, transport}, gen_tcp) of
+        ssl -> {ssl, {127,0,0,1}, 12346};
+        gen_tcp -> {gen_tcp, {127,0,0,1}, 12345}
+    end.
 
 connect_success_test(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
@@ -56,6 +91,22 @@ connect_success_test(Config) ->
     ok = send_message(ClusterNodePid, hello_world),
     % recv this message
     recv_message(Socket, hello_world).
+
+connect_success_ssl_test(Config) ->
+    ClusterNodePid = setup_mock_ssl_vmq_cluster_node(Config),
+    {ok, ListenSocket} = ssl:listen(12346, [
+        binary,
+        {reuseaddr, true},
+        {active, false},
+        {certfile, ssl_path("server.crt")},
+        {keyfile, ssl_path("server.key")}
+    ]),
+    {ok, Socket} = accept_ssl(ListenSocket),
+    recv_ssl_connect_ack(Socket, Config),
+
+    ok = send_message(ClusterNodePid, hello_world),
+    ok = recv_ssl_message(Socket, hello_world),
+    ok.
 
 connect_success_delays_publish_until_ack(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
@@ -130,6 +181,40 @@ connect_success_send_error_timeout(Config) ->
     recv_message(Socket2, <<1:10000, N:32>>),
     {error, timeout} = gen_tcp:recv(Socket2, 0, 1000).
 
+invalid_initial_cluster_frame_test(_) ->
+    {error, invalid_cluster_frame} = vmq_cluster_com:test_process_bytes(<<"nope">>, undefined, 64).
+
+partial_initial_cluster_frame_test(_) ->
+    {ok, {connect, <<"vmq-con">>}} = vmq_cluster_com:test_process_bytes(<<"vmq-con">>, undefined, 64).
+
+oversized_initial_cluster_frame_test(_) ->
+    Bytes = <<"vmq-connect", 64:32, 1:64>>,
+    {error, cluster_buffer_too_large} = vmq_cluster_com:test_process_bytes(Bytes, undefined, 16).
+
+oversized_send_cluster_frame_test(_) ->
+    {error, cluster_frame_too_large} = vmq_cluster_com:test_process_bytes(<<"vmq-send", 17:32>>, <<>>, 16).
+
+invalid_connect_term_test(_) ->
+    BadTerm = <<"not-an-external-term">>,
+    Bytes = <<"vmq-connect", (byte_size(BadTerm)):32, BadTerm/binary>>,
+    {error, invalid_cluster_frame} = vmq_cluster_com:test_process_bytes(Bytes, undefined, 64).
+
+invalid_msg_term_test(_) ->
+    BadTerm = <<"not-an-external-term">>,
+    Msg = <<"msg", (byte_size(BadTerm)):32, BadTerm/binary>>,
+    Bytes = <<"vmq-send", (byte_size(Msg)):32, Msg/binary>>,
+    {error, invalid_cluster_frame} = vmq_cluster_com:test_process_bytes(Bytes, <<>>, 64).
+
+invalid_enq_term_test(_) ->
+    BadTerm = <<"not-an-external-term">>,
+    Msg = <<"enq", (byte_size(BadTerm)):32, BadTerm/binary>>,
+    Bytes = <<"vmq-send", (byte_size(Msg)):32, Msg/binary>>,
+    {error, invalid_cluster_frame} = vmq_cluster_com:test_process_bytes(Bytes, <<>>, 64).
+
+invalid_inner_cluster_frame_test(_) ->
+    Bytes = <<"vmq-send", 2:32, "ms">>,
+    {error, invalid_cluster_frame} = vmq_cluster_com:test_process_bytes(Bytes, <<>>, 64).
+
 
 send_until_tcp_buffer_full(ClusterNodePid) ->
    send_until_tcp_buffer_full(ClusterNodePid, 0).
@@ -158,6 +243,7 @@ setup_mock_vmq_cluster_node(Config) ->
 setup_mock_vmq_cluster_node(Config, Opts) ->
     Node = proplists:get_value(node, Config),
     % make the test_com1 node connect to myself
+    persistent_term:put({?MODULE, transport}, gen_tcp),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_options, lists:flatten([[{keepalive, true}, {send_timeout, 0}] | Opts]), false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
     ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
@@ -167,9 +253,25 @@ setup_mock_vmq_cluster_node(Config, Opts) ->
     {ok, ClusterNodePid} = rpc:block_call(Node, vmq_cluster_node, start_link, [node()]),
     ClusterNodePid.
 
-terminate_mock_vmq_cluster_node(Config) ->
+setup_mock_ssl_vmq_cluster_node(Config) ->
     Node = proplists:get_value(node, Config),
-    ClusterNodePid = cluster_node_pid(Config),
+    persistent_term:put({?MODULE, transport}, ssl),
+    {ok, _} = rpc:block_call(Node, application, ensure_all_started, [ssl]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_options, [{verify, verify_none}, {send_timeout, 0}], false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_flush_threshold, 1460, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_cluster_handshake_ack_timeout, 250, false]),
+    {ok, ClusterNodePid} = rpc:block_call(Node, vmq_cluster_node, start_link, [node()]),
+    persistent_term:put({?MODULE, cluster_node_pid}, ClusterNodePid),
+    ClusterNodePid.
+
+terminate_mock_vmq_cluster_node(Config) ->
+    terminate_cluster_node_pid(Config, cluster_node_pid(Config)).
+
+terminate_cluster_node_pid(Config, ClusterNodePid) ->
+    Node = proplists:get_value(node, Config),
     rpc:block_call(Node, erlang, exit, [ClusterNodePid, kill]).
 
 cluster_node_pid(Config) ->
@@ -187,6 +289,25 @@ recv_connect_ack(Socket, Config) ->
     ok = recv_connect(Socket, Config),
     ok = gen_tcp:send(Socket, <<"vmq-connect-ack">>).
 
+accept_ssl(ListenSocket) ->
+    {ok, TransportSocket} = ssl:transport_accept(ListenSocket, 30000),
+    case ssl:handshake(TransportSocket) of
+        ok -> {ok, TransportSocket};
+        {ok, Socket} -> {ok, Socket}
+    end.
+
+recv_ssl_connect(Socket, Config) ->
+    Node = proplists:get_value(node, Config),
+    NodeName = term_to_binary(Node),
+    L1 = byte_size(NodeName),
+    HandshakeMsg = <<"vmq-connect", L1:32, NodeName/binary>>,
+    {ok, HandshakeMsg} = ssl:recv(Socket, byte_size(HandshakeMsg)),
+    ok.
+
+recv_ssl_connect_ack(Socket, Config) ->
+    ok = recv_ssl_connect(Socket, Config),
+    ok = ssl:send(Socket, <<"vmq-connect-ack">>).
+
 
 send_message(ClusterNodePid, Msg) ->
     rpc:call(node(ClusterNodePid), vmq_cluster_node, publish, [ClusterNodePid, Msg]).
@@ -202,3 +323,19 @@ recv_message(Socket, Term) ->
             io:format(user, "got ~p instead of ~p~n", [E, {ok, BatchMsg}]),
             E
     end.
+
+recv_ssl_message(Socket, Term) ->
+    TermBin = term_to_binary(Term),
+    L = byte_size(TermBin),
+    Msg = <<"msg", L:32, TermBin/binary>>,
+    BatchMsg = <<"vmq-send", (byte_size(Msg)):32, Msg/binary>>,
+    case ssl:recv(Socket, byte_size(BatchMsg)) of
+        {ok, BatchMsg} -> ok;
+        E ->
+            io:format(user, "got ~p instead of ~p~n", [E, {ok, BatchMsg}]),
+            E
+    end.
+
+ssl_path(File) ->
+    Path = filename:dirname(proplists:get_value(source, ?MODULE:module_info(compile))),
+    filename:join([Path, "ssl", File]).
