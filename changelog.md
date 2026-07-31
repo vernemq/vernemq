@@ -1,3 +1,5 @@
+
+- Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
 - Make VerneMQ run on Erlang/OTP 28.
 - Enhancement: Improved internode MQTT delivery with a connect-ack handshake, controlled by `outgoing_cluster_handshake_ack_timeout`, so cluster nodes only mark peers reachable after the receiving side has accepted the delivery connection.
 - Enhancement: Added bounded inbound buffering and frame validation for internode MQTT traffic, rejecting malformed or oversized cluster frames according to `incoming_clustering_buffer_size` instead of buffering them indefinitely.
