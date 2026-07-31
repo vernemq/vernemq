@@ -173,6 +173,7 @@ jobs:
           # Sonoma
           - macos-15
         otp:
+          - "29"
           - "28.5"
           - "27.3"
         exclude:
