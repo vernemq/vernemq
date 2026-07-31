@@ -38,6 +38,7 @@ register_config_() ->
             "queue_type",
             "retry_interval",
             "max_client_id_size",
+            "max_subscriptions_per_client",
             "persistent_client_expiration",
             "max_inflight_messages",
             "max_online_messages",

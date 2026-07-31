@@ -27,7 +27,7 @@
 ]).
 
 %% exported for testing
--export([to_vmq_msg/1]).
+-export([test_process_bytes/3, to_vmq_msg/1]).
 
 -record(st, {
     socket,
@@ -37,8 +37,13 @@
     proto_tag,
     pending = [],
     throttled = false,
+    max_buffer_size,
     bytes_recv = {os:timestamp(), 0}
 }).
+
+-define(CONNECT_ACK, <<"vmq-connect-ack">>).
+-define(CONNECT, <<"vmq-connect">>).
+-define(SEND, <<"vmq-send">>).
 
 %% API.
 start_link(Ref, _Socket, Transport, Opts) ->
@@ -47,10 +52,15 @@ start_link(Ref, _Socket, Transport, Opts) ->
 start_link(Ref, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
     {ok, Pid}.
+
+test_process_bytes(Bytes, ParserState, MaxBufferSize) ->
+    process_bytes(Bytes, ParserState, #st{max_buffer_size = MaxBufferSize, reg_view = vmq_reg_trie}).
+
 init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    MaxBufferSize = vmq_config:get_env(incoming_clustering_buffer_size, 67108864),
 
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
@@ -79,6 +89,7 @@ init(Ref, Transport, Opts) ->
             loop(#st{
                 socket = MaskedSocket,
                 reg_view = RegView,
+                max_buffer_size = MaxBufferSize,
                 proto_tag = proto_tag(Transport)
             });
         {error, Reason} ->
@@ -159,75 +170,161 @@ handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr}} = State) 
 handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
-process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
-    NodeName = binary_to_term(BNodeName),
-    case vmq_cluster_node_sup:get_cluster_node(NodeName) of
-        {ok, ClusterNodePid} ->
-            monitor(process, ClusterNodePid),
-            process_bytes(Rest, <<>>, St);
-        {error, not_found} ->
-            ?LOG_DEBUG("connect request from unknown cluster node ~p", [NodeName]),
-            {error, remote_node_not_available}
-    end;
+process_bytes(Bytes, undefined, St) ->
+    process_connect_bytes(Bytes, St);
+process_bytes(Bytes, {connect, Buffer}, St) ->
+    process_connect_bytes(<<Buffer/binary, Bytes/binary>>, St);
 process_bytes(Bytes, Buffer, St) ->
     NewBuffer = <<Buffer/binary, Bytes/binary>>,
-    case NewBuffer of
-        <<"vmq-send", L:32, BFrames:L/binary, Rest/binary>> ->
-            process(BFrames, St),
-            process_bytes(Rest, <<>>, St);
-        _ ->
-            %% if we have received something else than "vmq-send" we
-            %% will buffer everything unbounded forever and ever!
-            {ok, NewBuffer}
+    case validate_frame_buffer(NewBuffer, St#st.max_buffer_size) of
+        ok ->
+            process_frame_buffer(NewBuffer, St);
+        {error, Reason} ->
+            {error, Reason}
     end.
 
+process_connect_bytes(Bytes, St) ->
+    case validate_prefixed_buffer(Bytes, ?CONNECT, St#st.max_buffer_size) of
+        ok ->
+            process_connect_buffer(Bytes, St);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+process_connect_buffer(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, St) ->
+    case safe_binary_to_term(BNodeName) of
+        {ok, NodeName} ->
+            case vmq_cluster_node_sup:get_cluster_node(NodeName) of
+                {ok, ClusterNodePid} ->
+                    monitor(process, ClusterNodePid),
+                    ok = send_connect_ack(St),
+                    process_bytes(Rest, <<>>, St);
+                {error, not_found} ->
+                    ?LOG_DEBUG("connect request from unknown cluster node ~p", [NodeName]),
+                    {error, remote_node_not_available}
+            end;
+        error ->
+            {error, invalid_cluster_frame}
+    end;
+process_connect_buffer(Bytes, _St) ->
+    {ok, {connect, Bytes}}.
+
+process_frame_buffer(<<"vmq-send", L:32, BFrames:L/binary, Rest/binary>>, St) ->
+    case process(BFrames, St) of
+        ok ->
+            process_bytes(Rest, <<>>, St);
+        {error, Reason} ->
+            {error, Reason}
+    end;
+process_frame_buffer(Bytes, _St) ->
+    {ok, Bytes}.
+
+validate_frame_buffer(<<"vmq-send", L:32, _/binary>>, MaxBufferSize) when L > MaxBufferSize ->
+    {error, cluster_frame_too_large};
+validate_frame_buffer(Bytes, MaxBufferSize) ->
+    validate_prefixed_buffer(Bytes, ?SEND, MaxBufferSize).
+
+validate_prefixed_buffer(Bytes, _Prefix, MaxBufferSize) when byte_size(Bytes) > MaxBufferSize ->
+    {error, cluster_buffer_too_large};
+validate_prefixed_buffer(Bytes, Prefix, _MaxBufferSize) ->
+    PrefixSize = byte_size(Prefix),
+    case Bytes of
+        <<Prefix:PrefixSize/binary, _/binary>> ->
+            ok;
+        _ when byte_size(Bytes) < PrefixSize ->
+            case is_prefix(Bytes, Prefix) of
+                true -> ok;
+                false -> {error, invalid_cluster_frame}
+            end;
+        _ ->
+            {error, invalid_cluster_frame}
+    end.
+
+is_prefix(Bytes, Prefix) ->
+    Size = byte_size(Bytes),
+    <<PrefixPart:Size/binary, _/binary>> = Prefix,
+    Bytes =:= PrefixPart.
+
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    #vmq_msg{
-        mountpoint = MP,
-        routing_key = Topic
-    } = Msg = to_vmq_msg(binary_to_term(Bin)),
-    _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
-    process(Rest, St);
+    case safe_binary_to_term(Bin) of
+        {ok, Term} ->
+            try to_vmq_msg(Term) of
+                #vmq_msg{
+                    mountpoint = MP,
+                    routing_key = Topic
+                } = Msg ->
+                    _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
+                    process(Rest, St)
+            catch
+                _:_ ->
+                    {error, invalid_cluster_frame}
+            end;
+        error ->
+            {error, invalid_cluster_frame}
+    end;
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    case binary_to_term(Bin) of
-        {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
-            %% enqueue in own process context
-            %% to ensure that this won't block
-            %% the cluster communication.
-            spawn(fun() ->
-                try
-                    Reply = vmq_queue:enqueue_many(QueuePid, to_vmq_msgs(Msgs)),
-                    CallerPid ! {Ref, Reply}
-                catch
-                    _:_ ->
-                        CallerPid ! {Ref, {error, cant_remote_enqueue}}
-                end
-            end);
-        {CallerPid, Ref, {enqueue_many, SubscriberId, Msgs, Opts}} ->
-            %% enqueue in own process context
-            %% to ensure that this won't block
-            %% the cluster communication.
-            spawn(fun() ->
-                try
-                    case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
-                        QueuePid when is_pid(QueuePid) ->
-                            Reply = vmq_queue:enqueue_many(QueuePid, Msgs, Opts),
-                            CallerPid ! {Ref, Reply}
+    EnqueueResult =
+        case safe_binary_to_term(Bin) of
+            {ok, {CallerPid, Ref, {enqueue, QueuePid, Msgs}}} ->
+                %% enqueue in own process context
+                %% to ensure that this won't block
+                %% the cluster communication.
+                spawn(fun() ->
+                    try
+                        Reply = vmq_queue:enqueue_many(QueuePid, to_vmq_msgs(Msgs)),
+                        CallerPid ! {Ref, Reply}
+                    catch
+                        _:_ ->
+                            CallerPid ! {Ref, {error, cant_remote_enqueue}}
                     end
-                catch
-                    _:_ ->
-                        CallerPid ! {Ref, {error, cant_remote_enqueue}}
-                end
-            end);
-        Unknown ->
-            ?LOG_WARNING("unknown enqueue message: ~p", [Unknown])
-    end,
-    process(Rest, St);
+                end),
+                ok;
+            {ok, {CallerPid, Ref, {enqueue_many, SubscriberId, Msgs, Opts}}} ->
+                %% enqueue in own process context
+                %% to ensure that this won't block
+                %% the cluster communication.
+                spawn(fun() ->
+                    try
+                        case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
+                            QueuePid when is_pid(QueuePid) ->
+                                Reply = vmq_queue:enqueue_many(QueuePid, Msgs, Opts),
+                                CallerPid ! {Ref, Reply}
+                        end
+                    catch
+                        _:_ ->
+                            CallerPid ! {Ref, {error, cant_remote_enqueue}}
+                    end
+                end),
+                ok;
+            {ok, Unknown} ->
+                ?LOG_WARNING("unknown enqueue message: ~p", [Unknown]),
+                ok;
+            error ->
+                {error, invalid_cluster_frame}
+        end,
+    case EnqueueResult of
+        ok -> process(Rest, St);
+        {error, Reason} -> {error, Reason}
+    end;
 process(<<>>, _) ->
     ok;
 process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     ?LOG_WARNING("unknown message: ~p", [Cmd]),
-    process(Rest, St).
+    process(Rest, St);
+process(_, _) ->
+    {error, invalid_cluster_frame}.
+
+safe_binary_to_term(Bin) ->
+    try binary_to_term(Bin) of
+        Term -> {ok, Term}
+    catch
+        error:badarg -> error
+    end.
+
+send_connect_ack(#st{socket = {ssl, Socket}}) ->
+    ssl:send(Socket, ?CONNECT_ACK);
+send_connect_ack(#st{socket = Socket}) ->
+    gen_tcp:send(Socket, ?CONNECT_ACK).
 
 to_vmq_msgs(Msgs) ->
     lists:map(

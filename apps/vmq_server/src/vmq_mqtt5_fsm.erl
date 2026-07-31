@@ -253,6 +253,23 @@ data_in(Data, SessionState, OutAcc) ->
             E;
         {error, Reason} ->
             {error, Reason, lists:reverse(OutAcc)};
+        {{error, Reason}, _Rest} ->
+            %% The parser embeds frame-level validation errors (e.g. an
+            %% invalid wildcard in a SUBSCRIBE topic filter) as the "frame"
+            %% of a {Frame, Rest} tuple, so they never reach the state
+            %% machine as a real frame. Handle them here as protocol errors
+            %% instead of feeding the error term to the FSM as an unexpected
+            %% message. For an established session we inform the client with
+            %% a DISCONNECT carrying an appropriate reason code; a DISCONNECT
+            %% must not precede the CONNACK, so in any other session state we
+            %% just close the connection.
+            case SessionState of
+                {connected, State} ->
+                    {stop, StopReason, Out} = terminate(frame_error_rcn(Reason), State),
+                    {stop, StopReason, lists:reverse([Out | OutAcc])};
+                _ ->
+                    {error, Reason, lists:reverse(OutAcc)}
+            end;
         {Frame, Rest} ->
             case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
@@ -664,8 +681,9 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
                     CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics
                 )
             of
-                {ok, _QoSs} ->
-                    vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]);
+                {ok, QoSs} ->
+                    vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]),
+                    {ok, replace_subscribe_qos(MaybeChangedTopics, QoSs)};
                 Res ->
                     Res
             end
@@ -1441,7 +1459,7 @@ set_sock_opts(Opts) ->
     mqtt5_properties(),
     fun(
         (username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
-            {ok, [qos() | not_allowed]} | {error, atom()}
+            {ok, [subscription()]} | {error, atom()}
     )
 ) ->
     {ok, auth_on_subscribe_m5_hook:sub_modifiers()}
@@ -1454,13 +1472,17 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
         )
     of
         ok ->
-            AuthSuccess(User, SubscriberId, Topics, Props0),
-            {ok, #{topics => Topics}};
+            case AuthSuccess(User, SubscriberId, Topics, Props0) of
+                {ok, NewTopics} -> {ok, #{topics => NewTopics}};
+                Res -> Res
+            end;
         {ok, Modifiers} ->
             NewTopics = maps:get(topics, Modifiers, []),
             NewProps = maps:get(properties, Modifiers, #{}),
-            AuthSuccess(User, SubscriberId, NewTopics, NewProps),
-            {ok, Modifiers};
+            case AuthSuccess(User, SubscriberId, NewTopics, NewProps) of
+                {ok, NewTopics1} -> {ok, Modifiers#{topics => NewTopics1}};
+                Res -> Res
+            end;
         {error, Error} ->
             {error, Error}
     end.
@@ -2210,6 +2232,15 @@ gen_disconnect_(RCN, Props) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_SENT, RCN}),
     serialise_frame(#mqtt5_disconnect{reason_code = rcn2rc(RCN), properties = Props}).
 
+%% Map a parser frame-validation error to the MQTT 5.0 reason code sent in
+%% the DISCONNECT before the connection is closed.
+-spec frame_error_rcn(atom()) -> reason_code_name().
+frame_error_rcn('no_+_allowed_in_word') -> ?TOPIC_FILTER_INVALID;
+frame_error_rcn('no_#_allowed_in_word') -> ?TOPIC_FILTER_INVALID;
+frame_error_rcn('no_+_allowed_in_publish') -> ?TOPIC_NAME_INVALID;
+frame_error_rcn('no_#_allowed_in_publish') -> ?TOPIC_NAME_INVALID;
+frame_error_rcn(_) -> ?MALFORMED_PACKET.
+
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
 msg_expiration(_) ->
@@ -2313,13 +2344,29 @@ get_sub_id(_) ->
 topic_to_qos(Topics) ->
     lists:map(
         fun
+            ({_T, not_allowed}) ->
+                rcn2rc(?NOT_AUTHORIZED);
+            ({_T, quota_exceeded}) ->
+                rcn2rc(?QUOTA_EXCEEDED);
             ({_T, QoS}) when is_integer(QoS) ->
                 QoS;
+            ({_T, {not_allowed, _}}) ->
+                rcn2rc(?NOT_AUTHORIZED);
+            ({_T, {quota_exceeded, _}}) ->
+                rcn2rc(?QUOTA_EXCEEDED);
             ({_T, {QoS, _}}) ->
                 QoS
         end,
         Topics
     ).
+
+replace_subscribe_qos(Topics, QoSs) ->
+    [replace_subscribe_qos_(Topic, QoS) || {Topic, QoS} <- lists:zip(Topics, QoSs)].
+
+replace_subscribe_qos_({T, {_OldQoS, SubOpts}}, QoS) when is_map(SubOpts) ->
+    {T, {QoS, SubOpts}};
+replace_subscribe_qos_({T, _OldQoS}, QoS) ->
+    {T, QoS}.
 
 disconnect_rc2rcn(0) ->
     ?NORMAL_DISCONNECT;

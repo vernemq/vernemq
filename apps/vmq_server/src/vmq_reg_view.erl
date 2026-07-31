@@ -16,7 +16,7 @@
 -module(vmq_reg_view).
 -include("vmq_server.hrl").
 
--export([fold/5]).
+-export([fold/5, update_subscriber/4, update_subscriber_changes/4]).
 
 -callback fold(
     SubscriberId :: subscriber_id(),
@@ -24,5 +24,22 @@
     FoldFun :: reg_view_fold_fun(),
     Accumulator :: any()
 ) -> any().
+-callback update_subscriber(
+    SubscriberId :: subscriber_id(),
+    OldSubs :: vmq_subscriber:subs(),
+    NewSubs :: vmq_subscriber:subs()
+) -> ok.
+-callback update_subscriber_changes(
+    SubscriberId :: subscriber_id(),
+    ToRemove :: vmq_subscriber:changes(),
+    ToAdd :: vmq_subscriber:changes()
+) -> ok.
+
 fold(RegView, SubscriberId, Topic, FoldFun, Acc) ->
     RegView:fold(SubscriberId, Topic, FoldFun, Acc).
+
+update_subscriber(RegView, SubscriberId, OldSubs, NewSubs) ->
+    RegView:update_subscriber(SubscriberId, OldSubs, NewSubs).
+
+update_subscriber_changes(RegView, SubscriberId, ToRemove, ToAdd) ->
+    RegView:update_subscriber_changes(SubscriberId, ToRemove, ToAdd).

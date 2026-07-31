@@ -1123,6 +1123,8 @@ not_allowed_properties(_Config) ->
  
     Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_server_ref => [1]}}]),
     ok = gen_tcp:send(PubSocket, Pub),
+    Disconnect = packetv5:gen_disconnect(?M5_MALFORMED_PACKET, #{}),
+    ok = packetv5:expect_frame(PubSocket, Disconnect),
     {error, closed} = gen_tcp:recv(PubSocket, 0, 1000).
   
 

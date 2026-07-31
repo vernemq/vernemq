@@ -212,6 +212,13 @@ data_in(Data, SessionState, OutAcc) ->
             E;
         {error, Reason} ->
             {error, Reason, serialise(OutAcc)};
+        {{error, Reason}, _Rest} ->
+            %% The parser embeds frame-level validation errors (e.g. an
+            %% invalid wildcard in a SUBSCRIBE topic) as the "frame" of a
+            %% {Frame, Rest} tuple. Treat them as protocol errors and close
+            %% the connection cleanly instead of feeding the error term to
+            %% the FSM as an unexpected message.
+            {error, Reason, serialise(OutAcc)};
         {Frame, Rest} ->
             case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
