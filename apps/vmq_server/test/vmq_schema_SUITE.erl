@@ -38,6 +38,7 @@ groups() ->
          proxy_protocol_override_test,
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
+         allow_anonymous_override_test,
          allowed_protocol_versions_inheritance_test,
          allowed_protocol_versions_override_test,
          allowed_eccs_test,
@@ -227,6 +228,27 @@ proxy_protocol_override_test(_Config) ->
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
+
+allow_anonymous_override_test(_Config) ->
+    Conf = [
+            %% tcp/mqtt
+            {["listener","tcp","default"],"127.0.0.1:1884"},
+            {["listener","tcp","default","allow_anonymous_override"], "on"},
+            %% tcp/ssl/mqtt
+            {["listener","ssl","default"],"127.0.0.1:8884"},
+            {["listener","ssl","default","allow_anonymous_override"], "on"},
+            %% websocket
+            {["listener","ws","default"],"127.0.0.1:800"},
+            {["listener","ws","default","allow_anonymous_override"], "on"},
+            %% websocket/ssl
+            {["listener","wss","default"],"127.0.0.1:900"},
+            {["listener","wss","default","allow_anonymous_override"], "on"}
+            | global_substitutions()
+           ],
+    true = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, allow_anonymous_override]),
+    true = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, allow_anonymous_override]),
+    true = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800}, allow_anonymous_override]),
+    true = expect(Conf, [vmq_server, listeners, mqttwss, {{127,0,0,1}, 900}, allow_anonymous_override]).
 
 allowed_protocol_versions_inheritance_test(_Config) ->
     Conf = [

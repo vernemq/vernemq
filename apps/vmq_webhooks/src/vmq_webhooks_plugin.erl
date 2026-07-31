@@ -674,7 +674,9 @@ uncheck_exported_callback(HookName, [_ | Exports]) ->
 uncheck_exported_callback(_, []) ->
     {error, no_matching_callback_found}.
 
--spec all_till_ok(hook_name(), [{atom(), _}, ...]) -> 'next' | 'ok' | {'error', _} | {'ok', _}.
+-type hook_arg() :: {atom(), _} | map().
+
+-spec all_till_ok(hook_name(), [hook_arg(), ...]) -> 'next' | 'ok' | {'error', _} | {'ok', _}.
 all_till_ok(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] -> next;

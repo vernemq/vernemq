@@ -76,6 +76,13 @@
                                              hidden
                                             ]}.
 
+%% @doc Enable the SWC init sync procedure. Default: off
+{mapping, "vmq_swc.init_sync_procedure", "vmq_swc.init_sync_procedure", [
+                                             {default, off},
+                                             {datatype, flag},
+                                             hidden
+                                            ]}.
+
 %% @doc Prevent a node with pre-existing history from cluster
 %% join attempts. (self-check by joining node)
 {mapping, "vmq_swc.prevent_nonempty_join", "vmq_swc.prevent_nonempty_join", [

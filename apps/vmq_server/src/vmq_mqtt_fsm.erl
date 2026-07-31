@@ -52,7 +52,7 @@
         undefined
         | username()
         | {preauth, string() | undefined},
-    conn_opts :: map(),
+    conn_opts :: undefined | map(),
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     retry_queue = queue:new() :: queue:queue(),
@@ -211,6 +211,13 @@ data_in(Data, SessionState, OutAcc) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_msg_size(),
             E;
         {error, Reason} ->
+            {error, Reason, serialise(OutAcc)};
+        {{error, Reason}, _Rest} ->
+            %% The parser embeds frame-level validation errors (e.g. an
+            %% invalid wildcard in a SUBSCRIBE topic) as the "frame" of a
+            %% {Frame, Rest} tuple. Treat them as protocol errors and close
+            %% the connection cleanly instead of feeding the error term to
+            %% the FSM as an unexpected message.
             {error, Reason, serialise(OutAcc)};
         {Frame, Rest} ->
             case in(Frame, SessionState, true) of

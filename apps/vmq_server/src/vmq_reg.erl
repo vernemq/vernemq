@@ -56,6 +56,8 @@
 %% used by reg views
 -export([
     subscribe_subscriber_changes/0,
+    subscribe_subscriber_changes/1,
+    sync_reg_view_update/3,
     fold_subscriptions/2,
     fold_subscribers/2
 ]).
@@ -80,7 +82,7 @@
     subscriber_id(),
     [subscription()]
 ) ->
-    {ok, [qos() | not_allowed]}
+    {ok, [qos() | not_allowed | quota_exceeded]}
     | {error, not_allowed | not_ready}.
 subscribe(false, SubscriberId, Topics) ->
     %% trade availability for consistency
@@ -91,8 +93,9 @@ subscribe(true, SubscriberId, Topics) ->
 
 subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
-    Existing = subscriptions_exist(OldSubs, Topics),
-    add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
+    LimitedTopics = enforce_subscription_limit(OldSubs, Topics),
+    Existing = subscriptions_exist(OldSubs, LimitedTopics),
+    add_subscriber(lists:usort(subscribable_topics(LimitedTopics)), OldSubs, SubscriberId),
     {QoSTable, _Ign} =
         lists:foldl(
             fun
@@ -105,6 +108,8 @@ subscribe_op(SubscriberId, Topics) ->
                 %% MQTTv5 clauses
                 ({_, {_, {not_allowed, _}}}, {AccQoSTable, WaitSync}) ->
                     {[not_allowed | AccQoSTable], WaitSync};
+                ({_, {_, {quota_exceeded, _}}}, {AccQoSTable, WaitSync}) ->
+                    {[quota_exceeded | AccQoSTable], WaitSync};
                 ({Exists, {T, {QoS, SubOpts}}}, {AccQoSTable, WaitSync}) when
                     is_integer(QoS), is_map(SubOpts)
                 ->
@@ -112,9 +117,73 @@ subscribe_op(SubscriberId, Topics) ->
                     {[QoS | AccQoSTable], WaitSync0}
             end,
             {[], (vmq_config:get_env(subscriber_retain_mode, immediate) == syncwait)},
-            lists:zip(Existing, Topics)
+            lists:zip(Existing, LimitedTopics)
         ),
     {ok, lists:reverse(QoSTable)}.
+
+enforce_subscription_limit(OldSubs, Topics) ->
+    case vmq_config:get_env(max_subscriptions_per_client, 0) of
+        Max when is_integer(Max), Max > 0 ->
+            {LimitedTopics, _} = lists:mapfoldl(
+                fun(Topic, {Count, NewTopics}) ->
+                    case subscription_topic(Topic) of
+                        not_allowed ->
+                            {Topic, {Count, NewTopics}};
+                        T ->
+                            case vmq_subscriber:exists(T, OldSubs) of
+                                true ->
+                                    {Topic, {Count, NewTopics}};
+                                false ->
+                                    case lists:member(T, NewTopics) of
+                                        true ->
+                                            {Topic, {Count, NewTopics}};
+                                        false when Count < Max ->
+                                            {Topic, {Count + 1, [T | NewTopics]}};
+                                        false ->
+                                            {quota_exceeded_subscription(Topic), {Count, NewTopics}}
+                                    end
+                            end
+                    end
+                end,
+                {subscription_count(OldSubs), []},
+                Topics
+            ),
+            LimitedTopics;
+        _ ->
+            Topics
+    end.
+
+subscription_count(Subs) ->
+    lists:sum([length(NodeSubs) || {_Node, _CleanSession, NodeSubs} <- Subs]).
+
+subscription_topic({_T, {_QoS, not_allowed}}) ->
+    not_allowed;
+subscription_topic({_T, not_allowed}) ->
+    not_allowed;
+subscription_topic({_T, {not_allowed, _SubOpts}}) ->
+    not_allowed;
+subscription_topic({_T, {quota_exceeded, _SubOpts}}) ->
+    not_allowed;
+subscription_topic({T, _SubInfo}) ->
+    T.
+
+quota_exceeded_subscription({T, {_QoS, not_allowed}}) ->
+    {T, {_QoS, not_allowed}};
+quota_exceeded_subscription({T, {_QoS, SubOpts}}) when is_map(SubOpts) ->
+    {T, {quota_exceeded, SubOpts}};
+quota_exceeded_subscription({T, _QoS}) ->
+    {T, not_allowed}.
+
+subscribable_topics(Topics) ->
+    lists:filter(
+        fun
+            ({_, not_allowed}) -> false;
+            ({_, {not_allowed, _}}) -> false;
+            ({_, {quota_exceeded, _}}) -> false;
+            (_) -> true
+        end,
+        Topics
+    ).
 
 -spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, SubscriberId, Topics) ->
@@ -348,13 +417,15 @@ block_until(SubscriberId, UpdatedSubs, [Node | Rest] = ChangedNodes, BlockCond) 
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
-    case subscriptions_for_subscriber_id(SubscriberId) of
+    CurrentSubs = subscriptions_for_subscriber_id(SubscriberId),
+    case CurrentSubs of
         UpdatedSubs ->
             ok;
         _ ->
             %% in case the subscriptions were resolved elsewhere in the meantime
             %% we'll write 'our' version of the remapped subscriptions
-            vmq_subscriber_db:store(SubscriberId, UpdatedSubs)
+            vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+            sync_reg_view_update(SubscriberId, CurrentSubs, UpdatedSubs)
     end,
 
     case BlockCond(SubscriberId, Node) of
@@ -784,6 +855,7 @@ trigger_migration(
     Subs = subscriptions_for_subscriber_id(SubscriberId),
     UpdatedSubs = vmq_subscriber:change_node(Subs, OldNode, Target, false),
     vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+    sync_reg_view_update(SubscriberId, Subs, UpdatedSubs),
     S1 = S#{
         draining_queues => [Q | DQueues],
         draining_cnt => DCnt + 1,
@@ -866,8 +938,10 @@ replace_dead_queue(SubscriberId, _DeadNodes, _StartClean = true) ->
             %% clients on other nodes to be disconnected (if
             %% allow_multiple_sessions=false) (TODO: formalize this behaviour
             %% in a test-case) and they'll then reconnect.
+            OldSubs = subscriptions_for_subscriber_id(SubscriberId),
             Subs = vmq_subscriber:new(true),
             vmq_subscriber_db:store(SubscriberId, Subs),
+            sync_reg_view_update(SubscriberId, OldSubs, Subs),
             %% no local queue, so we delete the client information.
             del_subscriber(SubscriberId),
             ok;
@@ -894,7 +968,8 @@ replace_dead_queue(SubscriberId, DeadNodes, _StartClean = false) ->
             NewSubs = rewrite_dead_nodes(LocalSubs, DeadNodes, node(), false),
             %% store the updated subs, also to make sure to
             %% propagate the new values to all other nodes.
-            vmq_subscriber_db:store(SubscriberId, NewSubs)
+            vmq_subscriber_db:store(SubscriberId, NewSubs),
+            sync_reg_view_update(SubscriberId, LocalSubs, NewSubs)
     end.
 
 rewrite_dead_nodes(Subs, DeadNodes, TargetNode, CleanSession) ->
@@ -1083,6 +1158,9 @@ direct_plugin_exports(LogName, Opts) ->
 subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().
 
+subscribe_subscriber_changes(Opts) ->
+    vmq_subscriber_db:subscribe_db_events(Opts).
+
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
         fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
@@ -1128,7 +1206,8 @@ add_subscriber(Topics, OldSubs, SubscriberId) ->
         ),
     case vmq_subscriber:add(OldSubs, NewSubs) of
         {NewSubs0, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs0);
+            vmq_subscriber_db:store(SubscriberId, NewSubs0),
+            sync_reg_view_changes(SubscriberId, OldSubs, NewSubs0);
         _ ->
             ok
     end.
@@ -1139,16 +1218,45 @@ subscriptions_exist(OldSubs, Topics) ->
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->
-    vmq_subscriber_db:delete(SubscriberId).
+    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
+    vmq_subscriber_db:delete(SubscriberId),
+    sync_reg_view_update(SubscriberId, OldSubs, []).
 
 -spec del_subscriptions([topic()], subscriber_id()) -> ok.
 del_subscriptions(Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     case vmq_subscriber:remove(OldSubs, Topics) of
         {NewSubs, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs);
+            vmq_subscriber_db:store(SubscriberId, NewSubs),
+            sync_reg_view_changes(SubscriberId, OldSubs, NewSubs);
         _ ->
             ok
+    end.
+
+sync_reg_view_update(SubscriberId, OldSubs, NewSubs) ->
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    try vmq_reg_view:update_subscriber(RegView, SubscriberId, OldSubs, NewSubs) of
+        ok -> ok;
+        {error, not_ready} -> ok
+    catch
+        exit:{noproc, _} -> ok;
+        exit:{normal, _} -> ok
+    end.
+
+sync_reg_view_changes(SubscriberId, OldSubs, NewSubs) ->
+    {ToRemove, ToAdd} = vmq_subscriber:get_changes(one_pass_ordered, OldSubs, NewSubs),
+    sync_reg_view_delta(SubscriberId, ToRemove, ToAdd).
+
+sync_reg_view_delta(_SubscriberId, [], []) ->
+    ok;
+sync_reg_view_delta(SubscriberId, ToRemove, ToAdd) ->
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    try vmq_reg_view:update_subscriber_changes(RegView, SubscriberId, ToRemove, ToAdd) of
+        ok -> ok;
+        {error, not_ready} -> ok
+    catch
+        exit:{noproc, _} -> ok;
+        exit:{normal, _} -> ok
     end.
 
 %% the return value is used to inform the caller
@@ -1159,8 +1267,10 @@ del_subscriptions(Topics, SubscriberId) ->
 maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
+    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Subs = vmq_subscriber:new(true),
     vmq_subscriber_db:store(SubscriberId, Subs),
+    sync_reg_view_update(SubscriberId, OldSubs, Subs),
     {false, Subs, []};
 maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
@@ -1168,11 +1278,13 @@ maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
             %% Store empty Subscriber Data
             Subs = vmq_subscriber:new(false),
             vmq_subscriber_db:store(SubscriberId, Subs),
+            sync_reg_view_update(SubscriberId, [], Subs),
             {false, Subs, []};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
                     vmq_subscriber_db:store(SubscriberId, NewSubs),
+                    sync_reg_view_update(SubscriberId, Subs, NewSubs),
                     {true, NewSubs, ChangedNodes};
                 _ ->
                     {true, Subs, []}
@@ -1245,7 +1357,8 @@ retain_pre(FutureRetain) when
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
-    case persistent_term:get(subscribe_trie_ready, 0) of
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    case persistent_term:get({subscribe_trie_ready, RegView}, 0) of
         1 ->
             apply(Fun, Args);
         0 ->
