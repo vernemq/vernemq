@@ -1,3 +1,7 @@
+- Enhancement: Improved internode MQTT delivery with a connect-ack handshake, controlled by `outgoing_cluster_handshake_ack_timeout`, so cluster nodes only mark peers reachable after the receiving side has accepted the delivery connection.
+- Enhancement: Added bounded inbound buffering and frame validation for internode MQTT traffic, rejecting malformed or oversized cluster frames according to `incoming_clustering_buffer_size` instead of buffering them indefinitely.
+- Performance: Reduced internode delivery overhead by tracking pending outgoing bytes directly and batching writes with `outgoing_clustering_flush_threshold`.
+- Enhancement: Increased the default `outgoing_clustering_buffer_size` to better tolerate short peer disconnects and reconnect handshakes without dropping messages.
 - Performance (throughput) improvements for high-frequency SUBSCRIBES.
 - New global setting: ``max_subscriptions_per_client` 
 - Reduce memory effect of high-frequency SUBSCRIBES. (#2507)
@@ -7,7 +11,7 @@
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
-- Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout
+- Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout.
 
 ## VerneMQ 2.1.3 RC1
 
