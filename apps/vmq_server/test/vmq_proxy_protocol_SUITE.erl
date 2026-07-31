@@ -12,10 +12,12 @@
          proxy_local_command_test/1,
          proxy_use_cn_as_username_on/1,
          proxy_use_cn_as_username_off/1,
+         proxy_forward_connection_opts_test/1,
          ws_proxy_protocol_v2_use_cn_as_username_on_test/1,
          ws_proxy_protocol_v2_use_cn_as_username_off_test/1]).
 
 -export([hook_proxy_register/5,
+         hook_proxy_register_with_metadata/6,
          hook_proxy_register_use_identity_as_username_on/5,
          hook_proxy_register_use_identity_as_username_off/5]).
 
@@ -43,6 +45,11 @@ init_per_testcase(_Case, Config) ->
                                          %% introduced.
                                          %% {proxy_protocol_use_cn_as_username, true}
                                         ]),
+    vmq_server_cmd:listener_start(1893, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_use_cn_as_username, false},
+        {forward_connection_opts, true}
+    ]),
    vmq_server_cmd:listener_start(1891, "127.0.0.1", [{websocket,true}, {proxy_protocol, true},
                                         {proxy_protocol_use_cn_as_username, true},
                                         {allowed_protocol_versions, "3,4,5"}
@@ -62,6 +69,7 @@ all() ->
      proxy_local_command_test,
      proxy_use_cn_as_username_on,
      proxy_use_cn_as_username_off,
+     proxy_forward_connection_opts_test,
      ws_proxy_protocol_v2_use_cn_as_username_on_test,
      ws_proxy_protocol_v2_use_cn_as_username_off_test].
 
@@ -181,6 +189,31 @@ proxy_use_cn_as_username_off(_) ->
       auth_on_register, ?MODULE, hook_proxy_register_use_identity_as_username_off, 5),
     ok = gen_tcp:close(Socket).
 
+proxy_forward_connection_opts_test(_) ->
+    Connect = packet:gen_connect("connect-proxy-metadata-test", [{keepalive,10}]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1893,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register_with_metadata, 6),
+    ProxyInfo =
+        #{version => 2,
+          src_address => {1,1,1,1},
+          src_port => 1234,
+          dest_address => {2,2,2,2},
+          dest_port => 4321,
+          command => proxy,
+          transport_family => ipv4,
+          transport_protocol => stream},
+    {ok, Socket} = gen_tcp:connect(Host, Port,
+                                   [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    ok = gen_tcp:send(Socket, Connect),
+    ok = packet:expect_packet(Socket, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register_with_metadata, 6),
+    ok = gen_tcp:close(Socket).
+
 ws_proxy_protocol_v2_use_cn_as_username_on_test(_) ->
   Connect = packet:gen_connect("connect-proxy-test", [{keepalive,60},{username, <<"username">>},
     {password, <<"password">>}]),
@@ -258,6 +291,16 @@ ws_proxy_protocol_v2_use_cn_as_username_on_test(_) ->
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_proxy_register({{1,1,1,1}, 1234}, _, _, _, _) -> ok.
+
+hook_proxy_register_with_metadata(
+    {{1,1,1,1}, 1234},
+    {[], <<"connect-proxy-metadata-test">>},
+    _,
+    _,
+    _,
+    #{listener_addr := {127,0,0,1}, listener_port := 1893, listener_type := mqtt}
+) ->
+    ok.
 
 hook_proxy_register_use_identity_as_username_on({{1,2,3,4},5555},{[], <<"connect-proxy-test">>},<<"sni_hostname">>,_,_) ->
     ok.
