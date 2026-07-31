@@ -161,10 +161,3 @@ rand_mod() ->
 rand_pid() ->
     Pids = erlang:processes(),
     lists:nth(rand:uniform(length(Pids)), Pids).
-
-
-
-
-
-
-
