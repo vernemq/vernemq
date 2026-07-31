@@ -186,11 +186,12 @@ buffer_message(
                 _ = vmq_metrics:incr_cluster_bytes_dropped(V + Dropped),
                 {TS, 0}
         end,
-    {Dropped, maybe_flush(State#state{
-        pending = NewPending,
-        pending_bytes = NewPendingBytes,
-        bytes_dropped = NewBytesDropped
-    })}.
+    {Dropped,
+        maybe_flush(State#state{
+            pending = NewPending,
+            pending_bytes = NewPendingBytes,
+            bytes_dropped = NewBytesDropped
+        })}.
 
 handle_message(
     {enq, CallerPid, Ref, _, BufferIfUnreachable},
