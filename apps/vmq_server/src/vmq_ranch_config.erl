@@ -78,13 +78,10 @@ stop_listener(Addr, Port, KillSessions) when is_list(Port) ->
 stop_listener(Addr, Port, KillSessions) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
-    case ranch_server:get_listener_sup(Ref) of
-        Pid when KillSessions, is_pid(Pid) ->
-            ranch:stop_listener(Ref);
-        Pid when is_pid(Pid) ->
-            ranch:suspend_listener(Ref);
-        _ ->
-            ok
+    _Pid = ranch_server:get_listener_sup(Ref),
+    case KillSessions of
+        true -> ranch:stop_listener(Ref);
+        false -> ranch:suspend_listener(Ref)
     end.
 
 restart_listener(Addr, Port) ->
