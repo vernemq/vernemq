@@ -1408,22 +1408,19 @@ auth_on_register(Password, Props, State) ->
         listener_port => ListenerPort,
         listener_type => ListenerType
     },
-    ExtendedOpts =
-        case ConnOpts of
-            M when is_map(M) -> maps:merge(M, ListenerInfo);
-            _ -> ListenerInfo
+    HookArgs =
+        case ListenerAddr of
+            undefined ->
+                BasicHookArgs;
+            _ ->
+                ConnectionMetadata =
+                    case ConnOpts of
+                        M when is_map(M) -> maps:merge(M, ListenerInfo);
+                        _ -> ListenerInfo
+                    end,
+                BasicHookArgs ++ [ConnectionMetadata]
         end,
-    HookArgs7 = lists:flatten([BasicHookArgs | [ExtendedOpts]]),
-    HookResult =
-        case plugin_all_till_ok_auth(auth_on_register_m5, HookArgs7, State) of
-            {error, no_matching_hook_found} ->
-                plugin_all_till_ok_auth(auth_on_register_m5, BasicHookArgs, State);
-            {error, plugin_chain_exhausted} ->
-                plugin_all_till_ok_auth(auth_on_register_m5, BasicHookArgs, State);
-            Res ->
-                Res
-        end,
-    case HookResult of
+    case plugin_all_till_ok_auth(auth_on_register_m5, HookArgs, State) of
         ok ->
             {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->

@@ -1966,18 +1966,32 @@
                                                                                   hidden
                                                                                  ]}.
 
-%% @doc If 'listener.ssl.forward_connection_opts' is enabled, VerneMQ will
-%% forward the full client certificate to the authentication plugin (in the
-%% auth_on_register hooks).
+%% @doc If 'listener.*.forward_connection_opts' is enabled, VerneMQ will
+%% forward listener metadata to the authentication plugin (in the
+%% auth_on_register hooks). SSL and WSS listeners also forward the full client
+%% certificate.
 %% Configure on protocol level (for all listeners):
 %%
+%%     - listener.tcp.forward_connection_opts
 %%     - listener.ssl.forward_connection_opts
+%%     - listener.ws.forward_connection_opts
 %%     - listener.wss.forward_connection_opts
 %%
 %% or on the listener level:
 %%
+%%     - listener.tcp.my_tcp_listener.forward_connection_opts
 %%     - listener.ssl.my_ssl_listener.forward_connection_opts
+%%     - listener.ws.my_ws_listener.forward_connection_opts
 %%     - listener.wss.my_wss_listener.forward_connection_opts
+{mapping, "listener.tcp.forward_connection_opts", "vmq_server.listeners", [
+                                                                            {default, off},
+                                                                            {datatype, flag},
+                                                                            {commented, off}
+                                                                           ]}.
+{mapping, "listener.tcp.$name.forward_connection_opts", "vmq_server.listeners", [
+                                                                                  {datatype, flag},
+                                                                                  hidden
+                                                                                 ]}.
 {mapping, "listener.ssl.forward_connection_opts", "vmq_server.listeners", [
                                                                             {default, off},
                                                                             {datatype, flag},
@@ -1987,6 +2001,15 @@
                                                                                   {datatype, flag},
                                                                                   hidden
                                                                                  ]}.
+{mapping, "listener.ws.forward_connection_opts", "vmq_server.listeners", [
+                                                                           {default, off},
+                                                                           {datatype, flag},
+                                                                           hidden
+                                                                          ]}.
+{mapping, "listener.ws.$name.forward_connection_opts", "vmq_server.listeners", [
+                                                                                 {datatype, flag},
+                                                                                 hidden
+                                                                                ]}.
 {mapping, "listener.wss.forward_connection_opts", "vmq_server.listeners", [
                                                                             {default, off},
                                                                             {datatype, flag},

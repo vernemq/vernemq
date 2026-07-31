@@ -30,7 +30,7 @@
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
 - Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout.
-- Add listener address, port, and type to auth_on_register and auth_on_register_m5
+- Extend `forward_connection_opts` to TCP and WS listeners and pass listener metadata to the extended `auth_on_register` and `auth_on_register_m5` hooks when enabled.
 
 ## VerneMQ 2.1.3 RC1
 

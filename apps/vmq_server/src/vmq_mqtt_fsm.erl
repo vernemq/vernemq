@@ -877,22 +877,19 @@ auth_on_register(Password, State) ->
         listener_port => ListenerPort,
         listener_type => ListenerType
     },
-    ExtendedOpts =
-        case ConnOpts of
-            M when is_map(M) -> maps:merge(M, ListenerInfo);
-            _ -> ListenerInfo
+    HookArgs =
+        case ListenerAddr of
+            undefined ->
+                BasicHookArgs;
+            _ ->
+                ConnectionMetadata =
+                    case ConnOpts of
+                        M when is_map(M) -> maps:merge(M, ListenerInfo);
+                        _ -> ListenerInfo
+                    end,
+                BasicHookArgs ++ [ConnectionMetadata]
         end,
-    HookArgs6 = lists:flatten([BasicHookArgs | [ExtendedOpts]]),
-    HookResult =
-        case plugin_all_till_ok(auth_on_register, HookArgs6, State, auth) of
-            {error, no_matching_hook_found} ->
-                plugin_all_till_ok(auth_on_register, BasicHookArgs, State, auth);
-            {error, plugin_chain_exhausted} ->
-                plugin_all_till_ok(auth_on_register, BasicHookArgs, State, auth);
-            Res ->
-                Res
-        end,
-    case HookResult of
+    case plugin_all_till_ok(auth_on_register, HookArgs, State, auth) of
         ok ->
             {ok, queue_opts(State, []), State};
         {ok, Args} ->

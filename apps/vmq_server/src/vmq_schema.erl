@@ -261,6 +261,13 @@ translate_listeners(Conf) ->
         extract("listener.wss", "authz_plugins", PluginChainVal, Conf)
     ),
 
+    {TCPIPs, TCPForwardConnectionOpts} = lists:unzip(
+        extract("listener.tcp", "forward_connection_opts", BoolVal, Conf)
+    ),
+    {WSIPs, WSForwardConnectionOpts} = lists:unzip(
+        extract("listener.ws", "forward_connection_opts", BoolVal, Conf)
+    ),
+
     {TCPIPs, TCPBufferSizes} = lists:unzip(
         extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)
     ),
@@ -447,7 +454,8 @@ translate_listeners(Conf) ->
             TCPActiveN,
             TCPAllowAnonymousOverride,
             TCPAuthPlugins,
-            TCPAuthzPlugins
+            TCPAuthzPlugins,
+            TCPForwardConnectionOpts
         ])
     ),
     WS = lists:zip(
@@ -467,7 +475,8 @@ translate_listeners(Conf) ->
             WSAllowedProto,
             WSAllowAnonymousOverride,
             WSAuthPlugins,
-            WSAuthzPlugins
+            WSAuthzPlugins,
+            WSForwardConnectionOpts
         ])
     ),
     VMQ = lists:zip(
