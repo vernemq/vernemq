@@ -223,7 +223,7 @@ queue_offline_transition_test(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -248,7 +248,7 @@ queue_offline_online_transition_test_std(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -274,7 +274,7 @@ queue_offline_online_transition_test_ignore_max(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -299,7 +299,7 @@ queue_offline_online_transition_test_ignore_max_lifo(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -469,6 +469,19 @@ receive_multi(QPid, Msgs) ->
             end;
         M ->
             exit({wrong_message, M})
+    after 15000 ->
+            exit({timeout_waiting_for_messages, QPid, length(Msgs)})
+    end.
+
+teardown_session(SessionPid) ->
+    MRef = monitor(process, SessionPid),
+    SessionPid ! {go_down_in, 1},
+    receive
+        {'DOWN', MRef, process, SessionPid, _} ->
+            ok
+    after 5000 ->
+            demonitor(MRef, [flush]),
+            exit({session_teardown_timeout, SessionPid})
     end.
 
 mock_session(Parent) ->
