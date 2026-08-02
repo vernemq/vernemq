@@ -31,6 +31,7 @@
     wait_until_offline/1,
     wait_until_disconnected/2,
     wait_until_connected/2,
+    refresh_plugin_hooks/1,
     start_node/3,
     start_peer/2,
     stop_peer/2,
@@ -116,6 +117,26 @@ wait_until_connected(Node1, Node2) ->
                 pong == rpc:call(Node1, net_adm, ping, [Node2])
         end, 60*2, 500).
 
+refresh_plugin_hooks(Nodes) ->
+    pmap(
+        fun({_Peer, Node, _Port}) ->
+            {ok, Hooks} = rpc:call(Node, application, get_env, [vmq_swc, vmq_plugin_hooks]),
+            lists:foreach(
+                fun({Module, Function, Arity, Opts}) ->
+                    case rpc:call(Node, vmq_plugin_mgr, enable_module_plugin, [
+                        Function, Module, Function, Arity, Opts
+                    ]) of
+                        ok -> ok;
+                        {error, already_enabled} -> ok
+                    end
+                end,
+                Hooks
+            )
+        end,
+        Nodes
+    ),
+    ok.
+
 start_node(Name, _Config, Case) ->
     ct:pal("Start Node ~p for Case ~p~n", [Name, Case]),
     %% Need to set the code path so the same modules are available in all the nodes
@@ -137,6 +158,7 @@ start_node(Name, _Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_server, mqtt_connect_timeout, 12000]),
             ok = rpc:call(Node, application, set_env, [vmq_server, coordinate_registrations, true]),
             ok = rpc:call(Node, application, set_env, [vmq_server, allow_register_during_netsplit, true]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, systree_enabled, false]),
  %           ok = rpc:call(Node, application, set_env, [lager,
  %                                                      log_root,
  %                                                      NodeDir]),
