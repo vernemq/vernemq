@@ -59,7 +59,8 @@ init([]) ->
             Bytes = crypto:strong_rand_bytes(128),
             credentials_obfuscation:set_secret(Bytes)
     end,
-    persistent_term:put(subscribe_trie_ready, 0),
+    persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 0),
+    persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 0),
     init_systemd_notify(),
     {ok,
         {{one_for_one, 5, 10}, [

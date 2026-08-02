@@ -50,7 +50,8 @@ groups() ->
      enhanced_auth_new_auth_method_fails,
      reauthenticate,
      reauthenticate_server_rejects,
-     unsubscribe_hook
+     unsubscribe_hook,
+     subscribe_invalid_wildcard
     ],
     [
      {mqtt, [shuffle], ConnectTests}
@@ -371,6 +372,24 @@ unsubscribe_hook(_Config) ->
         auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
 
     ets:delete(?MODULE).
+
+subscribe_invalid_wildcard(_Config) ->
+    %% A SUBSCRIBE whose topic filter contains a '+' wildcard in the middle
+    %% of a word is invalid [MQTT-4.7.1-3]. The parser rejects it before the
+    %% frame reaches the state machine; for MQTT 5.0 the broker informs the
+    %% client with a DISCONNECT carrying reason code 0x8F (Topic Filter
+    %% invalid) and then closes the connection.
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:configure_node(),
+    Connect = packetv5:gen_connect("subscribe-invalid-wildcard-test", [{keepalive, 10}]),
+    Connack = packetv5:gen_connack(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    Topic = packetv5:gen_subtopic("sport/tennis+", 0),
+    Sub = packetv5:gen_subscribe(7, [Topic], #{}),
+    ok = gen_tcp:send(Socket, Sub),
+    Disconnect = packetv5:gen_disconnect(?M5_TOPIC_FILTER_INVALID, #{}),
+    ok = packetv5:expect_frame(Socket, Disconnect),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 %%%%% Helpers %%%%%
 auth_props(Method, Data) ->

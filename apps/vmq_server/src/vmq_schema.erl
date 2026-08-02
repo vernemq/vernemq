@@ -83,6 +83,15 @@ translate_listeners(Conf) ->
                 {ok, Term} = parse_list_to_term(Val),
                 Term
         end,
+    PluginChainVal =
+        fun
+            (_, undefined, Def) ->
+                Def;
+            (Name, Val, _) when is_list(Val) ->
+                parse_plugin_chain(Name, Val)
+        end,
+
+    EnabledPlugins = enabled_plugins(Conf),
 
     MZip = fun([H | _] = ListOfLists) ->
         %% get default size
@@ -224,6 +233,32 @@ translate_listeners(Conf) ->
     ),
     {WS_SSLIPs, WS_SSLAllowAnonymousOverride} = lists:unzip(
         extract("listener.wss", "allow_anonymous_override", BoolVal, Conf)
+    ),
+
+    {TCPIPs, TCPAuthPlugins} = lists:unzip(
+        extract("listener.tcp", "auth_plugins", PluginChainVal, Conf)
+    ),
+    {SSLIPs, SSLAuthPlugins} = lists:unzip(
+        extract("listener.ssl", "auth_plugins", PluginChainVal, Conf)
+    ),
+    {WSIPs, WSAuthPlugins} = lists:unzip(
+        extract("listener.ws", "auth_plugins", PluginChainVal, Conf)
+    ),
+    {WS_SSLIPs, WSSAuthPlugins} = lists:unzip(
+        extract("listener.wss", "auth_plugins", PluginChainVal, Conf)
+    ),
+
+    {TCPIPs, TCPAuthzPlugins} = lists:unzip(
+        extract("listener.tcp", "authz_plugins", PluginChainVal, Conf)
+    ),
+    {SSLIPs, SSLAuthzPlugins} = lists:unzip(
+        extract("listener.ssl", "authz_plugins", PluginChainVal, Conf)
+    ),
+    {WSIPs, WSAuthzPlugins} = lists:unzip(
+        extract("listener.ws", "authz_plugins", PluginChainVal, Conf)
+    ),
+    {WS_SSLIPs, WSSAuthzPlugins} = lists:unzip(
+        extract("listener.wss", "authz_plugins", PluginChainVal, Conf)
     ),
 
     {TCPIPs, TCPBufferSizes} = lists:unzip(
@@ -410,7 +445,9 @@ translate_listeners(Conf) ->
             TCPAllowedProto,
             TCPBufferSizes,
             TCPActiveN,
-            TCPAllowAnonymousOverride
+            TCPAllowAnonymousOverride,
+            TCPAuthPlugins,
+            TCPAuthzPlugins
         ])
     ),
     WS = lists:zip(
@@ -428,7 +465,9 @@ translate_listeners(Conf) ->
             WSMaxLengths,
             WSHeaderLengths,
             WSAllowedProto,
-            WSAllowAnonymousOverride
+            WSAllowAnonymousOverride,
+            WSAuthPlugins,
+            WSAuthzPlugins
         ])
     ),
     VMQ = lists:zip(
@@ -486,7 +525,9 @@ translate_listeners(Conf) ->
             SSLAllowedProto,
             SSLBufferSizes,
             SSLActiveN,
-            SSLAllowAnonymousOverride
+            SSLAllowAnonymousOverride,
+            SSLAuthPlugins,
+            SSLAuthzPlugins
         ])
     ),
     WSS = lists:zip(
@@ -512,7 +553,9 @@ translate_listeners(Conf) ->
             WS_SSLMaxLengths,
             WS_SSLHeaderLengths,
             WS_SSLAllowedProto,
-            WS_SSLAllowAnonymousOverride
+            WS_SSLAllowAnonymousOverride,
+            WSSAuthPlugins,
+            WSSAuthzPlugins
         ])
     ),
     VMQS = lists:zip(
@@ -562,6 +605,10 @@ translate_listeners(Conf) ->
     DropUndef = fun(L) ->
         [{K, [I || {_, V} = I <- SubL, V /= undefined]} || {K, SubL} <- L]
     end,
+    validate_listener_plugin_chains(mqtt, TCP, EnabledPlugins),
+    validate_listener_plugin_chains(mqtts, SSL, EnabledPlugins),
+    validate_listener_plugin_chains(mqttws, WS, EnabledPlugins),
+    validate_listener_plugin_chains(mqttwss, WSS, EnabledPlugins),
     [
         {mqtt, DropUndef(TCP)},
         {mqtts, DropUndef(SSL)},
@@ -633,7 +680,9 @@ extract(Prefix, Suffix, Val, Conf) ->
             "proxy_xff_trusted_intermediate",
             "proxy_xff_use_cn_as_username",
             "proxy_xff_cn_header",
-            "allow_anonymous_override"
+            "allow_anonymous_override",
+            "auth_plugins",
+            "authz_plugins"
         ],
 
     %% get default from root of the tree for listeners
@@ -673,6 +722,89 @@ extract(Prefix, Suffix, Val, Conf) ->
         not lists:member(Name, Mappings ++ ExcludeRootSuffixes),
         Result =/= true
     ].
+
+enabled_plugins(Conf) ->
+    PluginNames =
+        proplists:get_all_values(
+            "$name",
+            cuttlefish_variable:fuzzy_matches(["plugins", "$name"], Conf)
+        ),
+    lists:usort(
+        [
+            erlang:list_to_atom(Name)
+         || Name <- PluginNames,
+            cuttlefish:conf_get("plugins." ++ Name, Conf, false)
+        ]
+    ).
+
+parse_plugin_chain(Name, Val) ->
+    {ok, Term} = parse_list_to_term(Val),
+    case Term of
+        L when is_list(L) ->
+            lists:foreach(
+                fun
+                    (A) when is_atom(A) -> ok;
+                    (S) when is_list(S) -> ok;
+                    (_) -> cuttlefish:invalid(Name ++ " must contain plugin names")
+                end,
+                L
+            ),
+            [to_plugin_atom(Name, V) || V <- L];
+        _ ->
+            cuttlefish:invalid(Name ++ " must be a list")
+    end.
+
+to_plugin_atom(_Name, A) when is_atom(A) ->
+    A;
+to_plugin_atom(_Name, S) when is_list(S) ->
+    list_to_atom(S);
+to_plugin_atom(Name, _) ->
+    cuttlefish:invalid(Name ++ " must contain plugin names").
+
+validate_listener_plugin_chains(_ListenerType, [], _EnabledPlugins) ->
+    ok;
+validate_listener_plugin_chains(ListenerType, [{_AddrPort, Opts} | Rest], EnabledPlugins) ->
+    validate_listener_plugin_chain(ListenerType, Opts, auth_plugins, EnabledPlugins),
+    validate_listener_plugin_chain(ListenerType, Opts, authz_plugins, EnabledPlugins),
+    validate_listener_plugin_chains(ListenerType, Rest, EnabledPlugins).
+
+validate_listener_plugin_chain(ListenerType, Opts, Key, EnabledPlugins) ->
+    case proplists:get_value(Key, Opts, undefined) of
+        undefined ->
+            ok;
+        Plugins when is_list(Plugins) ->
+            case Plugins -- lists:usort(Plugins) of
+                [] ->
+                    ok;
+                [Duplicate | _] ->
+                    cuttlefish:invalid(
+                        lists:flatten(
+                            io_lib:format(
+                                "listener ~p has duplicate plugin in ~p chain: ~p",
+                                [ListenerType, Key, Duplicate]
+                            )
+                        )
+                    )
+            end,
+            lists:foreach(
+                fun(P) ->
+                    case lists:member(P, EnabledPlugins) of
+                        true ->
+                            ok;
+                        false ->
+                            cuttlefish:invalid(
+                                lists:flatten(
+                                    io_lib:format(
+                                        "listener ~p references unknown or disabled plugin ~p in ~p chain",
+                                        [ListenerType, P, Key]
+                                    )
+                                )
+                            )
+                    end
+                end,
+                Plugins
+            )
+    end.
 
 parse_addr(StrA) ->
     case string:split(StrA, ":") of

@@ -28,6 +28,8 @@
     start_link/0,
     fold/4,
     fold_fanout_shard/5,
+    update_subscriber/3,
+    update_subscriber_changes/3,
     stats/0,
     init_subscriptions/0
 ]).
@@ -87,6 +89,12 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
         ],
         []
     ).
+
+update_subscriber(SubscriberId, OldSubs, NewSubs) ->
+    gen_server:call(?MODULE, {update_subscriber, SubscriberId, OldSubs, NewSubs}, 60000).
+
+update_subscriber_changes(SubscriberId, ToRemove, ToAdd) ->
+    gen_server:call(?MODULE, {update_subscriber_changes, SubscriberId, ToRemove, ToAdd}, 60000).
 
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {Node, Group}} | MatchedTopics], Remotes) ->
     fold_(
@@ -211,7 +219,7 @@ init([]) ->
             Self ! subscribers_loaded
         end
     ),
-    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    EventHandler = vmq_reg:subscribe_subscriber_changes([{skip_local_feedback, true}]),
     {ok, #state{event_handler = EventHandler}}.
 
 create_tables() ->
@@ -245,6 +253,22 @@ create_tables() ->
 handle_call({event, Event}, _From, #state{event_handler = Handler} = State) ->
     %% used only for testing/microbenchmarking
     handle_event(Handler, Event),
+    {reply, ok, State};
+handle_call(
+    {update_subscriber, _, _, _} = Update, _From, #state{status = init, event_queue = Q} = State
+) ->
+    {reply, ok, State#state{event_queue = queue:in(Update, Q)}};
+handle_call(
+    {update_subscriber_changes, _, _, _} = Update,
+    _From,
+    #state{status = init, event_queue = Q} = State
+) ->
+    {reply, ok, State#state{event_queue = queue:in(Update, Q)}};
+handle_call({update_subscriber, SubscriberId, OldSubs, NewSubs}, _From, State) ->
+    update_subscriber_(SubscriberId, OldSubs, NewSubs),
+    {reply, ok, State};
+handle_call({update_subscriber_changes, SubscriberId, ToRemove, ToAdd}, _From, State) ->
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd),
     {reply, ok, State};
 handle_call(init_subs, _From, State) ->
     spawn_link(
@@ -289,14 +313,14 @@ handle_info(
     } = State
 ) ->
     lists:foreach(
-        fun(Event) ->
-            handle_event(Handler, Event)
+        fun(QueuedEvent) ->
+            handle_queued_event(Handler, QueuedEvent)
         end,
         queue:to_list(Q)
     ),
     NrOfSubscribers = ets:info(vmq_trie_subs, size),
     NrOfRemoteSubscribers = ets:info(vmq_trie_remote_subs, size),
-    persistent_term:put(subscribe_trie_ready, 1),
+    persistent_term:put({subscribe_trie_ready, ?MODULE}, 1),
     ?LOG_INFO("loaded ~p local subscriptions and ~p remote subscriptions into ~p", [
         NrOfSubscribers, NrOfRemoteSubscribers, ?MODULE
     ]),
@@ -348,13 +372,32 @@ handle_event(Handler, Event) ->
             ok
     end.
 
+handle_queued_event(_Handler, {update_subscriber, SubscriberId, OldSubs, NewSubs}) ->
+    update_subscriber_(SubscriberId, OldSubs, NewSubs);
+handle_queued_event(_Handler, {update_subscriber_changes, SubscriberId, ToRemove, ToAdd}) ->
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd);
+handle_queued_event(Handler, Event) ->
+    handle_event(Handler, Event).
+
+update_subscriber_(SubscriberId, OldSubs, NewSubs) ->
+    {ToRemove, ToAdd} = vmq_subscriber:get_changes(OldSubs, NewSubs),
+    update_subscriber_changes_(SubscriberId, ToRemove, ToAdd).
+
+update_subscriber_changes_(SubscriberId, ToRemove, ToAdd) ->
+    vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
+    vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd).
+
 handle_add_event({[<<"$share">>, Group | Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
-    add_complex_topic(MP, Topic, {Node, Group}, true),
-    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
+    case add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo) of
+        true -> add_complex_topic(MP, Topic, {Node, Group}, true);
+        false -> ok
+    end,
     SubscriberId;
 handle_add_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    add_subscriber(MP, Topic, SubscriberId, SubInfo),
+    case add_subscriber(MP, Topic, SubscriberId, SubInfo) of
+        true -> add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic));
+        false -> ok
+    end,
     SubscriberId;
 handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
@@ -362,12 +405,16 @@ handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     SubscriberId.
 
 handle_delete_event({[<<"$share">>, Group | Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
-    del_complex_topic(MP, Topic, {Node, Group}, true),
-    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
+    case del_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo) of
+        true -> del_complex_topic(MP, Topic, {Node, Group}, true);
+        false -> ok
+    end,
     SubscriberId;
 handle_delete_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    del_subscriber(MP, Topic, SubscriberId, SubInfo),
+    case del_subscriber(MP, Topic, SubscriberId, SubInfo) of
+        true -> del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic));
+        false -> ok
+    end,
     SubscriberId;
 handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
@@ -566,18 +613,30 @@ insert_trie_subs(Key, Val) ->
     E = {Key, Val},
     case ets:lookup(vmq_trie_subs, Key) of
         [] ->
-            ets:insert(vmq_trie_subs, E);
+            ets:insert(vmq_trie_subs, E),
+            true;
         [E] ->
             %% duplicate - do nothing;
-            true;
+            false;
         [{Key, fanout}] ->
-            ets:insert(vmq_trie_subs_fanout, fanout_entry(Key, Val));
+            FanoutEntry = fanout_entry(Key, Val),
+            case lists:member(
+                FanoutEntry,
+                ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
+            ) of
+                true ->
+                    false;
+                false ->
+                    ets:insert(vmq_trie_subs_fanout, FanoutEntry),
+                    true
+            end;
         [E1] ->
             %% fanout - move to fanout table
             ets:delete(vmq_trie_subs, Key),
             ets:insert(vmq_trie_subs, {Key, fanout}),
             ets:insert(vmq_trie_subs_fanout, fanout_entry(Key, Val)),
-            ets:insert(vmq_trie_subs_fanout, fanout_entry(E1))
+            ets:insert(vmq_trie_subs_fanout, fanout_entry(E1)),
+            true
     end.
 
 del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
@@ -589,25 +648,25 @@ del_trie_subs(Key, Val) ->
     case ets:lookup(vmq_trie_subs, Key) of
         [] ->
             %% do nothing
-            true;
+            false;
         [{Key, fanout}] ->
-            %% we optimistically delete the entry from the fanout table
-            ets:delete_object(vmq_trie_subs_fanout, fanout_entry(Key, Val)),
-
-            case fanout_entries(Key) of
-                [E] ->
-                    %% last element in the fanout, move to normal table
-                    ets:delete_object(vmq_trie_subs_fanout, fanout_entry(E)),
-                    ets:delete_object(vmq_trie_subs, {Key, fanout}),
-                    ets:insert(vmq_trie_subs, plain_entry(Key, E));
-                [_, _ | _] ->
-                    %% not last element, do nothing
-                    true;
-                [] ->
-                    ets:delete_object(vmq_trie_subs, {Key, fanout})
+            FanoutEntry = fanout_entry(Key, Val),
+            case lists:member(
+                FanoutEntry,
+                ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
+            ) of
+                false ->
+                    false;
+                true ->
+                    ets:delete_object(vmq_trie_subs_fanout, FanoutEntry),
+                    maybe_compact_fanout(Key),
+                    true
             end;
+        [{Key, Val}] ->
+            ets:delete(vmq_trie_subs, Key),
+            true;
         [{Key, _}] ->
-            ets:delete(vmq_trie_subs, Key)
+            false
     end.
 
 add_subscriber(MP, Topic, SubscriberId, QoS) ->

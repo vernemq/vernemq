@@ -19,6 +19,7 @@
     all/2,
     all_till_ok/2,
     all_till_ok/3,
+    all_till_ok/4,
     info/1
 ]).
 
@@ -32,6 +33,9 @@ all_till_ok(_Hook, _Args) ->
     all_till_ok(_Hook, _Args, {error, no_matching_hook_found}).
 
 all_till_ok(_Hook, _Args, NonMatchingResponse) ->
+    NonMatchingResponse.
+
+all_till_ok(_Hook, _Args, _Plugins, NonMatchingResponse) ->
     NonMatchingResponse.
 
 info(_) -> [].

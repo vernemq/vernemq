@@ -25,6 +25,7 @@ end_per_suite(_Config) ->
 init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(max_client_id_size, 100),
+    vmq_server_cmd:set_config(max_subscriptions_per_client, 0),
     vmq_server_cmd:set_config(retry_interval, 10),
     Config.
 
@@ -48,19 +49,21 @@ groups() ->
          unsubscribe_qos1_test,
          unsubscribe_qos2_test,
          subpub_qos0_test,
-         subpub_qos1_test,
-         subpub_qos2_test,
-         resubscribe_test,
+          subpub_qos1_test,
+          subpub_qos2_test,
+          max_subscriptions_per_client_test,
+          resubscribe_test,
          bridge_protocol_retain_as_publish_test,
          bridge_protocol_no_local_test],
     [
      {mqttv4, [shuffle,sequence], Tests},
      {mqttv5, [shuffle],
-      [
-       subscribe_no_local_test,
-       subscribe_illegal_opt,
-       subscription_ids
-      ]}
+       [
+        subscribe_no_local_test,
+        subscribe_illegal_opt,
+        max_subscriptions_per_client_m5_test,
+        subscription_ids
+       ]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -331,6 +334,44 @@ subnack_test(_) ->
     ok = packet:expect_packet(Socket, "subNack", SubNack),
     ok = gen_tcp:close(Socket).
 
+max_subscriptions_per_client_test(_) ->
+    vmq_server_cmd:set_config(max_subscriptions_per_client, 2),
+    Connect = packet:gen_connect("max-subscriptions-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3, [
+        {"max/subscriptions/0", 0},
+        {"max/subscriptions/1", 1},
+        {"max/subscriptions/2", 2}
+    ]),
+    Suback = packet:gen_suback(3, [0, 1, not_allowed]),
+    ReplaceSubscribe = packet:gen_subscribe(4, "max/subscriptions/0", 2),
+    ReplaceSuback = packet:gen_suback(4, 2),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, ReplaceSubscribe),
+    ok = packet:expect_packet(Socket, "replace suback", ReplaceSuback),
+    ok = gen_tcp:close(Socket).
+
+max_subscriptions_per_client_m5_test(Cfg) ->
+    vmq_server_cmd:set_config(max_subscriptions_per_client, 1),
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, []),
+    Connack = packetv5:gen_connack(),
+    Subscribe = packetv5:gen_subscribe(
+        5,
+        [
+            packetv5:gen_subtopic("max/subscriptions/m5/0", 0),
+            packetv5:gen_subtopic("max/subscriptions/m5/1", 1)
+        ],
+        #{}
+    ),
+    Suback = packetv5:gen_suback(5, [0, ?M5_QUOTA_EXCEEDED], #{}),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packetv5:expect_frame(Socket, Suback),
+    ok = gen_tcp:close(Socket).
+
 
 unsubscribe_qos0_test(_) ->
     Connect = packet:gen_connect("unsubscribe-qos0-test", [{keepalive,60}]),
@@ -442,7 +483,7 @@ resubscribe_test(_) ->
     ok = packet:expect_packet(Socket, "suback", ReSuback),
     ok = gen_tcp:send(Socket, Publish1),
     ok = packet:expect_packet(Socket, "puback", Puback),
-    ok = packet:expect_packet(Socket, "publish1", Publish1),
+    ok = packet:expect_packet(gen_tcp, Socket, "publish1", Publish1, 30000),
     ok = gen_tcp:send(Socket, Puback),
 
     ok = gen_tcp:close(Socket).

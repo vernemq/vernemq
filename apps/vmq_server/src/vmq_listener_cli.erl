@@ -216,6 +216,22 @@ vmq_listener_start_cmd() ->
                 ("false") -> false
             end}
         ]},
+        {auth_plugins, [
+            {longname, "auth_plugins"},
+            {typecast, fun(Plugins) ->
+                {ok, Tokens, _} = erl_scan:string(Plugins ++ "."),
+                {ok, Term} = erl_parse:parse_term(Tokens),
+                Term
+            end}
+        ]},
+        {authz_plugins, [
+            {longname, "authz_plugins"},
+            {typecast, fun(Plugins) ->
+                {ok, Tokens, _} = erl_scan:string(Plugins ++ "."),
+                {ok, Term} = erl_parse:parse_term(Tokens),
+                Term
+            end}
+        ]},
         {config_mod, [
             {longname, "config_mod"},
             {typecast, fun(M) -> list_to_existing_atom(M) end}
@@ -509,6 +525,10 @@ vmq_listener_start_usage() ->
         "  --tls_handshake_timeout=[infinity | TLSHandshakeTimeout]\n",
         "  --allowed_protocol_versions=[3|4|5]\n",
         "      Defaults to 3,4\n\n",
+        "  --auth_plugins=[plugin1,plugin2]\n",
+        "      Authentication plugin chain for this listener\n",
+        "  --authz_plugins=[plugin1,plugin2]\n",
+        "      Authorization plugin chain for this listener\n\n",
         "WebSocket Options\n\n",
         "  --websocket\n",
         "      use the Websocket protocol as the underlying transport\n\n",

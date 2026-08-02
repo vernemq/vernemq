@@ -18,6 +18,7 @@
             {vmq_swc_plugin, metadata_delete, 2, [internal]},
             {vmq_swc_plugin, metadata_fold, 3, [internal]},
             {vmq_swc_plugin, metadata_subscribe, 1, [internal]},
+            {vmq_swc_plugin, metadata_subscribe, 2, [internal]},
 
             {vmq_swc_plugin, cluster_join, 1, [internal]},
             {vmq_swc_plugin, cluster_leave, 1, [internal]},

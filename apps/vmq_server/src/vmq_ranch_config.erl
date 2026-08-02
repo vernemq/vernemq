@@ -78,11 +78,10 @@ stop_listener(Addr, Port, KillSessions) when is_list(Port) ->
 stop_listener(Addr, Port, KillSessions) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
-    case ranch_server:get_listener_sup(Ref) of
-        Pid when KillSessions, is_pid(Pid) ->
-            ranch:stop_listener(Ref);
-        Pid when is_pid(Pid) ->
-            ranch:suspend_listener(Ref)
+    _Pid = ranch_server:get_listener_sup(Ref),
+    case KillSessions of
+        true -> ranch:stop_listener(Ref);
+        false -> ranch:suspend_listener(Ref)
     end.
 
 restart_listener(Addr, Port) ->
@@ -138,32 +137,37 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(nr_of_acceptors)
     ),
-    ProtocolOpts = protocol_opts_for_type(Type, Opts),
-    TransportMod = transport_for_type(Type),
-    TransportOptions = maps:from_list(
-        [
-            {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
-            {num_acceptors, NrOfAcceptors},
-            {max_connections, MaxConns}
-            | transport_opts_for_type(Type, Opts)
-        ]
-    ),
-    case protocol_for_type(Type) of
-        cowboy_clear ->
-            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
-        _ ->
-            case
-                ranch:start_listener(
-                    Ref,
-                    TransportMod,
-                    TransportOptions,
-                    protocol_for_type(Type),
-                    ProtocolOpts
-                )
-            of
-                {ok, _} -> ok;
-                Error -> Error
-            end
+    case validate_plugin_chains(Opts) of
+        ok ->
+            ProtocolOpts = protocol_opts_for_type(Type, Opts),
+            TransportMod = transport_for_type(Type),
+            TransportOptions = maps:from_list(
+                [
+                    {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
+                    {num_acceptors, NrOfAcceptors},
+                    {max_connections, MaxConns}
+                    | transport_opts_for_type(Type, Opts)
+                ]
+            ),
+            case protocol_for_type(Type) of
+                cowboy_clear ->
+                    start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+                _ ->
+                    case
+                        ranch:start_listener(
+                            Ref,
+                            TransportMod,
+                            TransportOptions,
+                            protocol_for_type(Type),
+                            ProtocolOpts
+                        )
+                    of
+                        {ok, _} -> ok;
+                        Error -> Error
+                    end
+            end;
+        {error, _} = Error ->
+            Error
     end.
 listeners() ->
     listeners(select, false, false).
@@ -178,74 +182,84 @@ listeners(with_tls_and_mqtt) ->
 listeners(select, AddTLSInfo, AddMQTTInfo) ->
     maps:fold(
         fun({Ip, Port}, ConfigMap, Acc) ->
-            {ok, {Type, Opts}} = get_listener_config(Ip, Port),
-            MountPoint = proplists:get_value(mountpoint, Opts, ""),
-            MaxConnections = proplists:get_value(
-                max_connections,
-                Opts,
-                vmq_config:get_env(max_connections)
-            ),
-            ActiveConnections = maps:get(active_connections, ConfigMap),
-            % the highest number of connections seen
-            AllConnections = maps:get(all_connections, ConfigMap),
-            Status = maps:get(status, ConfigMap),
-            StrIp =
-                case Ip of
-                    {local, FS} -> {local, FS};
-                    _ -> inet:ntoa(Ip)
-                end,
-            StrPort = integer_to_list(Port),
-            AllowedProtocolVersionsList = proplists:get_value(allowed_protocol_versions, Opts, ""),
-            AllowedProtocolVersions = vmq_util:mqtt_version_to_string(AllowedProtocolVersionsList),
-            AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, ""),
-            % TLS
-            CertFile = proplists:get_value(certfile, Opts, ""),
-            TLS = proplists:get_value(tls_version, Opts, ""),
-            CAFile = proplists:get_value(ca_file, Opts, ""),
-            KeyFile = proplists:get_value(keyfile, Opts, ""),
-            RequireCertificate = proplists:get_value(require_certificate, Opts, ""),
-            UseIDAsUsername = proplists:get_value(use_identity_as_username, Opts, ""),
-            PSKSupport = proplists:get_value(psk_support, Opts, ""),
-            PSKFile = proplists:get_value(pskfile, Opts, ""),
+            case get_listener_config(Ip, Port) of
+                {ok, {Type, Opts}} ->
+                    MountPoint = proplists:get_value(mountpoint, Opts, ""),
+                    MaxConnections = proplists:get_value(
+                        max_connections,
+                        Opts,
+                        vmq_config:get_env(max_connections)
+                    ),
+                    ActiveConnections = maps:get(active_connections, ConfigMap),
+                    % the highest number of connections seen
+                    AllConnections = maps:get(all_connections, ConfigMap),
+                    Status = maps:get(status, ConfigMap),
+                    StrIp =
+                        case Ip of
+                            {local, FS} -> {local, FS};
+                            _ -> inet:ntoa(Ip)
+                        end,
+                    StrPort = integer_to_list(Port),
+                    AllowedProtocolVersionsList = proplists:get_value(
+                        allowed_protocol_versions, Opts, ""
+                    ),
+                    AllowedProtocolVersions = vmq_util:mqtt_version_to_string(
+                        AllowedProtocolVersionsList
+                    ),
+                    AllowAnonymousOverride = proplists:get_value(
+                        allow_anonymous_override, Opts, ""
+                    ),
+                    % TLS
+                    CertFile = proplists:get_value(certfile, Opts, ""),
+                    TLS = proplists:get_value(tls_version, Opts, ""),
+                    CAFile = proplists:get_value(ca_file, Opts, ""),
+                    KeyFile = proplists:get_value(keyfile, Opts, ""),
+                    RequireCertificate = proplists:get_value(require_certificate, Opts, ""),
+                    UseIDAsUsername = proplists:get_value(use_identity_as_username, Opts, ""),
+                    PSKSupport = proplists:get_value(psk_support, Opts, ""),
+                    PSKFile = proplists:get_value(pskfile, Opts, ""),
 
-            Base = [
-                Type,
-                StrIp,
-                StrPort,
-                Status,
-                MountPoint,
-                MaxConnections,
-                ActiveConnections,
-                AllConnections
-            ],
-            Base2 =
-                case AddTLSInfo of
-                    true ->
-                        Base ++
-                            [
-                                TLS,
-                                CertFile,
-                                CAFile,
-                                KeyFile,
-                                RequireCertificate,
-                                UseIDAsUsername,
-                                PSKSupport,
-                                PSKFile
-                            ];
-                    _ ->
-                        Base
-                end,
-            Base3 =
-                case AddMQTTInfo of
-                    true ->
-                        Base2 ++ [AllowedProtocolVersions, AllowAnonymousOverride];
-                    _ ->
-                        Base2
-                end,
-            [
-                list_to_tuple(Base3)
-                | Acc
-            ]
+                    Base = [
+                        Type,
+                        StrIp,
+                        StrPort,
+                        Status,
+                        MountPoint,
+                        MaxConnections,
+                        ActiveConnections,
+                        AllConnections
+                    ],
+                    Base2 =
+                        case AddTLSInfo of
+                            true ->
+                                Base ++
+                                    [
+                                        TLS,
+                                        CertFile,
+                                        CAFile,
+                                        KeyFile,
+                                        RequireCertificate,
+                                        UseIDAsUsername,
+                                        PSKSupport,
+                                        PSKFile
+                                    ];
+                            _ ->
+                                Base
+                        end,
+                    Base3 =
+                        case AddMQTTInfo of
+                            true ->
+                                Base2 ++ [AllowedProtocolVersions, AllowAnonymousOverride];
+                            _ ->
+                                Base2
+                        end,
+                    [
+                        list_to_tuple(Base3)
+                        | Acc
+                    ];
+                {error, not_found} ->
+                    Acc
+            end
         end,
         [],
         ranch:info()
@@ -281,8 +295,11 @@ reconfigure_listeners(TCPListenOptions, [{T, Config} | Rest], Listeners) ->
     reconfigure_listeners(TCPListenOptions, Rest, NewListeners);
 reconfigure_listeners(_, [], ListenersToDelete) ->
     lists:foreach(
-        fun({Ref, _, _, _}) ->
-            delete_listener(Ref)
+        fun(Listener) ->
+            case listener_ref_from_entry(Listener) of
+                undefined -> ok;
+                Ref -> delete_listener(Ref)
+            end
         end,
         ListenersToDelete
     ).
@@ -304,10 +321,32 @@ reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Lis
                 [Type, Addr, Port, Opts, Reason]
             )
     end,
-    Key = {ranch_listener_sup, listener_name(addr(Addr), Port)},
-    reconfigure_listeners_for_type(Type, Rest, TCPOpts, lists:keydelete(Key, 1, Listeners));
+    Ref = listener_name(addr(Addr), Port),
+    reconfigure_listeners_for_type(Type, Rest, TCPOpts, remove_listener(Ref, Listeners));
 reconfigure_listeners_for_type(_, [], _, Listeners) ->
     Listeners.
+
+remove_listener(Ref, Listeners) ->
+    lists:filter(
+        fun(Listener) ->
+            case listener_ref_from_entry(Listener) of
+                Ref -> false;
+                _ -> true
+            end
+        end,
+        Listeners
+    ).
+
+listener_ref_from_entry({{ranch_listener_sup, Ref}, _, _, _}) ->
+    Ref;
+listener_ref_from_entry({{ranch_listener_sup, Ref}, _Pid}) ->
+    Ref;
+listener_ref_from_entry({Ref, _, _, _}) ->
+    Ref;
+listener_ref_from_entry({Ref, _Pid}) ->
+    Ref;
+listener_ref_from_entry(_) ->
+    undefined.
 
 listener_name(Ip, Port) ->
     {Ip, Port}.
@@ -438,15 +477,56 @@ default_session_opts(Opts) ->
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
     ActiveN = proplists:get_value(active_n, Opts, 1),
+    AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
+    AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
         {buffer_sizes, BufferSizes},
-        {active_n, ActiveN}
+        {active_n, ActiveN},
+        {auth_plugins, AuthPlugins},
+        {authz_plugins, AuthzPlugins}
         | MaybeProxyDefaults2
     ].
+
+validate_plugin_chains(Opts) ->
+    {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
+    EnabledPlugins = enabled_plugin_names(Plugins),
+    case
+        validate_plugin_chain(auth_plugins, proplists:get_value(auth_plugins, Opts), EnabledPlugins)
+    of
+        ok ->
+            validate_plugin_chain(
+                authz_plugins, proplists:get_value(authz_plugins, Opts), EnabledPlugins
+            );
+        {error, _} = Error ->
+            Error
+    end.
+
+enabled_plugin_names(Plugins) ->
+    [Name || {application, Name, _} <- Plugins].
+
+validate_plugin_chain(_Key, undefined, _EnabledPlugins) ->
+    ok;
+validate_plugin_chain(Key, Plugins, EnabledPlugins) when is_list(Plugins) ->
+    case Plugins -- lists:usort(Plugins) of
+        [] -> validate_plugin_chain_members(Key, Plugins, EnabledPlugins);
+        [Duplicate | _] -> {error, {duplicate_plugin, Key, Duplicate}}
+    end;
+validate_plugin_chain(Key, Plugins, _EnabledPlugins) ->
+    {error, {invalid_plugin_chain, Key, Plugins}}.
+
+validate_plugin_chain_members(Key, [Plugin | Rest], EnabledPlugins) when is_atom(Plugin) ->
+    case lists:member(Plugin, EnabledPlugins) of
+        true -> validate_plugin_chain_members(Key, Rest, EnabledPlugins);
+        false -> {error, {unknown_or_disabled_plugin, Key, Plugin}}
+    end;
+validate_plugin_chain_members(Key, [Plugin | _], _EnabledPlugins) ->
+    {error, {invalid_plugin_name, Key, Plugin}};
+validate_plugin_chain_members(_Key, [], _EnabledPlugins) ->
+    ok.
 
 %%%===================================================================
 %%% gen_server callbacks
