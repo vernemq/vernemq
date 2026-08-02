@@ -705,26 +705,49 @@ del_subscriber(MP, Topic, SubscriberId, QoS) ->
 del_local_trie_sub(Key, SubscriberId, QoS) ->
     case ets:lookup(vmq_trie_subs, Key) of
         [] ->
-            true;
+            false;
         [{Key, fanout}] ->
-            delete_local_fanout_entry(Key, SubscriberId, QoS),
-            maybe_compact_fanout(Key);
+            case [
+                E
+             || {_FanoutKey, Val} = E <- fanout_entries(Key),
+                same_local_sub(Val, SubscriberId, QoS)
+            ] of
+                [] ->
+                    false;
+                [FanoutEntry | _] ->
+                    ets:delete_object(vmq_trie_subs_fanout, FanoutEntry),
+                    maybe_compact_fanout(Key),
+                    true
+            end;
         [{Key, Val}] ->
             case same_local_sub(Val, SubscriberId, QoS) of
-                true -> ets:delete(vmq_trie_subs, Key);
-                false -> true
+                true ->
+                    ets:delete(vmq_trie_subs, Key),
+                    true;
+                false ->
+                    false
             end;
         Entries ->
-            lists:foreach(
-                fun({_, Val}) ->
+            Deleted = lists:foldl(
+                fun({_, Val} = E, Acc) ->
                     case same_local_sub(Val, SubscriberId, QoS) of
-                        true -> ets:delete_object(vmq_trie_subs, {Key, Val});
-                        false -> true
+                        true ->
+                            ets:delete_object(vmq_trie_subs, E),
+                            true;
+                        false ->
+                            Acc
                     end
                 end,
+                false,
                 Entries
             ),
-            maybe_compact_plain_fanout(Key)
+            case Deleted of
+                true ->
+                    maybe_compact_plain_fanout(Key),
+                    true;
+                false ->
+                    false
+            end
     end.
 
 maybe_compact_plain_fanout(Key) ->
@@ -736,7 +759,8 @@ maybe_compact_plain_fanout(Key) ->
         Entries ->
             ets:delete(vmq_trie_subs, Key),
             ets:insert(vmq_trie_subs, {Key, fanout}),
-            lists:foreach(fun fanout_plain_entry/1, Entries)
+            lists:foreach(fun fanout_plain_entry/1, Entries),
+            true
     end.
 
 fanout_plain_entry({Key, Val}) ->
@@ -814,11 +838,6 @@ fanout_entries(Key, Shard, ShardCount, Acc) ->
     fanout_entries(
         Key, Shard + 1, ShardCount, ets:lookup(vmq_trie_subs_fanout, {Shard, Key}) ++ Acc
     ).
-
-delete_local_fanout_entry(Key, SubscriberId, QoS) ->
-    ShardKey = fanout_key(Key, SubscriberId),
-    ets:match_delete(vmq_trie_subs_fanout, {ShardKey, {SubscriberId, QoS, '_'}}),
-    ets:delete_object(vmq_trie_subs_fanout, {ShardKey, {SubscriberId, QoS}}).
 
 del_remote_subscriber(MP, Topic, Node) ->
     Key = {MP, Topic},

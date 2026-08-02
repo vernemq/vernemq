@@ -162,8 +162,8 @@ run_duplicate_fanout_subscribe_unsubscribe() ->
     Subscriber1 = {MP, <<"1">>},
     Subscriber2 = {MP, <<"2">>},
     Key = {MP, Topic},
-    Sub1Val = {Subscriber1, 0},
-    Sub2Val = {Subscriber2, 0},
+    Sub1Val = {Subscriber1, 0, undefined},
+    Sub2Val = {Subscriber2, 0, undefined},
 
     update_subscriber(Subscriber1, undefined, [{node(), true, Topics}]),
     ?assertEqual([{Key, Sub1Val}], ets:tab2list(vmq_trie_subs)),
@@ -219,7 +219,7 @@ run_queued_sync_update_during_init() ->
     Topics = [{Topic, 0}],
     SubscriberId = {MP, <<"queued-client">>},
     Key = {MP, Topic},
-    SubVal = {SubscriberId, 0},
+    SubVal = {SubscriberId, 0, undefined},
 
     force_trie_init_state(),
     ok = vmq_reg:sync_reg_view_update(SubscriberId, [], [{node(), true, Topics}]),
@@ -257,7 +257,7 @@ run_delta_update_subscriber() ->
     ?assertEqual([], ets:lookup(vmq_trie_subs, Key)),
 
     update_subscriber_changes(SubscriberId, [], [{node(), [{DeltaTopic, 1}]}]),
-    ?assertEqual([{Key, {SubscriberId, 1}}], ets:lookup(vmq_trie_subs, Key)),
+    ?assertEqual([{Key, {SubscriberId, 1, undefined}}], ets:lookup(vmq_trie_subs, Key)),
 
     ok.
 
@@ -469,7 +469,10 @@ delete_subscriber(SubscriberId, Subs) ->
     ok = gen_server:call(vmq_reg_trie, {event, Event}).
 
 sorted_fanout_entries() ->
-    lists:sort([Entry || {Entry} <- ets:tab2list(vmq_trie_subs_fanout)]).
+    lists:sort([
+        {Key, Val}
+     || {{_Shard, Key}, Val} <- ets:tab2list(vmq_trie_subs_fanout)
+    ]).
 
 assert_topic_count(Key, ExpectedTotalCnt) ->
     [{Key, ExpectedTotalCnt, _Nodes}] = ets:lookup(vmq_trie_topic, Key),
