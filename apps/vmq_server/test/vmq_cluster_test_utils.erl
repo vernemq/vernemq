@@ -288,7 +288,7 @@ heal_cluster(ANodes, BNodes) ->
 ensure_cluster(Config) ->
     [{_, Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
     [begin
-         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
+         ok = ensure_node_join(Node, Node1, 20)
      end || {_Peer, Node, _} <- OtherNodes],
     {_, NodeNames, _} = lists:unzip3(Nodes),
     Expected = lists:sort(NodeNames),
@@ -298,6 +298,23 @@ ensure_cluster(Config) ->
      || Node <- NodeNames],
     vmq_cluster_test_utils:wait_until_ready(NodeNames),
     ok.
+
+ensure_node_join(Node, Node1, Retries) ->
+    case rpc:call(Node, vmq_server_cmd, node_join, [Node1]) of
+        {ok, _} ->
+            ok;
+        {error, unhandled_clique_error} when Retries > 0 ->
+            case rpc:call(Node, vmq_peer_service, join, [Node1]) of
+                ok ->
+                    _ = rpc:call(Node, vmq_cluster, recheck, []),
+                    ok;
+                _ ->
+                    timer:sleep(250),
+                    ensure_node_join(Node, Node1, Retries - 1)
+            end;
+        Error ->
+            error({node_join_failed, Node, Node1, Error})
+    end.
 
 random_node_with_port(Case) ->
     Name =

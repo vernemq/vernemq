@@ -29,7 +29,7 @@ install(St) ->
 table() ->
     [
         {<<"get">>, #erl_func{code = fun get/2}},
-        {<<"put">>, #erl_func{code = fun put/2}},
+        {<<"put">>, #erl_func{code = fun http_put/2}},
         {<<"post">>, #erl_func{code = fun post/2}},
         {<<"delete">>, #erl_func{code = fun delete/2}},
         {<<"body">>, #erl_func{code = fun body/2}},
@@ -38,7 +38,7 @@ table() ->
 
 get(As, St) ->
     request(get, As, St).
-put(As, St) ->
+http_put(As, St) ->
     request(put, As, St).
 post(As, St) ->
     request(post, As, St).

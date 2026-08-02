@@ -24,6 +24,8 @@
 
 -ifdef(nowarn_gen_fsm).
 -compile([
+    nowarn_deprecated_function,
+    nowarn_deprecated_callback,
     {nowarn_deprecated_function, [
         {gen_fsm, start_link, 3},
         {gen_fsm, reply, 2},
@@ -80,8 +82,8 @@
 ]).
 
 -record(queue, {
-    queue = queue:new(),
-    backup = queue:new(),
+    queue = queue:new() :: queue:queue(),
+    backup = queue:new() :: queue:queue(),
     type = fifo,
     max,
     ignore_max = false,
@@ -880,7 +882,7 @@ handle_session_down(
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, false)};
+                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, true)};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->
@@ -1238,8 +1240,11 @@ cleanup_session(SubscriberId, #session{queue = #queue{queue = Q, backup = BQ}}) 
     cleanup_queue(SubscriberId, queue:join(Q, BQ)).
 
 %% optimization
-cleanup_queue(_, {[], []}) -> ok;
-cleanup_queue(SId, Queue) -> cleanup_queue_(SId, queue:out(Queue)).
+cleanup_queue(SId, Queue) ->
+    case queue:is_empty(Queue) of
+        true -> ok;
+        false -> cleanup_queue_(SId, queue:out(Queue))
+    end.
 
 cleanup_queue_(SId, {{value, #deliver{} = Msg}, NewQueue}) ->
     maybe_offline_delete(SId, Msg),

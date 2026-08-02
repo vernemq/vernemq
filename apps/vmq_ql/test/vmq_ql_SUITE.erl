@@ -36,12 +36,19 @@ all() ->
 %%% Overall setup/teardown
 %%%===================================================================
 init_per_suite(Config) ->
+    OriginalTableMap = application:get_env(vmq_ql, table_map),
     application:set_env(vmq_ql, table_map, [{foobar, ?MODULE},
                                             {modules, ?MODULE},
                                             {proc, vmq_ql_sys_info}]),
-    Config.
+    [{vmq_ql_table_map, OriginalTableMap} | Config].
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    case proplists:get_value(vmq_ql_table_map, Config) of
+        {ok, TableMap} ->
+            application:set_env(vmq_ql, table_map, TableMap);
+        undefined ->
+            application:unset_env(vmq_ql, table_map)
+    end,
     ok.
 
 
@@ -154,8 +161,6 @@ rand_mod() ->
 rand_pid() ->
     Pids = erlang:processes(),
     lists:nth(rand:uniform(length(Pids)), Pids).
-
-
 
 
 
