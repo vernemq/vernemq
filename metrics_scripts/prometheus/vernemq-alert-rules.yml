@@ -20,7 +20,7 @@
 groups:
   - name: vernemq-vital
     rules:
-      - alert: VerneMQInstanceDown  
+      - alert: VerneMQInstanceDown
         expr: up{job="vernemq"} == 0
         for: 2m
         labels:
@@ -140,4 +140,4 @@ groups:
         annotations:
           summary: VerneMQ drops inter-node cluster traffic
           description: VerneMQ dropped one or more bytes while sending data (MQTT messages) to other cluster nodes in the last 5 minutes.
-          runbook_hint: Check inter-node network, and buffer sizes for vmq listener. Check whether inter-node buffer is big enough. 
+          runbook_hint: Check inter-node network, and buffer sizes for vmq listener. Check whether inter-node buffer is big enough.
