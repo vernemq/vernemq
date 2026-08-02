@@ -68,6 +68,8 @@
         | username()
         | {preauth, string() | undefined},
     conn_opts :: undefined | map(),
+    auth_plugins = undefined :: undefined | [atom()],
+    authz_plugins = undefined :: undefined | [atom()],
     keep_alive :: undefined | non_neg_integer(),
     keep_alive_tref :: undefined | reference(),
     clean_start = false :: flag(),
@@ -154,6 +156,8 @@ init(
             {_, PreAuth} -> {preauth, PreAuth}
         end,
     ConnOpts = proplists:get_value(conn_opts, Opts, undefined),
+    AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
+    AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
@@ -212,6 +216,8 @@ init(
         max_message_rate = MaxMessageRate,
         username = PreAuthUser,
         conn_opts = ConnOpts,
+        auth_plugins = AuthPlugins,
+        authz_plugins = AuthzPlugins,
         max_client_id_size = MaxClientIdSize,
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
@@ -420,7 +426,7 @@ pre_connect_auth(
             )
         end,
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case plugin_all_till_ok_auth(on_auth_m5, [UserName, SubscriberId, Props], State) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties := #{?P_AUTHENTICATION_METHOD := AuthMethod} = Res
@@ -688,7 +694,7 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, SubTopics, Props0, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, Props0, OnAuthSuccess, State) of
         {ok, Modifiers} ->
             QoSs = topic_to_qos(maps:get(topics, Modifiers, [])),
             Props1 = maps:with(
@@ -781,7 +787,7 @@ connected(
             )
         end,
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case plugin_all_till_ok_auth(on_auth_m5, [UserName, SubscriberId, Props], State) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties :=
@@ -1014,7 +1020,7 @@ check_enhanced_auth(
                 M
             )
         end,
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case plugin_all_till_ok_auth(on_auth_m5, [UserName, SubscriberId, Props], State) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties :=
@@ -1289,7 +1295,8 @@ maybe_apply_topic_alias_in(
                     User,
                     SubscriberId,
                     remove_property(p_topic_alias, Msg#vmq_msg{routing_key = AliasedTopic}),
-                    Fun
+                    Fun,
+                    State
                 )
             of
                 {ok, NewMsg, SessCtrl} ->
@@ -1309,7 +1316,7 @@ maybe_apply_topic_alias_in(
     Fun,
     #state{topic_aliases_in = TA} = State
 ) ->
-    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun, State) of
         {ok, #vmq_msg{routing_key = MaybeChangedTopic} = NewMsg, SessCtrl} ->
             %% TODOv5: Should we check here that the topic isn't empty?
             {ok, NewMsg, SessCtrl, State#state{
@@ -1337,7 +1344,7 @@ maybe_apply_topic_alias_in(
     State
 ) ->
     %% normal publish
-    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun, State) of
         {ok, NewMsg, SessCtrl} ->
             {ok, NewMsg, SessCtrl, State};
         {error, _} = E ->
@@ -1389,7 +1396,7 @@ auth_on_register(Password, Props, State) ->
             M when is_map(M) -> lists:flatten([BasicHookArgs | [M]]);
             _ -> BasicHookArgs
         end,
-    case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
+    case plugin_all_till_ok_auth(auth_on_register_m5, HookArgs, State) of
         ok ->
             {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->
@@ -1460,15 +1467,17 @@ set_sock_opts(Opts) ->
     fun(
         (username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
             {ok, [subscription()]} | {error, atom()}
-    )
+    ),
+    state()
 ) ->
     {ok, auth_on_subscribe_m5_hook:sub_modifiers()}
     | {error, atom()}.
-auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
+auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess, State) ->
     case
-        vmq_plugin:all_till_ok(
+        plugin_all_till_ok_authz(
             auth_on_subscribe_m5,
-            [User, SubscriberId, Topics, Props0]
+            [User, SubscriberId, Topics, Props0],
+            State
         )
     of
         ok ->
@@ -1523,7 +1532,7 @@ unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
             {ok, Props2}
     end.
 
--spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun()) ->
+-spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun(), state()) ->
     {ok, msg()}
     | {ok, msg(), session_ctrl()}
     | {error, atom() | {reason_code_name(), properties()}}.
@@ -1537,10 +1546,11 @@ auth_on_publish(
         retain = IsRetain,
         properties = Properties
     } = Msg,
-    AuthSuccess
+    AuthSuccess,
+    State
 ) ->
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties],
-    case vmq_plugin:all_till_ok(auth_on_publish_m5, HookArgs) of
+    case plugin_all_till_ok_authz(auth_on_publish_m5, HookArgs, State) of
         ok ->
             AuthSuccess(Msg, HookArgs, #{});
         {ok, Args0} when is_map(Args0) ->
@@ -2388,6 +2398,16 @@ set_defopt(Key, Default, Map) ->
         NonDefault ->
             maps:put(Key, NonDefault, Map)
     end.
+
+plugin_all_till_ok_auth(Hook, HookArgs, #state{auth_plugins = undefined}) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs);
+plugin_all_till_ok_auth(Hook, HookArgs, #state{auth_plugins = Plugins}) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs, Plugins, {error, plugin_chain_exhausted}).
+
+plugin_all_till_ok_authz(Hook, HookArgs, #state{authz_plugins = undefined}) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs);
+plugin_all_till_ok_authz(Hook, HookArgs, #state{authz_plugins = Plugins}) ->
+    vmq_plugin:all_till_ok(Hook, HookArgs, Plugins, {error, plugin_chain_exhausted}).
 
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).

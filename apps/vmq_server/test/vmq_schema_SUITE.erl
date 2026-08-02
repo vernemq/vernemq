@@ -44,8 +44,12 @@ groups() ->
          allowed_eccs_test,
          default_eccs_test,
          invalid_eccs_test,
-         tls_handshake_timeout_test
-        ],
+         tls_handshake_timeout_test,
+         listener_auth_plugin_chain_test,
+         listener_authz_plugin_chain_test,
+         listener_auth_plugin_unknown_plugin_test,
+         listener_auth_plugin_duplicate_test
+         ],
     [{schema, [parallel], Tests}].
 
 all() ->
@@ -350,6 +354,47 @@ tls_handshake_timeout_test(_Config) ->
     infinity = expect(Conf, [vmq_server, listeners, mqttwss,  {{127,0,0,1}, 900}, tls_handshake_timeout]),
     2000 = expect(Conf, [vmq_server, listeners, vmqs,  {{127,0,0,1}, 1234}, tls_handshake_timeout]),
     infinity = expect(Conf, [vmq_server, listeners, https,  {{127,0,0,1}, 443}, tls_handshake_timeout]).
+
+listener_auth_plugin_chain_test(_Config) ->
+    Conf = [
+            {["plugins", "vmq_webhooks"], "on"},
+            {["listener", "tcp", "default"], "127.0.0.1:1884"},
+            {["listener", "tcp", "default", "auth_plugins"], "[vmq_passwd, vmq_webhooks]"}
+            | global_substitutions()
+           ],
+    [vmq_passwd, vmq_webhooks] = expect(Conf, [
+        vmq_server, listeners, mqtt, {{127, 0, 0, 1}, 1884}, auth_plugins
+    ]).
+
+listener_authz_plugin_chain_test(_Config) ->
+    Conf = [
+            {["listener", "tcp", "default"], "127.0.0.1:1884"},
+            {["listener", "tcp", "default", "authz_plugins"], "[vmq_acl]"}
+            | global_substitutions()
+           ],
+    [vmq_acl] = expect(Conf, [vmq_server, listeners, mqtt, {{127, 0, 0, 1}, 1884}, authz_plugins]).
+
+listener_auth_plugin_unknown_plugin_test(_Config) ->
+    Conf = [
+            {["listener", "tcp", "default"], "127.0.0.1:1884"},
+            {["listener", "tcp", "default", "auth_plugins"], "[unknown_plugin]"}
+            | global_substitutions()
+           ],
+    case catch expect(Conf, [vmq_server, listeners, mqtt, {{127, 0, 0, 1}, 1884}, auth_plugins]) of
+        {{error, apply_translations, _}, _} -> ok;
+        _ -> ct:fail("Expected translation failure for unknown listener auth plugin")
+    end.
+
+listener_auth_plugin_duplicate_test(_Config) ->
+    Conf = [
+            {["listener", "tcp", "default"], "127.0.0.1:1884"},
+            {["listener", "tcp", "default", "auth_plugins"], "[vmq_passwd, vmq_passwd]"}
+            | global_substitutions()
+           ],
+    case catch expect(Conf, [vmq_server, listeners, mqtt, {{127, 0, 0, 1}, 1884}, auth_plugins]) of
+        {{error, apply_translations, _}, _} -> ok;
+        _ -> ct:fail("Expected translation failure for duplicate listener auth plugin")
+    end.
 
 -define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
