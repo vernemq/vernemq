@@ -620,10 +620,12 @@ insert_trie_subs(Key, Val) ->
             false;
         [{Key, fanout}] ->
             FanoutEntry = fanout_entry(Key, Val),
-            case lists:member(
-                FanoutEntry,
-                ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
-            ) of
+            case
+                lists:member(
+                    FanoutEntry,
+                    ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
+                )
+            of
                 true ->
                     false;
                 false ->
@@ -651,10 +653,12 @@ del_trie_subs(Key, Val) ->
             false;
         [{Key, fanout}] ->
             FanoutEntry = fanout_entry(Key, Val),
-            case lists:member(
-                FanoutEntry,
-                ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
-            ) of
+            case
+                lists:member(
+                    FanoutEntry,
+                    ets:lookup(vmq_trie_subs_fanout, element(1, FanoutEntry))
+                )
+            of
                 false ->
                     false;
                 true ->
@@ -707,11 +711,13 @@ del_local_trie_sub(Key, SubscriberId, QoS) ->
         [] ->
             false;
         [{Key, fanout}] ->
-            case [
-                E
-             || {_FanoutKey, Val} = E <- fanout_entries(Key),
-                same_local_sub(Val, SubscriberId, QoS)
-            ] of
+            case
+                [
+                    E
+                 || {_FanoutKey, Val} = E <- fanout_entries(Key),
+                    same_local_sub(Val, SubscriberId, QoS)
+                ]
+            of
                 [] ->
                     false;
                 [FanoutEntry | _] ->
