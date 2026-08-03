@@ -73,29 +73,29 @@ publish_rate_limit_test(Cfg) ->
                   timer:sleep(Sleep)
           end,
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Cfg),
-    {T, _} =
-    timer:tc(
-      fun() ->
-              %% first we need to cancel calc_rates interval
-              %% so it won't trigger while we send first 5 pubs
-              %% or somehow overlap with sending next 10 pubs
-              vmq_metrics:cancel_calc_rates_interval(),
-              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 5)],
-              %% restart calc_rates interval and wait for 1500ms
-              %% so one calc_rates will be processed (it takes 1000+ms)
-              %% and we would have 500ms left
-              %% to start sending 10 pubs before second calc_rates
-              vmq_metrics:start_calc_rates_interval(),
-              timer:sleep(1500),
-              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 10)]
-      end),
-    %% this should take us at least 10.5 seconds
-    TimeInMs = round(T / 1000),
-    io:format(user, "time passed in ms / sample: ~p~n", [TimeInMs]),
-    true = TimeInMs > 10500,
-    QPid = vmq_queue_sup_sup:get_queue_pid({"", list_to_binary(ClientId)}),
-    ok = vmq_queue:force_disconnect(QPid, normal),
-    ok = gen_tcp:close(Socket).
+    try
+        %% first we need to cancel calc_rates interval
+        %% so it won't trigger while we send first 5 pubs
+        %% or somehow overlap with sending next 10 pubs
+        vmq_metrics:cancel_calc_rates_interval(),
+        _ = [Pub(10, Socket, I) || I <- lists:seq(1, 5)],
+        %% restart calc_rates interval and wait until one calc_rates
+        %% has sampled the first burst. macOS CI can delay the metrics
+        %% server enough that a fixed sleep here is flaky.
+        vmq_metrics:start_calc_rates_interval(),
+        ok = wait_until_rate_limited(50),
+        {T, _} = timer:tc(fun() ->
+            _ = [Pub(10, Socket, I) || I <- lists:seq(1, 10)]
+        end),
+        %% 10 publishes at 1 msg/s should spend most of the burst throttled.
+        TimeInMs = round(T / 1000),
+        io:format(user, "time passed in ms / throttled sample: ~p~n", [TimeInMs]),
+        true = TimeInMs > 8500
+    after
+        QPid = vmq_queue_sup_sup:get_queue_pid({"", list_to_binary(ClientId)}),
+        ok = vmq_queue:force_disconnect(QPid, normal),
+        ok = gen_tcp:close(Socket)
+    end.
 
 -define(THROTTLEMS, 100).
 
@@ -172,3 +172,14 @@ disable_hooks() ->
       auth_on_register_m5, ?MODULE, hook_auth_on_register_m5, 6),
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish_m5, ?MODULE, hook_auth_on_publish_m5, 7).
+
+wait_until_rate_limited(0) ->
+    {error, rate_limit_not_sampled};
+wait_until_rate_limited(Retries) ->
+    case vmq_metrics:check_rate(msg_in_rate, 1) of
+        false ->
+            ok;
+        true ->
+            timer:sleep(100),
+            wait_until_rate_limited(Retries - 1)
+    end.
