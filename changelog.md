@@ -1,3 +1,4 @@
+- Dependency: update rebar3 binary to 3.27.0
 - Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
 - New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
 - New per listener setting `active_n` to define the number of incoming TCP packets read 
