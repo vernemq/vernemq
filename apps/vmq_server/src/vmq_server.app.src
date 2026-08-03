@@ -42,6 +42,8 @@
 
         % queue supervisor supervisor opts
         {queue_sup_sup_children, 50},
+        {fanout_shard_count, 1},
+        {fanout_async_handoff, false},
 
         % queue opts
         {allow_multiple_sessions, false},

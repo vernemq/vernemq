@@ -70,6 +70,7 @@
 
 -record(publish_fold_acc, {
     msg :: msg(),
+    default_deliver_msg :: msg(),
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer()
@@ -526,13 +527,15 @@ publish(
 -spec route_remote_msg(module(), mountpoint(), topic(), msg()) -> ok.
 route_remote_msg(RegView, MP, Topic, Msg) ->
     SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
-    Acc = #publish_fold_acc{msg = Msg},
+    Acc = #publish_fold_acc{msg = Msg, default_deliver_msg = default_deliver_msg(Msg)},
     _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun route_remote_msg_fold_fun/3, Acc),
     % don't increment the router_matches_[local|remote] here, as they're already counted
     % at the origin node.
     ok.
 route_remote_msg_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
     publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
+route_remote_msg_fold_fun({_, _, _} = SubscriberIdSubInfoAndQPid, From, Acc) ->
+    publish_fold_fun(SubscriberIdSubInfoAndQPid, From, Acc);
 route_remote_msg_fold_fun(_Node, _, Acc) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher
@@ -548,7 +551,10 @@ publish_fold_wrapper(
         mountpoint = MP
     } = Msg
 ) ->
-    Acc = #publish_fold_acc{msg = Msg},
+    Acc = #publish_fold_acc{
+        msg = Msg,
+        default_deliver_msg = default_deliver_msg(Msg)
+    },
     #publish_fold_acc{
         msg = NewMsg,
         subscriber_groups = SubscriberGroups,
@@ -563,26 +569,51 @@ publish_fold_wrapper(
     {ok, {LocalMatches1, RemoteMatches1}}.
 
 %% publish_fold_fun/3 is used as the fold function in RegView:fold/4
+publish_fold_fun({SubscriberId, {_, #{no_local := true}}, _QPid}, SubscriberId, Acc) ->
+    %% Publisher is the same as subscriber, discard.
+    Acc;
 publish_fold_fun({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
+publish_fold_fun(
+    {{_, _} = SubscriberId, SubInfo, CachedQPid},
+    _FromClientId,
+    #publish_fold_acc{
+        msg = Msg0,
+        default_deliver_msg = DefaultMsg,
+        local_matches = N
+    } = Acc
+) ->
+    QoS = qos(SubInfo),
+    case cached_queue_pid(QoS, SubscriberId, CachedQPid) of
+        not_found ->
+            Acc;
+        QPid ->
+            Msg1 = decorated_deliver(SubInfo, Msg0, DefaultMsg),
+            ok = vmq_queue:enqueue_deliver(QPid, QoS, Msg1),
+            Acc#publish_fold_acc{
+                local_matches = N + 1
+            }
+    end;
 publish_fold_fun(
     {{_, _} = SubscriberId, SubInfo},
     _FromClientId,
     #publish_fold_acc{
         msg = Msg0,
+        default_deliver_msg = DefaultMsg,
         local_matches = N
     } = Acc
 ) ->
+    QoS = qos(SubInfo),
     case get_queue_pid(SubscriberId) of
         not_found ->
             Acc;
         QPid ->
-            Msg1 = handle_rap_flag(SubInfo, Msg0),
-            Msg2 = maybe_add_sub_id(SubInfo, Msg1),
-            QoS = qos(SubInfo),
-            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
-            Acc#publish_fold_acc{local_matches = N + 1}
+            Msg1 = decorated_deliver(SubInfo, Msg0, DefaultMsg),
+            ok = vmq_queue:enqueue_deliver(QPid, QoS, Msg1),
+            Acc#publish_fold_acc{
+                local_matches = N + 1
+            }
     end;
 publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
@@ -608,17 +639,37 @@ publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg = Msg, remote_matche
             Acc
     end.
 
+cached_queue_pid(0, _SubscriberId, QPid) when is_pid(QPid) ->
+    QPid;
+cached_queue_pid(_QoS, SubscriberId, QPid) when is_pid(QPid) ->
+    case erlang:is_process_alive(QPid) of
+        true -> QPid;
+        false -> get_queue_pid(SubscriberId)
+    end;
+cached_queue_pid(_QoS, SubscriberId, _CachedQPid) ->
+    get_queue_pid(SubscriberId).
+
+default_deliver_msg(Msg) ->
+    Msg#vmq_msg{retain = false}.
+
+decorated_deliver({_QoS, #{rap := true, sub_id := SubId}}, Msg, _DefaultMsg) ->
+    add_sub_id(SubId, Msg);
+decorated_deliver({_QoS, #{rap := true}}, Msg, _DefaultMsg) ->
+    Msg;
+decorated_deliver({_QoS, #{sub_id := SubId}}, _Msg, DefaultMsg) ->
+    add_sub_id(SubId, DefaultMsg);
+decorated_deliver({_QoS, _Opts}, _Msg, DefaultMsg) ->
+    DefaultMsg;
+decorated_deliver(_QoS, _Msg, DefaultMsg) ->
+    DefaultMsg.
+
+add_sub_id(SubId, #vmq_msg{properties = Props} = Msg) ->
+    Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}}.
+
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
     {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
 maybe_set_expiry_ts(_) ->
     undefined.
-
--spec handle_rap_flag(subinfo(), msg()) -> msg().
-handle_rap_flag({_QoS, #{rap := true}}, Msg) ->
-    Msg;
-handle_rap_flag(_SubInfo, Msg) ->
-    %% Default is to set the retain flag to false to be compatible with MQTTv3
-    Msg#vmq_msg{retain = false}.
 
 maybe_add_sub_id({_, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
     Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}};

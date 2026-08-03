@@ -1,12 +1,15 @@
-
 - Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
+- New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
+- New per listener setting `active_n` to define the number of incoming TCP packets read 
+- New feature: Listeners now can have individual authentication and authorization plugin chains (new `auth_n` and `auth_z` settings for named listeners).
+- Make VerneMQ run on Erlang/OTP 29.
 - Make VerneMQ run on Erlang/OTP 28.
 - Enhancement: Improved internode MQTT delivery with a connect-ack handshake, controlled by `outgoing_cluster_handshake_ack_timeout`, so cluster nodes only mark peers reachable after the receiving side has accepted the delivery connection.
 - Enhancement: Added bounded inbound buffering and frame validation for internode MQTT traffic, rejecting malformed or oversized cluster frames according to `incoming_clustering_buffer_size` instead of buffering them indefinitely.
 - Performance: Reduced internode delivery overhead by tracking pending outgoing bytes directly and batching writes with `outgoing_clustering_flush_threshold`.
 - Enhancement: Increased the default `outgoing_clustering_buffer_size` to better tolerate short peer disconnects and reconnect handshakes without dropping messages.
 - Performance (throughput) improvements for high-frequency SUBSCRIBES.
-- New global setting: ``max_subscriptions_per_client` 
+- New global setting: `max_subscriptions_per_client`
 - Reduce memory effect of high-frequency SUBSCRIBES. (#2507)
 - Send out SUBACK only after local trie is updated. During trie initialization, update events are still buffered.
 - Bugfix: Make `vmq_diversity` more robust in case of script errors and plugin chains.

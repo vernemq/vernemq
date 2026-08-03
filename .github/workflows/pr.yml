@@ -48,7 +48,7 @@ jobs:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Ensure rebar3 executable
         run: |
-          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.27.0/rebar3
           chmod +x ./rebar3
           ./rebar3 version
       - name: Check code formatting (erlfmt)
@@ -115,7 +115,7 @@ jobs:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Ensure rebar3 executable
         run: |
-          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.27.0/rebar3
           chmod +x ./rebar3
           ./rebar3 version
       - name: Cache _build/default
@@ -173,6 +173,7 @@ jobs:
           # Sonoma
           - macos-15
         otp:
+          - "29"
           - "28.5"
           - "27.3"
         exclude:
@@ -213,7 +214,7 @@ jobs:
           version-type: loose
       - name: Ensure rebar3 executable
         run: |
-          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.24.0/rebar3
+          curl -fsSL -o ./rebar3 https://github.com/erlang/rebar3/releases/download/3.27.0/rebar3
           chmod +x ./rebar3
           ./rebar3 version
       - name: Cache build
