@@ -57,6 +57,8 @@ init_per_testcase(bad_convertfun_test, Config) ->
     init_per_testcase(basic_store_test, Config);
 init_per_testcase(init_sync_procedure_off_test, Config) ->
     init_per_testcase(basic_store_test, Config);
+init_per_testcase(init_sync_persistent_update_test, Config) ->
+    init_per_testcase(basic_store_test, Config);
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, 0}, {auto_gc, true} | Config0],
     init_per_testcase_(Case, Config1, [electra, flail]);
@@ -87,6 +89,8 @@ end_per_testcase(init_sync_procedure_off_test, _Config) ->
 end_per_testcase(init_sync_procedure_on_test, _Config) ->
     application:stop(vmq_swc),
     application:unset_env(vmq_swc, init_sync_procedure);
+end_per_testcase(init_sync_persistent_update_test, _Config) ->
+    application:stop(vmq_swc);
 end_per_testcase(_, Config) ->
     PeerNodes = proplists:get_value(peer_nodes, Config),
     vmq_swc_test_utils:pmap(fun({Peer, Node}) -> vmq_swc_test_utils:stop_peer(Peer, Node) end,
@@ -104,6 +108,7 @@ groups() ->
     AllTests = [basic_store_test,
                 init_sync_procedure_off_test,
                 init_sync_procedure_on_test,
+                init_sync_persistent_update_test,
                 store_restart_test,
                 bad_convertfun_test,
                 read_write_delete_test,
@@ -147,6 +152,14 @@ init_sync_procedure_off_test(_Config) ->
 init_sync_procedure_on_test(_Config) ->
     Config = vmq_swc:config(basic),
     ?assertEqual(false, vmq_swc_store:get_init_sync(Config)).
+
+init_sync_persistent_update_test(_Config) ->
+    Config = vmq_swc:config(basic),
+    ?assertEqual(true, vmq_swc_store:get_init_sync(Config)),
+    ?assertEqual(ok, vmq_swc_store:set_init_sync_by_groupname(basic, false)),
+    ?assertEqual(false, vmq_swc_store:get_init_sync(Config)),
+    ?assertEqual(ok, vmq_swc_store:set_init_sync_by_groupname(basic, true)),
+    ?assertEqual(true, vmq_swc_store:get_init_sync(Config)).
 
 store_restart_test(_Config) ->
     Group = basic,

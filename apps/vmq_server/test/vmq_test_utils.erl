@@ -48,8 +48,11 @@ teardown() ->
     vmq_metrics:reset_counters(),
     vmq_server:stop(no_wait),
     wait_until_unregistered(vmq_server_sup),
-    vmq_swc:stop(),
+    SwcModules = app_modules(vmq_swc),
+    _ = vmq_swc:stop(),
+    wait_until_app_stopped(vmq_swc, 100),
     wait_until_unregistered(vmq_swc_sup),
+    wait_until_modules_purgeable(SwcModules, 100),
     application:unload(vmq_swc),
     application:unload(vmq_server),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
@@ -95,10 +98,38 @@ disable_all_plugins() ->
                   end, Plugins),
     %% Disable Mod Plugins
     lists:foreach(fun ({_, vmq_lvldb_store, _, _}) ->
-                          ignore;
-                      (P) ->
-                          vmq_plugin_mgr:disable_plugin(P)
-                  end, vmq_plugin:info(all)).
+                           ignore;
+                       (P) ->
+                           vmq_plugin_mgr:disable_plugin(P)
+                   end, vmq_plugin:info(all)).
+
+app_modules(App) ->
+    case application:get_key(App, modules) of
+        {ok, Modules} -> Modules;
+        undefined -> []
+    end.
+
+wait_until_app_stopped(_App, 0) ->
+    ok;
+wait_until_app_stopped(App, N) ->
+    case lists:keymember(App, 1, application:which_applications()) of
+        true ->
+            timer:sleep(100),
+            wait_until_app_stopped(App, N - 1);
+        false ->
+            ok
+    end.
+
+wait_until_modules_purgeable(_Modules, 0) ->
+    ok;
+wait_until_modules_purgeable(Modules, N) ->
+    case lists:all(fun code:soft_purge/1, Modules) of
+        true ->
+            ok;
+        false ->
+            timer:sleep(100),
+            wait_until_modules_purgeable(Modules, N - 1)
+    end.
 
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],

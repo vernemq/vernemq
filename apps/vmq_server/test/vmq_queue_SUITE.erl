@@ -6,6 +6,8 @@
           [{gen_fsm,sync_send_all_state_event,2}]}]).
 -endif.
 
+-define(RECEIVE_TIMEOUT, 30000).
+
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -556,6 +558,8 @@ receive_msg(QPid, QoS, Msg) ->
             ok;
         M ->
             exit({wrong_message, M})
+    after ?RECEIVE_TIMEOUT ->
+            exit({timeout, receive_msg, QPid, QoS, Msg})
     end.
 
 receive_persisted_msg(QPid, QoS, Msg) ->
@@ -569,6 +573,8 @@ receive_persisted_msg(QPid, QoS, Msg) ->
             ok;
         M ->
             exit({wrong_message, M})
+    after ?RECEIVE_TIMEOUT ->
+            exit({timeout, receive_persisted_msg, QPid, QoS, Msg})
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
