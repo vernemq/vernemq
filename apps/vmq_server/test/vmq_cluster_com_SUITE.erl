@@ -148,7 +148,8 @@ connect_success_send_error(Config) ->
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect_ack(Socket1, Config),
-    % close this socket
+    % close this socket with RST so the peer sees a send error reliably
+    ok = inet:setopts(Socket1, [{linger, {true, 0}}]),
     gen_tcp:close(Socket1),
     % send test message, will be buffered and delivered on next successful reconnect
     ok = send_message(ClusterNodePid, hello_world),
@@ -317,7 +318,7 @@ recv_message(Socket, Term) ->
     L = byte_size(TermBin),
     Msg = <<"msg", L:32, TermBin/binary>>,
     BatchMsg = <<"vmq-send", (byte_size(Msg)):32, Msg/binary>>,
-    case gen_tcp:recv(Socket, byte_size(BatchMsg)) of
+    case gen_tcp:recv(Socket, byte_size(BatchMsg), 30000) of
         {ok, BatchMsg} -> ok;
         E ->
             io:format(user, "got ~p instead of ~p~n", [E, {ok, BatchMsg}]),
