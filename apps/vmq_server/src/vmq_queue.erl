@@ -311,6 +311,22 @@ online(Event, _From, State) ->
     ?LOG_ERROR("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
+%% A session we are draining can report a state change ({change_state, ...} via
+%% active/1 or notify/1) instead of going 'DOWN'; handle it here so the catch-all
+%% doesn't swallow it and wedge the takeover in wait_for_offline (#571, #1369).
+%% Re-disconnect a tracked session; ignore an untracked pid (the pending
+%% replacement in waiting_call) so we don't disconnect the newcomer.
+wait_for_offline({change_state, _NewSessionState, SessionPid}, State) ->
+    case maps:is_key(SessionPid, State#state.sessions) of
+        true ->
+            vmq_mqtt_fsm_util:send(
+                SessionPid,
+                {disconnect, disconnect_reason(State#state.waiting_call)}
+            ),
+            {next_state, wait_for_offline, State};
+        false ->
+            {next_state, wait_for_offline, State}
+    end;
 wait_for_offline({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, wait_for_offline, insert(Msg, State)};
@@ -987,6 +1003,20 @@ disconnect_sessions(Reason, #state{sessions = Sessions}) ->
         ok,
         Sessions
     ).
+
+%% Maps the queue's pending waiting_call to the disconnect reason that was
+%% originally used to disconnect the currently attached sessions, so that a session
+%% which re-activated mid-takeover (see wait_for_offline/2) is re-disconnected with
+%% a consistent reason. In wait_for_offline the waiting_call is always set; the
+%% undefined clause is a defensive default and never expected in practice.
+disconnect_reason({add_session, _SessionPid, _Opts, _From}) ->
+    ?SESSION_TAKEN_OVER;
+disconnect_reason({migrate, _OtherQueue, _From}) ->
+    ?DISCONNECT_MIGRATION;
+disconnect_reason({{cleanup, Reason}, _From}) ->
+    Reason;
+disconnect_reason(undefined) ->
+    ?SESSION_TAKEN_OVER.
 
 change_session_state(NewState, SessionPid, #state{id = SId, sessions = Sessions} = State) ->
     #session{queue = #queue{backup = Backup} = Queue} = Session = maps:get(SessionPid, Sessions),

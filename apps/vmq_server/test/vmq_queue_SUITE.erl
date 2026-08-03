@@ -27,7 +27,8 @@
          queue_online_takeover_keeps_extended_queue_size_test/1,
          queue_persistent_client_expiration_test/1,
          queue_force_disconnect_test/1,
-         queue_force_disconnect_cleanup_test/1]).
+         queue_force_disconnect_cleanup_test/1,
+         queue_wait_for_offline_change_state_test/1]).
 
 -export([hook_auth_on_publish/6,
          hook_auth_on_subscribe/3,
@@ -66,7 +67,8 @@ all() ->
      queue_online_takeover_keeps_extended_queue_size_test,
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
-     queue_force_disconnect_cleanup_test
+     queue_force_disconnect_cleanup_test,
+     queue_wait_for_offline_change_state_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -444,6 +446,50 @@ queue_force_disconnect_cleanup_test(_) ->
 
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
+%% Regression test for the wait_for_offline session-takeover wedge (#571, #1369):
+%% if the draining old session reports a state change (change_state via active/1)
+%% instead of going 'DOWN', the takeover must still complete. Pre-fix the queue
+%% wedges and add_session never returns (this test times out); post-fix it completes.
+queue_wait_for_offline_change_state_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"takeover-client">>},
+    QueueOpts = maps:merge(vmq_queue:default_opts(),
+                           #{cleanup_on_disconnect => false,
+                             max_offline_messages => 1000,
+                             queue_type => fifo}),
+
+    %% Old session: re-activates once on the takeover disconnect, then dies.
+    OldSessionPid = spawn(fun() -> reactivating_session(Parent, undefined, 1) end),
+    {ok, #{session_present := false,
+           queue_pid := QPid0}} =
+        vmq_reg:register_subscriber_(OldSessionPid, SubscriberId, false, QueueOpts, 10),
+    %% Hand it the queue pid (arrives before the takeover disconnect; FIFO mailbox).
+    OldSessionPid ! {queue_pid, QPid0},
+    {online, _, _, _, _} = vmq_queue:status(QPid0),
+
+    %% Take over from a separate process (add_session blocks until the old is gone).
+    NewSessionPid = spawn(fun() -> mock_session(Parent) end),
+    TakeoverRef = make_ref(),
+    Tester = self(),
+    _ = spawn(fun() ->
+                  R = vmq_reg:register_subscriber_(
+                        NewSessionPid, SubscriberId, false, QueueOpts, 10),
+                  Tester ! {TakeoverRef, R}
+              end),
+
+    %% The takeover must complete (pre-fix this timed out: queue wedged).
+    receive
+        {TakeoverRef, {ok, #{session_present := true, queue_pid := QPid0}}} ->
+            ok;
+        {TakeoverRef, Other} ->
+            exit({unexpected_takeover_result, Other})
+    after 5000 ->
+        exit(takeover_wedged_in_wait_for_offline)
+    end,
+
+    %% Queue online with the new session.
+    {online, _, _, _, _} = vmq_queue:status(QPid0).
+
 publish_multi({_, ClientId}, Topic) ->
     publish_multi(ClientId, Topic, []).
 
@@ -516,6 +562,27 @@ passive_session(Parent) ->
 
 payload(I) ->
     list_to_binary("test-message-" ++ integer_to_list(I)).
+
+%% Mock session that, on the takeover disconnect, re-activates the queue
+%% (vmq_queue:active/1) instead of dying -- Reactivations times -- then goes down.
+reactivating_session(Parent, QPid, Reactivations) ->
+    receive
+        {queue_pid, NewQPid} ->
+            reactivating_session(Parent, NewQPid, Reactivations);
+        {to_session_fsm, {mail, MailQPid, new_data}} ->
+            vmq_queue:active(MailQPid),
+            reactivating_session(Parent, QPid, Reactivations);
+        {to_session_fsm, {mail, MailQPid, Msgs, _, _}} ->
+            vmq_queue:notify(MailQPid),
+            Parent ! {received, MailQPid, Msgs},
+            reactivating_session(Parent, QPid, Reactivations);
+        {to_session_fsm, {disconnect, _Reason}} when Reactivations > 0, is_pid(QPid) ->
+            %% re-activate instead of dying: casts {change_state, active, self()}
+            vmq_queue:active(QPid),
+            reactivating_session(Parent, QPid, Reactivations - 1);
+        _ -> % any other message (incl. the final disconnect) -> go down
+            ok
+    end.
 
 msg(Topic, Payload, QoS) ->
     #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
