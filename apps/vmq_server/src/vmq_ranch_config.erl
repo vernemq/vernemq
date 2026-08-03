@@ -476,6 +476,7 @@ default_session_opts(Opts) ->
     MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    ActiveN = proplists:get_value(active_n, Opts, 1),
     AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
     AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
     [
@@ -484,6 +485,7 @@ default_session_opts(Opts) ->
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
         {buffer_sizes, BufferSizes},
+        {active_n, ActiveN},
         {auth_plugins, AuthPlugins},
         {authz_plugins, AuthzPlugins}
         | MaybeProxyDefaults2

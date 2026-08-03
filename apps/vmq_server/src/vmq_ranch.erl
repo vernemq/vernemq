@@ -40,6 +40,7 @@
     proto_tag,
     pending = [],
     throttled = false,
+    active_n = 1,
     parent :: pid()
 }).
 
@@ -60,6 +61,7 @@ init(Ref, Parent, Transport, Opts) ->
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState = FsmMod:init(Peer, NewOpts),
             MaskedSocket = mask_socket(Transport, Socket),
+            ActiveN = proplists:get_value(active_n, Opts, 1),
             %% tune buffer sizes
             CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
             case CfgBufSizes of
@@ -73,12 +75,14 @@ init(Ref, Parent, Transport, Opts) ->
                             BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
                             setopts(MaskedSocket, [{buffer, BufSize}]),
                             start_accepting_messages(
-                                MaskedSocket, FsmState, FsmMod, Transport, Parent
+                                MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN
                             )
                     end;
                 [SndBuf, RecBuf, Buffer] ->
                     setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
-                    start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
+                    start_accepting_messages(
+                        MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN
+                    )
             end;
         {error, enotconn} ->
             %% If the client already disconnected we don't want to
@@ -150,8 +154,8 @@ peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
             {ok, {Peer, Opts1}}
     end.
 
-start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
-    active_once(MaskedSocket),
+start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN) ->
+    active(MaskedSocket, ActiveN),
     process_flag(trap_exit, true),
     _ = vmq_metrics:incr_socket_open(),
     St = #st{
@@ -159,6 +163,7 @@ start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
         fsm_state = FsmState,
         fsm_mod = FsmMod,
         proto_tag = Transport:messages(),
+        active_n = ActiveN,
         parent = Parent
     },
     try
@@ -212,10 +217,10 @@ close({ssl, Socket}) ->
 close(Socket) ->
     gen_tcp:close(Socket).
 
-active_once({ssl, Socket}) ->
-    ssl:setopts(Socket, [{active, once}]);
-active_once(Socket) ->
-    inet:setopts(Socket, [{active, once}]).
+active({ssl, Socket}, ActiveN) ->
+    ssl:setopts(Socket, [{active, ActiveN}]);
+active(Socket, ActiveN) ->
+    inet:setopts(Socket, [{active, ActiveN}]).
 
 getopts({ssl, Socket}, Opts) ->
     ssl:getopts(Socket, Opts);
@@ -232,62 +237,16 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = Fsm
         fsm_state = FsmState0,
         socket = Socket,
         pending = Pending,
-        buffer = Buffer
+        buffer = Buffer,
+        throttled = Throttled
     } = State,
     NrOfBytes = byte_size(Data),
     _ = vmq_metrics:incr_bytes_received(NrOfBytes),
-    case FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0) of
-        {switch_fsm, NewFsmMod, FsmState1, Rest, Out} ->
-            case active_once(Socket) of
-                ok ->
-                    maybe_flush(State#st{
-                        fsm_mod = NewFsmMod,
-                        fsm_state = FsmState1,
-                        pending = [Pending | Out],
-                        buffer = Rest
-                    });
-                {error, Reason} ->
-                    {exit, Reason, State#st{
-                        pending = [Pending | Out],
-                        fsm_state = FsmState1
-                    }}
-            end;
-        {ok, FsmState1, Rest, Out} ->
-            case active_once(Socket) of
-                ok ->
-                    maybe_flush(State#st{
-                        fsm_state = FsmState1,
-                        pending = [Pending | Out],
-                        buffer = Rest
-                    });
-                {error, Reason} ->
-                    {exit, Reason, State#st{
-                        pending = [Pending | Out],
-                        fsm_state = FsmState1
-                    }}
-            end;
-        {stop, Reason, Out} ->
-            {exit, Reason, State#st{pending = [Pending | Out]}};
-        {throttle, MilliSecs, FsmState1, Rest, Out} ->
-            erlang:send_after(MilliSecs, self(), restart_work),
-            maybe_flush(State#st{
-                fsm_state = FsmState1,
-                pending = [Pending | Out],
-                throttled = true,
-                buffer = Rest
-            });
-        {error, Reason, Out} ->
-            ?LOG_DEBUG(
-                "[~p] parse error '~p' for data: ~p and  parser state: ~p",
-                [Proto, Reason, Data, Buffer]
-            ),
-            {exit, Reason, State#st{pending = [Pending | Out]}};
-        {error, Reason} ->
-            ?LOG_DEBUG(
-                "[~p] parse error '~p' for data: ~p and  parser state: ~p",
-                [Proto, Reason, Data, Buffer]
-            ),
-            {exit, Reason, State}
+    case Throttled of
+        true ->
+            State#st{buffer = <<Buffer/binary, Data/binary>>};
+        false ->
+            handle_data(Data, Proto, FsmMod, FsmState0, Socket, Pending, Buffer, State)
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod = FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
@@ -296,6 +255,18 @@ handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod
 handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
+handle_message(
+    {ProtoPassive, _}, #st{proto_tag = {_, _, _, ProtoPassive}, throttled = true} = State
+) ->
+    State;
+handle_message(
+    {ProtoPassive, _},
+    #st{proto_tag = {_, _, _, ProtoPassive}, socket = Socket, active_n = ActiveN} = State
+) ->
+    case active(Socket, ActiveN) of
+        ok -> State;
+        {error, Reason} -> {exit, Reason, State}
+    end;
 handle_message(
     {?TO_SESSION, Msg}, #st{pending = Pending, fsm_state = FsmState0, fsm_mod = FsmMod} = State
 ) ->
@@ -315,9 +286,17 @@ handle_message({inet_reply, _, Status}, State) ->
 handle_message({set_sock_opts, Opts}, #st{socket = S} = State) ->
     setopts(S, Opts),
     State;
-handle_message(restart_work, #st{throttled = true} = State) ->
+handle_message(restart_work, #st{throttled = true, socket = Socket, active_n = ActiveN} = State) ->
     #st{proto_tag = {Proto, _, _, _}, socket = Socket} = State,
-    handle_message({Proto, Socket, <<>>}, State#st{throttled = false});
+    case handle_message({Proto, Socket, <<>>}, State#st{throttled = false}) of
+        #st{} = State1 ->
+            case active(Socket, ActiveN) of
+                ok -> State1;
+                {error, Reason} -> {exit, Reason, State1}
+            end;
+        Other ->
+            Other
+    end;
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state = FsmState0, fsm_mod = FsmMod} = State) ->
     %% TODO: this should probably not be a normal disconnect...
     _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState0),
@@ -333,6 +312,51 @@ handle_message(OtherMsg, #st{fsm_state = FsmState0, fsm_mod = FsmMod, pending = 
             });
         {stop, Reason, Out} ->
             {exit, Reason, State#st{pending = [Pending | Out]}}
+    end.
+
+handle_data(Data, Proto, FsmMod, FsmState0, Socket, Pending, Buffer, State) ->
+    DataIn =
+        case Buffer of
+            <<>> -> Data;
+            _ -> <<Buffer/binary, Data/binary>>
+        end,
+    case FsmMod:data_in(DataIn, FsmState0) of
+        {switch_fsm, NewFsmMod, FsmState1, Rest, Out} ->
+            maybe_flush(State#st{
+                fsm_mod = NewFsmMod,
+                fsm_state = FsmState1,
+                pending = [Pending | Out],
+                buffer = Rest
+            });
+        {ok, FsmState1, Rest, Out} ->
+            maybe_flush(State#st{
+                fsm_state = FsmState1,
+                pending = [Pending | Out],
+                buffer = Rest
+            });
+        {stop, Reason, Out} ->
+            {exit, Reason, State#st{pending = [Pending | Out]}};
+        {throttle, MilliSecs, FsmState1, Rest, Out} ->
+            erlang:send_after(MilliSecs, self(), restart_work),
+            setopts(Socket, [{active, false}]),
+            maybe_flush(State#st{
+                fsm_state = FsmState1,
+                pending = [Pending | Out],
+                throttled = true,
+                buffer = Rest
+            });
+        {error, Reason, Out} ->
+            ?LOG_DEBUG(
+                "[~p] parse error '~p' for data: ~p and  parser state: ~p",
+                [Proto, Reason, Data, Buffer]
+            ),
+            {exit, Reason, State#st{pending = [Pending | Out]}};
+        {error, Reason} ->
+            ?LOG_DEBUG(
+                "[~p] parse error '~p' for data: ~p and  parser state: ~p",
+                [Proto, Reason, Data, Buffer]
+            ),
+            {exit, Reason, State}
     end.
 
 %% This magic number is the tcp-over-ethernet MSS (1460)

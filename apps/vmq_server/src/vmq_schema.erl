@@ -267,6 +267,12 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLBufferSizes} = lists:unzip(
         extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)
     ),
+    {TCPIPs, TCPActiveN} = lists:unzip(
+        extract("listener.tcp", "active_n", IntVal, Conf)
+    ),
+    {SSLIPs, SSLActiveN} = lists:unzip(
+        extract("listener.ssl", "active_n", IntVal, Conf)
+    ),
     {VMQIPs, VMQBufferSizes} = lists:unzip(
         extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)
     ),
@@ -438,6 +444,7 @@ translate_listeners(Conf) ->
             TCPProxyProto,
             TCPAllowedProto,
             TCPBufferSizes,
+            TCPActiveN,
             TCPAllowAnonymousOverride,
             TCPAuthPlugins,
             TCPAuthzPlugins
@@ -517,6 +524,7 @@ translate_listeners(Conf) ->
             SSLPSKIdentityHint,
             SSLAllowedProto,
             SSLBufferSizes,
+            SSLActiveN,
             SSLAllowAnonymousOverride,
             SSLAuthPlugins,
             SSLAuthzPlugins
@@ -652,6 +660,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "pskfile_separator",
             "psk_identity_hint",
             "buffer_sizes",
+            "active_n",
             "high_watermark",
             "low_watermark",
             "high_msgq_watermark",

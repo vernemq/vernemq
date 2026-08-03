@@ -38,10 +38,12 @@ groups() ->
          proxy_protocol_override_test,
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
-         allow_anonymous_override_test,
-         allowed_protocol_versions_inheritance_test,
-         allowed_protocol_versions_override_test,
-         allowed_eccs_test,
+          allow_anonymous_override_test,
+          allowed_protocol_versions_inheritance_test,
+          allowed_protocol_versions_override_test,
+          active_n_inheritance_test,
+          active_n_override_test,
+          allowed_eccs_test,
          default_eccs_test,
          invalid_eccs_test,
          tls_handshake_timeout_test,
@@ -333,6 +335,34 @@ allowed_protocol_versions_override_test(_Config) ->
     [4] = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
+
+active_n_inheritance_test(_Config) ->
+    Conf = [
+            %% tcp/mqtt
+            {["listener","tcp","active_n"], "10"},
+            {["listener","tcp","default"],"127.0.0.1:1884"},
+            %% tcp/ssl/mqtt
+            {["listener","ssl","active_n"], "20"},
+            {["listener","ssl","default"],"127.0.0.1:8884"}
+            | global_substitutions()
+           ],
+    10 = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, active_n]),
+    20 = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, active_n]).
+
+active_n_override_test(_Config) ->
+    Conf = [
+            %% tcp/mqtt
+            {["listener","tcp","active_n"], "10"},
+            {["listener","tcp","default"],"127.0.0.1:1884"},
+            {["listener","tcp","default","active_n"], "100"},
+            %% tcp/ssl/mqtt
+            {["listener","ssl","active_n"], "20"},
+            {["listener","ssl","default"],"127.0.0.1:8884"},
+            {["listener","ssl","default","active_n"], "200"}
+            | global_substitutions()
+           ],
+    100 = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, active_n]),
+    200 = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, active_n]).
 
 tls_handshake_timeout_test(_Config) ->
     Conf = [

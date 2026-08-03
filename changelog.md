@@ -1,3 +1,5 @@
+- New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
+- New per listener setting `active_n` to define the number of incoming TCP packets read 
 - New feature: Listeners now can have individual authentication and authorization plugin chains (new `auth_n` and `auth_z` settings for named listeners).
 - Make VerneMQ run on Erlang/OTP 29.
 - Make VerneMQ run on Erlang/OTP 28.

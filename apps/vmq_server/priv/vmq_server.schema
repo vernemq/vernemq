@@ -105,10 +105,25 @@
 %% supervisor is probably in the range of 2k-6k, but varies depending
 %% on the hardware used.
 {mapping, "queue_sup_sup_children", "vmq_server.queue_sup_sup_children", [
-                                                                            {default, 50},
-                                                                            {datatype, integer},
-                                                                            hidden
-                                                                           ]}.
+                                                                             {default, 50},
+                                                                             {datatype, integer},
+                                                                             hidden
+                                                                            ]}.
+
+%% @doc Experimental local fanout table shard count.
+{mapping, "fanout.shard_count", "vmq_server.fanout_shard_count", [
+                                                                    {default, 1},
+                                                                    {datatype, integer},
+                                                                    hidden
+                                                                   ]}.
+
+%% @doc Experimental async handoff for local fanout shards. This decouples the
+%% publisher from shard delivery work, but local match counts are not exact.
+{mapping, "fanout.async_handoff", "vmq_server.fanout_async_handoff", [
+                                                                       {default, off},
+                                                                       {datatype, flag},
+                                                                       hidden
+                                                                      ]}.
 
 %% @doc Secret to be used for crendentials obfuscation. Default is "random" which 
 %% generates a random string. 
@@ -361,11 +376,10 @@
 
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
-                                                            {default, 5000},
-                                                            {datatype, integer},
-                                                            hidden
-                                                           ]}.
-
+                                                             {default, 5000},
+                                                             {datatype, integer},
+                                                             hidden
+                                                            ]}.
 
 %% @doc specifies the modules to be enabled by the http(s) listeners. Overriding this setting is possible for specific listeners.
 {mapping, "http_modules", "vmq_server.http_modules", [
@@ -492,6 +506,34 @@
  [{datatype, string},
   hidden,
   {validators, ["buffer_size_validator"]}
+  ]}.
+
+%% @doc listener.tcp.active_n controls how many active socket messages
+%% may be delivered before the socket switches back to passive mode.
+%% The default value of 1 preserves the previous {active, once} behavior.
+{mapping, "listener.tcp.active_n", "vmq_server.listeners",
+ [{commented, 1},
+  {datatype, integer},
+  {validators, ["active_n_validator"]}
+ ]}.
+
+{mapping, "listener.tcp.$name.active_n", "vmq_server.listeners",
+ [{datatype, integer},
+  hidden,
+  {validators, ["active_n_validator"]}
+ ]}.
+
+{mapping, "listener.ssl.active_n", "vmq_server.listeners",
+ [{commented, 1},
+  {datatype, integer},
+  hidden,
+  {validators, ["active_n_validator"]}
+ ]}.
+
+{mapping, "listener.ssl.$name.active_n", "vmq_server.listeners",
+ [{datatype, integer},
+  hidden,
+  {validators, ["active_n_validator"]}
  ]}.
 
  %% @doc Set the watermark levels for the `vmq_cluster_mon` listener
@@ -526,9 +568,16 @@
              _ ->
                  false
          end;
-    (Val) ->
+     (Val) ->
+          false
+  end}.
+
+{validator, "active_n_validator", "value must be an integer between 1 and 32767",
+ fun(Val) when is_integer(Val), Val >= 1, Val =< 32767 ->
+         true;
+    (_Val) ->
          false
- end}.
+  end}.
 
 %% @doc listener.max_connection_lifetime is an integer defining the maximum lifetime
 %% of MQTT connection in seconds. This option can be overridden on the protocol level by:

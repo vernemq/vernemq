@@ -58,7 +58,7 @@ init_per_testcase(bad_convertfun_test, Config) ->
 init_per_testcase(init_sync_procedure_off_test, Config) ->
     init_per_testcase(basic_store_test, Config);
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
-    Config1 = [{sync_interval, {1000, 500}},{auto_gc, true}|Config0], % afa: why did we set sync_interval to 0 before?
+    Config1 = [{sync_interval, 0}, {auto_gc, true} | Config0],
     init_per_testcase_(Case, Config1, [electra, flail]);
 init_per_testcase(full_sync_test = Case, Config0) ->
     Config1 = [{exchange_batch_size, 1}|Config0],
