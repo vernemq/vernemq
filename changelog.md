@@ -1,3 +1,14 @@
+
+- Dependency: Update Cuttlefish to 3.9.1
+- Dependency: Update Cowboy to 2.18.0
+- Dependency: Update Ranch to 2.2.1
+- Dependency: Update riak_sysmon to 2.2.1
+- Dependency: Update edown to 0.9.2
+- Dependency: Update clique to 0.3.8-verne
+- Dependency: Update mysql-otp to 1.9.0
+- Dependency: Update mongodb-erlang to 3.1.2
+- Dependency: Update credentials_obfuscation to 3.5.0
+- Dependency: Pin riak_dt to 2.1.4
 - Dependency: update rebar3 binary to 3.27.0
 - Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
 - New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
