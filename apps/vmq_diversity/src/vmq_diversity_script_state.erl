@@ -175,11 +175,17 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
     {Reply, NewState} =
-        try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
-            {[], NewLuaState} ->
+        try luerl:call_function_dec([hooks, Function], [Args], State#state.luastate) of
+            {ok, [], NewLuaState} ->
                 {undefined, ch_state(NewLuaState, State)};
-            {[Val], NewLuaState} ->
-                {Val, ch_state(NewLuaState, State)}
+            {ok, [Val], NewLuaState} ->
+                {Val, ch_state(NewLuaState, State)};
+            {lua_error, Reason, _} ->
+                ?LOG_ERROR(
+                    "can't call function ~p with args ~p in ~p due to ~p",
+                    [Function, proplists:delete(password, Args), State#state.script, Reason]
+                ),
+                {error, State}
         catch
             error:{lua_error, Reason, _} ->
                 ?LOG_ERROR(
@@ -254,9 +260,9 @@ load_script(Id, Script) ->
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
     AbsScriptDir = filename:absname(ScriptsDir),
     Do1 = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
-    {_, InitState1} = luerl:do(Do1, luerl:init()),
+    {ok, _, InitState1} = luerl:do(Do1, luerl:init()),
     Do2 = "__SCRIPT_INSTANCE_ID__ = " ++ integer_to_list(Id),
-    {_, InitState2} = luerl:do(Do2, InitState1),
+    {ok, _, InitState2} = luerl:do(Do2, InitState1),
 
     LuaState =
         lists:foldl(
@@ -277,8 +283,12 @@ load_script(Id, Script) ->
         ),
 
     try luerl:dofile(Script, LuaState) of
-        {_, NewLuaState} ->
-            {ok, NewLuaState}
+        {ok, _, NewLuaState} ->
+            {ok, NewLuaState};
+        {lua_error, Reason, _} ->
+            {error, Reason};
+        {error, Reason, _} ->
+            {error, Reason}
     catch
         error:{lua_error, Reason, _} ->
             {error, Reason};
@@ -287,19 +297,19 @@ load_script(Id, Script) ->
     end.
 
 lua_hooks(LuaState) ->
-    case luerl:eval("return hooks", LuaState) of
-        {ok, [nil]} -> [];
-        {ok, [Hooks]} -> [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
+    case luerl:do_dec("return hooks", LuaState) of
+        {ok, [nil], _} -> [];
+        {ok, [Hooks], _} -> [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
     end.
 
 lua_num_states(LuaState) ->
-    case luerl:eval("return num_states", LuaState) of
-        {ok, [nil]} -> undefined;
-        {ok, [NumLuaState]} -> round(NumLuaState)
+    case luerl:do_dec("return num_states", LuaState) of
+        {ok, [nil], _} -> undefined;
+        {ok, [NumLuaState], _} -> round(NumLuaState)
     end.
 
 lua_keep_state(LuaState) ->
-    case luerl:eval("return keep_state", LuaState) of
-        {ok, [nil]} -> undefined;
-        {ok, [KeepState]} when is_boolean(KeepState) -> KeepState
+    case luerl:do_dec("return keep_state", LuaState) of
+        {ok, [nil], _} -> undefined;
+        {ok, [KeepState], _} when is_boolean(KeepState) -> KeepState
     end.

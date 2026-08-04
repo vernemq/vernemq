@@ -1,4 +1,4 @@
-
+- Adapt vmq_diversity to newer Luerl API return formats, related to Lua plugin loading and hook execution.
 - Dependency: Update Cuttlefish to 3.9.1
 - Dependency: Update Cowboy to 2.18.0
 - Dependency: Update Ranch to 2.2.1
