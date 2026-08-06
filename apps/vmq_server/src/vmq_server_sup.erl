@@ -59,7 +59,8 @@ init([]) ->
             Bytes = crypto:strong_rand_bytes(128),
             credentials_obfuscation:set_secret(Bytes)
     end,
-    persistent_term:put(subscribe_trie_ready, 0),
+    persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 0),
+    persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 0),
     init_systemd_notify(),
     {ok,
         {{one_for_one, 5, 10}, [
@@ -67,6 +68,7 @@ init([]) ->
             ?CHILD(vmq_crl_srv, worker, []),
             ?CHILD(vmq_metrics_sup, supervisor, []),
             ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, 5, 10]),
+            ?CHILD(vmq_fanout_shard_sup, supervisor, []),
             ?CHILD(vmq_reg_sup, supervisor, []),
             ?CHILD(vmq_cluster_node_sup, supervisor, []),
             ?CHILD(vmq_sysmon, worker, []),

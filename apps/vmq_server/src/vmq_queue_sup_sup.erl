@@ -46,6 +46,7 @@ start_link(Shutdown, MaxR, MaxT) ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([Shutdown, MaxR, MaxT]) ->
     NumSups = num_child_sups(),
+    init_queue_tab_ids(NumSups),
     SupFlags =
         {one_for_one, 1, 5},
     ChildSpec =
@@ -92,7 +93,25 @@ subscriberid_to_supname(SubscriberId) ->
     gen_sup_name(erlang:phash2(SubscriberId, num_child_sups())).
 
 subscriberid_to_tabid(SubscriberId) ->
-    gen_queue_tab_id(erlang:phash2(SubscriberId, num_child_sups())).
+    queue_tab_id(erlang:phash2(SubscriberId, queue_tab_count())).
+
+init_queue_tab_ids(NumSups) ->
+    persistent_term:put({?MODULE, queue_tab_count}, NumSups),
+    persistent_term:put(
+        {?MODULE, queue_tab_ids},
+        list_to_tuple([gen_queue_tab_id(N) || N <- lists:seq(0, NumSups)])
+    ).
+
+queue_tab_count() ->
+    persistent_term:get({?MODULE, queue_tab_count}, num_child_sups()).
+
+queue_tab_id(N) ->
+    case persistent_term:get({?MODULE, queue_tab_ids}, undefined) of
+        TabIds when is_tuple(TabIds), tuple_size(TabIds) > N ->
+            element(N + 1, TabIds);
+        _ ->
+            gen_queue_tab_id(N)
+    end.
 
 gen_queue_tab_id(N) ->
     list_to_atom("vmq_queue_tab_" ++ integer_to_list(N)).

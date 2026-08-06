@@ -5,6 +5,7 @@
 -compile(nowarn_export_all).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -35,13 +36,254 @@ groups() ->
     [].
 
 all() ->
-    [%bench_vmq_trie
+    [
+        fanout_compaction_keeps_topic_key,
+        sharded_fanout_keeps_all_matches,
+        async_sharded_fanout_dispatches_all_matches,
+        duplicate_fanout_subscribe_unsubscribe_test,
+        queued_sync_update_during_init_test,
+        delta_update_subscriber_test,
+        reg_view_ready_flags_are_isolated_test
+     % bench_vmq_trie
     ].
 
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+fanout_compaction_keeps_topic_key(_Config) ->
+    ok = vmq_test_utils:setup(),
+    Topic = [{[<<"some">>, <<"topic">>], 0}],
+    Hour = 1000 * 3600,
+    ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", 1, Topic)}, Hour),
+    ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", 2, Topic)}, Hour),
+    [_, _] = lists:sort(vmq_reg_trie:fold(
+        {"a", <<"publisher">>},
+        [<<"some">>, <<"topic">>],
+        fun(E, _, Acc) -> [E | Acc] end,
+        []
+    )),
+
+    ok = gen_server:call(vmq_reg_trie, {event, deleted_event("a", 1, Topic)}, Hour),
+    [{{"a", <<"2">>}, 0, _QPid}] = vmq_reg_trie:fold(
+        {"a", <<"publisher">>},
+        [<<"some">>, <<"topic">>],
+        fun(E, _, Acc) -> [E | Acc] end,
+        []
+    ),
+    [{_, {{"a", <<"2">>}, 0, _}}] = ets:tab2list(vmq_trie_subs),
+    [] = ets:tab2list(vmq_trie_subs_fanout),
+    ok = vmq_test_utils:teardown(),
+    ok.
+
+sharded_fanout_keeps_all_matches(_Config) ->
+    application:set_env(vmq_server, fanout_shard_count, 8),
+    try
+        ok = vmq_test_utils:setup(),
+        persistent_term:put({vmq_reg_trie, fanout_shard_count}, 8),
+        Topic = [{[<<"some">>, <<"topic">>], 0}],
+        Hour = 1000 * 3600,
+        lists:foreach(
+          fun(I) ->
+                  ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", I, Topic)}, Hour)
+          end,
+          lists:seq(1, 16)),
+        16 = length(vmq_reg_trie:fold(
+                      {"a", <<"publisher">>},
+                      [<<"some">>, <<"topic">>],
+                      fun(E, _, Acc) -> [E | Acc] end,
+                      [])),
+        Shards = lists:usort([
+            Shard
+         || {{Shard, _Key}, _Val} <- ets:tab2list(vmq_trie_subs_fanout)
+        ]),
+        true = length(Shards) > 1
+    after
+        catch vmq_test_utils:teardown(),
+        persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
+        application:unset_env(vmq_server, fanout_shard_count)
+    end,
+    ok.
+
+async_sharded_fanout_dispatches_all_matches(_Config) ->
+    application:set_env(vmq_server, fanout_shard_count, 8),
+    application:set_env(vmq_server, fanout_async_handoff, true),
+    try
+        ok = vmq_test_utils:setup(),
+        persistent_term:put({vmq_reg_trie, fanout_shard_count}, 8),
+        Topic = [{[<<"some">>, <<"topic">>], 0}],
+        Hour = 1000 * 3600,
+        lists:foreach(
+          fun(I) ->
+                  ok = gen_server:call(vmq_reg_trie, {event, updated_event("a", I, Topic)}, Hour)
+          end,
+          lists:seq(1, 16)),
+        TestPid = self(),
+        [] = vmq_reg_trie:fold(
+               {"a", <<"publisher">>},
+               [<<"some">>, <<"topic">>],
+               fun(E, _, Acc) -> TestPid ! {fanout_match, E}, Acc end,
+               []),
+        16 = receive_fanout_matches(16)
+    after
+        catch vmq_test_utils:teardown(),
+        persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
+        application:unset_env(vmq_server, fanout_shard_count),
+        application:unset_env(vmq_server, fanout_async_handoff)
+    end,
+    ok.
+
+receive_fanout_matches(Count) ->
+    receive_fanout_matches(Count, 0).
+
+receive_fanout_matches(0, Acc) ->
+    Acc;
+receive_fanout_matches(Count, Acc) ->
+    receive
+        {fanout_match, _} ->
+            receive_fanout_matches(Count - 1, Acc + 1)
+    after 1000 ->
+        Acc
+    end.
+
+duplicate_fanout_subscribe_unsubscribe_test(_Config) ->
+    ok = vmq_test_utils:setup(),
+    try
+        run_duplicate_fanout_subscribe_unsubscribe()
+    after
+        ok = vmq_test_utils:teardown()
+    end.
+
+run_duplicate_fanout_subscribe_unsubscribe() ->
+    MP = "a",
+    Topic = [<<"some">>, <<"#">>],
+    Topics = [{Topic, 0}],
+    Subscriber1 = {MP, <<"1">>},
+    Subscriber2 = {MP, <<"2">>},
+    Key = {MP, Topic},
+    Sub1Val = {Subscriber1, 0, undefined},
+    Sub2Val = {Subscriber2, 0, undefined},
+
+    update_subscriber(Subscriber1, undefined, [{node(), true, Topics}]),
+    ?assertEqual([{Key, Sub1Val}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+    assert_topic_count(Key, 1),
+
+    update_subscriber(Subscriber2, undefined, [{node(), true, Topics}]),
+    ?assertEqual([{Key, fanout}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual(
+        lists:sort([{Key, Sub1Val}, {Key, Sub2Val}]),
+        sorted_fanout_entries()
+    ),
+    assert_topic_count(Key, 2),
+
+    %% Replaying the same add event must not grow fanout or wildcard topic counters.
+    update_subscriber(Subscriber1, undefined, [{node(), true, Topics}]),
+    ?assertEqual([{Key, fanout}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual(
+        lists:sort([{Key, Sub1Val}, {Key, Sub2Val}]),
+        sorted_fanout_entries()
+    ),
+    assert_topic_count(Key, 2),
+
+    delete_subscriber(Subscriber1, [{node(), true, Topics}]),
+    ?assertEqual([{Key, Sub2Val}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+    assert_topic_count(Key, 1),
+
+    %% Replaying the same delete event must not remove the remaining fanout member.
+    delete_subscriber(Subscriber1, [{node(), true, Topics}]),
+    ?assertEqual([{Key, Sub2Val}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+    assert_topic_count(Key, 1),
+
+    delete_subscriber(Subscriber2, [{node(), true, Topics}]),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+    ?assertEqual([], ets:lookup(vmq_trie_topic, Key)),
+
+    ok.
+
+queued_sync_update_during_init_test(_Config) ->
+    ok = vmq_test_utils:setup(),
+    try
+        run_queued_sync_update_during_init()
+    after
+        ok = vmq_test_utils:teardown()
+    end.
+
+run_queued_sync_update_during_init() ->
+    MP = "a",
+    Topic = [<<"queued">>, <<"#">>],
+    Topics = [{Topic, 0}],
+    SubscriberId = {MP, <<"queued-client">>},
+    Key = {MP, Topic},
+    SubVal = {SubscriberId, 0, undefined},
+
+    force_trie_init_state(),
+    ok = vmq_reg:sync_reg_view_update(SubscriberId, [], [{node(), true, Topics}]),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+
+    vmq_reg_trie ! subscribers_loaded,
+    ok = wait_until_trie_ready(100),
+
+    ?assertEqual([{Key, SubVal}], ets:tab2list(vmq_trie_subs)),
+    ?assertEqual([], ets:tab2list(vmq_trie_subs_fanout)),
+    assert_topic_count(Key, 1),
+
+    ok.
+
+delta_update_subscriber_test(_Config) ->
+    ok = vmq_test_utils:setup(),
+    try
+        run_delta_update_subscriber()
+    after
+        ok = vmq_test_utils:teardown()
+    end.
+
+run_delta_update_subscriber() ->
+    MP = "a",
+    SubscriberId = {MP, <<"delta-client">>},
+    ExistingTopics = [
+        {[<<"delta">>, <<"existing">>, integer_to_binary(I)], 0}
+     || I <- lists:seq(1, 100)
+    ],
+    DeltaTopic = [<<"delta">>, <<"new">>],
+    Key = {MP, DeltaTopic},
+
+    update_subscriber(SubscriberId, [], [{node(), false, ExistingTopics}]),
+    ?assertEqual([], ets:lookup(vmq_trie_subs, Key)),
+
+    update_subscriber_changes(SubscriberId, [], [{node(), [{DeltaTopic, 1}]}]),
+    ?assertEqual([{Key, {SubscriberId, 1, undefined}}], ets:lookup(vmq_trie_subs, Key)),
+
+    ok.
+
+reg_view_ready_flags_are_isolated_test(_Config) ->
+    ok = vmq_test_utils:setup(),
+    try
+        persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 1),
+        persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 0),
+        vmq_config:set_env(default_reg_view, vmq_reg_ordered_trie, false),
+        ?assertEqual(
+            {error, not_ready},
+            vmq_reg:subscribe(true, {"a", <<"isolated-client">>}, [{[<<"isolated">>], 0}])
+        ),
+        persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 0),
+        persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 1),
+        vmq_config:set_env(default_reg_view, vmq_reg_trie, false),
+        ?assertEqual(
+            {error, not_ready},
+            vmq_reg:subscribe(true, {"a", <<"isolated-client">>}, [{[<<"isolated">>], 0}])
+        )
+    after
+        vmq_config:set_env(default_reg_view, vmq_reg_trie, false),
+        persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 0),
+        persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 0),
+        ok = vmq_test_utils:teardown()
+    end.
 
 bench_ets(_Config) ->
     %%bench_ets_(5).
@@ -137,10 +379,10 @@ bench_single_lookups(Num) ->
     [
      begin
          IB = integer_to_binary(I),
-         [{{"a", IB},0}] =
-             vmq_reg_trie:fold({"a", <<"whatever">>}, LookupTopicF(I),
-                               fun(E, _, Acc) -> [E|Acc] end,
-                               [])
+         [{{"a", IB}, 0, _QPid}] =
+              vmq_reg_trie:fold({"a", <<"whatever">>}, LookupTopicF(I),
+                                fun(E, _, Acc) -> [E|Acc] end,
+                                [])
      end
      || I <- lists:seq(1,Num)
     ],
@@ -214,6 +456,48 @@ bench_fanout_subs(Num) ->
     ok.
 
 
+
+update_subscriber(SubscriberId, OldSubs, NewSubs) ->
+    Event = {updated, {vmq, subscriber}, SubscriberId, OldSubs, NewSubs},
+    ok = gen_server:call(vmq_reg_trie, {event, Event}).
+
+update_subscriber_changes(SubscriberId, ToRemove, ToAdd) ->
+    ok = vmq_reg_trie:update_subscriber_changes(SubscriberId, ToRemove, ToAdd).
+
+delete_subscriber(SubscriberId, Subs) ->
+    Event = {deleted, {vmq, subscriber}, SubscriberId, Subs},
+    ok = gen_server:call(vmq_reg_trie, {event, Event}).
+
+sorted_fanout_entries() ->
+    lists:sort([
+        {Key, Val}
+     || {{_Shard, Key}, Val} <- ets:tab2list(vmq_trie_subs_fanout)
+    ]).
+
+assert_topic_count(Key, ExpectedTotalCnt) ->
+    [{Key, ExpectedTotalCnt, _Nodes}] = ets:lookup(vmq_trie_topic, Key),
+    ok.
+
+force_trie_init_state() ->
+    persistent_term:put({subscribe_trie_ready, vmq_reg_trie}, 0),
+    sys:replace_state(
+        vmq_reg_trie,
+        fun({state, _Status, EventHandler, _EventQueue}) ->
+            {state, init, EventHandler, queue:new()}
+        end
+    ),
+    ok.
+
+wait_until_trie_ready(0) ->
+    {error, timeout};
+wait_until_trie_ready(Retries) ->
+    case persistent_term:get({subscribe_trie_ready, vmq_reg_trie}, 0) of
+        1 ->
+            ok;
+        0 ->
+            timer:sleep(10),
+            wait_until_trie_ready(Retries - 1)
+    end.
 
 updated_event(MP, ClientIdInt, Topics) ->
     {updated, {vmq, subscriber},

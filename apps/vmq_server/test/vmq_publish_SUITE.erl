@@ -1123,6 +1123,8 @@ not_allowed_properties(_Config) ->
  
     Pub = packetv5:gen_publish(<<"bla">>, 0, <<"message">>, [{properties, #{p_server_ref => [1]}}]),
     ok = gen_tcp:send(PubSocket, Pub),
+    Disconnect = packetv5:gen_disconnect(?M5_MALFORMED_PACKET, #{}),
+    ok = packetv5:expect_frame(PubSocket, Disconnect),
     {error, closed} = gen_tcp:recv(PubSocket, 0, 1000).
   
 
@@ -1189,7 +1191,16 @@ direct_plugin_exports_test_subinfo(Cfg) ->
         fun(T, MustBePresent) ->
                 Subscribers = vmq_reg_trie:fold({"", ClientId(self())},
                                                 T, fun(E,_From,Acc) -> [E|Acc] end, []),
-                IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
+                IsPresent = lists:any(
+                    fun
+                        ({{"", ClientIdBin}, 0}) -> ClientIdBin =:= ClientId(self());
+                        ({{"", ClientIdBin}, {0, _Opts}}) -> ClientIdBin =:= ClientId(self());
+                        ({{"", ClientIdBin}, 0, _QPid}) -> ClientIdBin =:= ClientId(self());
+                        ({{"", ClientIdBin}, {0, _Opts}, _QPid}) -> ClientIdBin =:= ClientId(self());
+                        (_) -> false
+                    end,
+                    Subscribers
+                ),
                 MustBePresent =:= IsPresent
         end,
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
@@ -1232,7 +1243,14 @@ direct_plugin_exports_test(Cfg) ->
         fun(T, MustBePresent) ->
                 Subscribers = vmq_reg_trie:fold({"", ClientId(self())},
                                                 T, fun(E,_From,Acc) -> [E|Acc] end, []),
-                IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
+                IsPresent = lists:any(
+                    fun
+                        ({{"", ClientIdBin}, 0}) -> ClientIdBin =:= ClientId(self());
+                        ({{"", ClientIdBin}, 0, _QPid}) -> ClientIdBin =:= ClientId(self());
+                        (_) -> false
+                    end,
+                    Subscribers
+                ),
                 MustBePresent =:= IsPresent
         end,
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),

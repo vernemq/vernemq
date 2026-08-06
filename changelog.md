@@ -1,9 +1,37 @@
-
 - Dependency: Update Hackney to 4.7.2.
 - vmq_webhooks: Improve webhook request handling by supporting cancellable auth webhook calls.
+- Adapt vmq_diversity to newer Luerl API return formats, related to Lua plugin loading and hook execution.
+- Dependency: Update Cuttlefish to 3.9.1
+- Dependency: Update Cowboy to 2.18.0
+- Dependency: Update Ranch to 2.2.1
+- Dependency: Update riak_sysmon to 2.2.1
+- Dependency: Update edown to 0.9.2
+- Dependency: Update clique to 0.3.8-verne
+- Dependency: Update mysql-otp to 1.9.0
+- Dependency: Update mongodb-erlang to 3.1.2
+- Dependency: Update credentials_obfuscation to 3.5.0
+- Dependency: Pin riak_dt to 2.1.4
+- Dependency: update rebar3 binary to 3.27.0
+- Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
+- New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
+- New per listener setting `active_n` to define the number of incoming TCP packets read
+- New feature: Listeners now can have individual authentication and authorization plugin chains (new `auth_n` and `auth_z` settings for named listeners).
+- Make VerneMQ run on Erlang/OTP 29.
+- Make VerneMQ run on Erlang/OTP 28.
+- Enhancement: Improved internode MQTT delivery with a connect-ack handshake, controlled by `outgoing_cluster_handshake_ack_timeout`, so cluster nodes only mark peers reachable after the receiving side has accepted the delivery connection.
+- Enhancement: Added bounded inbound buffering and frame validation for internode MQTT traffic, rejecting malformed or oversized cluster frames according to `incoming_clustering_buffer_size` instead of buffering them indefinitely.
+- Performance: Reduced internode delivery overhead by tracking pending outgoing bytes directly and batching writes with `outgoing_clustering_flush_threshold`.
+- Enhancement: Increased the default `outgoing_clustering_buffer_size` to better tolerate short peer disconnects and reconnect handshakes without dropping messages.
+- Performance (throughput) improvements for high-frequency SUBSCRIBES.
+- New global setting: `max_subscriptions_per_client`
+- Reduce memory effect of high-frequency SUBSCRIBES. (#2507)
+- Send out SUBACK only after local trie is updated. During trie initialization, update events are still buffered.
+- Bugfix: Make `vmq_diversity` more robust in case of script errors and plugin chains.
+- Add minimal Prometheus alarming template example
 - Set SWC init_sync procedure to off as a default.
 - Extend the `allow_anonymous_override` feature to WebSockets listeners.
 - vmq_diversity: Fix handling of v5 user property modifiers in `auth_on_publish_m5` and `on_deliver_m5`.
+- Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout.
 
 ## VerneMQ 2.1.3 RC1
 
@@ -20,7 +48,6 @@
 - Bugfix: MQTT Session FSMs now send out SUBACKs for any error clause.
 - Enhancement: Don't log msg payload in pubauth errors.
 - Bugfix: active connections count for WS in metrics and listener info.
-- Enhancement: Parallel cluster readiness checks via erpc:multicall (5s total worst-case vs N*5s). New hidden setting: cluster_ready_rpc_timeout
 
 ## VerneMQ 2.1.1
 

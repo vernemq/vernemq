@@ -60,20 +60,32 @@ main(Args) ->
         ["stop"] ->
             io:format("~p\n", [rpc:call(TargetNode, erlang, apply,
                                         [fun() ->
-                                                 catch error_logger:info_msg("Administrative stop\n"),
-                                                 init:stop()
+                                                try logger:notice("Administrative stop\n")
+                                                catch
+                                                    _:_ ->
+                                                        ok
+                                                end,
+                                                init:stop()
                                          end, []], RpcTimeout)]);
         ["restart"] ->
             io:format("~p\n", [rpc:call(TargetNode, erlang, apply,
                                         [fun() ->
-                                                 catch error_logger:info_msg("Administrative restart\n"),
-                                                 init:restart()
+                                                try logger:notice("Administrative restart\n")
+                                                catch
+                                                    _:_ ->
+                                                        ok
+                                                end,
+                                                init:restart()
                                          end, []], RpcTimeout)]);
         ["reboot"] ->
             io:format("~p\n", [rpc:call(TargetNode, erlang, apply,
                                         [fun() ->
-                                                 catch error_logger:info_msg("Administrative reboot\n"),
-                                                 init:reboot()
+                                                try logger:notice("Administrative reboot\n")
+                                                catch
+                                                    _:_ ->
+                                                        ok
+                                                end,
+                                                init:reboot()
                                          end, []], RpcTimeout)]);
         ["rpc", Module, Function | RpcArgs] ->
             case rpc:call(TargetNode, list_to_atom(Module), list_to_atom(Function),

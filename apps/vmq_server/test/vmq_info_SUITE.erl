@@ -5,7 +5,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 suite() ->
-    [{timetrap,{seconds,120}}].
+    [{timetrap,{seconds,30}}].
 
 init_per_suite(Config) ->
     cover:start(),
@@ -50,7 +50,6 @@ filtering_works(_Config) ->
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     ok = packet:expect_packet(SubSocket, "suback", Suback),
-
     [#{session_pid := Pid}] =
         execute(["vmq-admin", "session", "show", "--session_pid"]),
     [#{session_pid := Pid}] =

@@ -27,6 +27,7 @@
     read/2,
     fold_values/4,
     subscribe/3,
+    subscribe/4,
     dump/1,
 
     process_batch/2,
@@ -104,12 +105,16 @@
     subscriptions = #{} :: map(),
     broadcast_enabled :: boolean(),
     init_sync :: boolean(),
-    iterator = undefined
+    iterator = undefined,
+    pending_db_write = undefined,
+    deferred_calls = [],
+    db_write_seq = 0
 }).
 
 %-define(DBG_OP(Str, Format), io:format(Str, Format)).
 -define(DBG_OP(_Str, _Format), ok).
 -define(RETAIN_DB, {vmq, retain}).
+-define(SUBSCRIBER_DB, {vmq, subscriber}).
 
 start_link(#swc_config{store = StoreName} = Config) ->
     gen_server:start_link({local, StoreName}, ?MODULE, [Config], []).
@@ -175,43 +180,67 @@ fold_values(Config, Fun, Acc, FullPrefix) ->
         ) -> any()
     )
 ) -> ok.
-subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun) ->
+subscribe(#swc_config{} = Config, FullPrefix, ConvertFun) ->
+    subscribe(Config, FullPrefix, ConvertFun, []).
+
+-spec subscribe(
+    config(),
+    key_prefix(),
+    fun(
+        (
+            {updated, key_prefix(), key_suffix(), [value()], [value()]}
+            | {deleted, key_prefix(), key_suffix(), [value()]}
+        ) -> any()
+    ),
+    list()
+) -> ok.
+subscribe(#swc_config{store = StoreName}, FullPrefix, ConvertFun, Opts) ->
     Pid = self(),
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
     case whereis(StoreName) of
         undefined ->
             %% Store isn't running yet, need to retry.
-            catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
-            _ = spawn(fun() -> retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid) end),
+            catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}),
+            _ = spawn(fun() -> retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts) end),
             ok;
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
 
-retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid) ->
-    retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, 40).
+retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts) ->
+    retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, 40).
 
-retry_subscribe(_StoreName, _FullPrefix, _ConvertFun, _Pid, 0) ->
+retry_subscribe(_StoreName, _FullPrefix, _ConvertFun, _Pid, _Opts, 0) ->
     ok;
-retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, N) ->
+retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N) ->
     case whereis(StoreName) of
         undefined ->
             timer:sleep(50),
-            retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, N - 1);
+            retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N - 1);
         _ ->
-            Res = catch gen_server:call(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}, 200),
+            Res =
+                catch gen_server:call(
+                    StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}, 200
+                ),
             case Res of
                 ok ->
                     ok;
                 _ ->
-                    catch gen_server:cast(StoreName, {subscribe, FullPrefix, ConvertFun, Pid}),
+                    catch gen_server:cast(
+                        StoreName, {subscribe, FullPrefix, ConvertFun, Pid, Opts}
+                    ),
                     ok
             end
     end.
@@ -221,36 +250,48 @@ retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, N) ->
 
 -spec lock(config()) -> ok | {error, atom()}.
 lock(#swc_config{store = StoreName}) ->
-    gen_server:call(StoreName, {lock, self()}, infinity).
+    gen_server:call(StoreName, {lock, self()}, fast_call_timeout()).
 
--spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}].
+-spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}] | {error, timeout}.
 remote_sync_missing(
     #swc_config{group = SwcGroup, transport = TMod, peer = {OriginPeer, _Actor}}, RemotePeer, Dots
 ) ->
-    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
+    TMod:rpc(
+        SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots], sync_call_timeout()
+    ).
 
 -spec rpc_sync_missing(peer(), [dot()], config()) -> [{db_key(), object()}].
 rpc_sync_missing(OriginPeer, Dots, #swc_config{store = StoreName}) ->
-    gen_server:call(StoreName, {sync_missing, OriginPeer, Dots}, infinity).
+    gen_server:call(StoreName, {sync_missing, OriginPeer, Dots}, sync_call_timeout()).
 
 -spec remote_sync_missing_init(config(), peer(), integer(), db_key() | 'first') ->
     {'first', list()}
     | {'last', integer(), [object()]}
-    | {db_key(), object()}.
+    | {db_key(), object()}
+    | {error, timeout}.
 remote_sync_missing_init(
     #swc_config{group = SwcGroup, transport = TMod, peer = {OriginPeer, _Actor}},
     RemotePeer,
     BatchSize,
     FirstKey
 ) ->
-    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing_init, [OriginPeer, BatchSize, FirstKey]).
+    TMod:rpc(
+        SwcGroup,
+        RemotePeer,
+        ?MODULE,
+        rpc_sync_missing_init,
+        [OriginPeer, BatchSize, FirstKey],
+        sync_call_timeout()
+    ).
 
 -spec rpc_sync_missing_init(peer(), integer(), db_key() | 'first', config()) ->
     {'first', list()}
     | {'last', integer(), [object()]}
     | {db_key(), object()}.
 rpc_sync_missing_init(OriginPeer, BatchSize, FirstKey, #swc_config{store = StoreName}) ->
-    gen_server:call(StoreName, {sync_missing_init, OriginPeer, BatchSize, FirstKey}, infinity).
+    gen_server:call(
+        StoreName, {sync_missing_init, OriginPeer, BatchSize, FirstKey}, sync_call_timeout()
+    ).
 
 -spec sync_repair(
     config(), [{db_key(), object()}], peer(), nodeclock(), false | {true, watermark()}
@@ -265,7 +306,7 @@ sync_repair(
     gen_server:call(
         StoreName,
         {sync_repair, LocalNodeId, RemotePeer, RemoteClock, MissingObjects, LastBatch},
-        infinity
+        sync_call_timeout()
     ).
 
 sync_repair_init(
@@ -278,22 +319,22 @@ sync_repair_init(
     gen_server:call(
         StoreName,
         {sync_repair_init, LocalNodeId, RemotePeer, RemoteClock, MissingObjects, LastBatch},
-        30000
+        sync_call_timeout()
     ).
 
 -spec node_clock(config()) -> nodeclock().
 node_clock(#swc_config{store = StoreName}) ->
-    gen_server:call(StoreName, get_node_clock, infinity).
+    gen_server:call(StoreName, get_node_clock, fast_call_timeout()).
 node_clock_by_storename(StoreName) ->
-    gen_server:call(StoreName, get_node_clock, infinity).
+    gen_server:call(StoreName, get_node_clock, fast_call_timeout()).
 watermark_by_storename(StoreName) ->
-    gen_server:call(StoreName, get_watermark, infinity).
+    gen_server:call(StoreName, get_watermark, fast_call_timeout()).
 set_nodeclock(StoreName, NodeClock) ->
     gen_server:call(StoreName, {set_node_clock, NodeClock}, infinity).
 
--spec remote_node_clock(config(), peer()) -> nodeclock().
+-spec remote_node_clock(config(), peer()) -> nodeclock() | {error, timeout}.
 remote_node_clock(#swc_config{group = SwcGroup, transport = TMod}, RemotePeer) ->
-    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_node_clock, []).
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_node_clock, [], sync_call_timeout()).
 
 -spec rpc_node_clock(config()) -> nodeclock().
 rpc_node_clock(#swc_config{} = Config) ->
@@ -304,9 +345,9 @@ watermark(Config) ->
     Watermark = get_watermark(Config),
     Watermark.
 
--spec remote_watermark(config(), peer()) -> watermark().
+-spec remote_watermark(config(), peer()) -> watermark() | {error, timeout}.
 remote_watermark(#swc_config{group = SwcGroup, transport = TMod}, RemotePeer) ->
-    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_watermark, []).
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_watermark, [], sync_call_timeout()).
 
 -spec rpc_watermark(config()) -> watermark().
 rpc_watermark(#swc_config{} = Config) ->
@@ -314,7 +355,9 @@ rpc_watermark(#swc_config{} = Config) ->
 
 -spec update_watermark(config(), peer(), nodeclock()) -> ok.
 update_watermark(#swc_config{store = StoreName, peer = Peer}, RemotePeer, RemoteNodeClock) ->
-    gen_server:call(StoreName, {update_watermark, Peer, RemotePeer, RemoteNodeClock}, infinity).
+    gen_server:call(
+        StoreName, {update_watermark, Peer, RemotePeer, RemoteNodeClock}, sync_call_timeout()
+    ).
 
 -spec rpc_broadcast(peer(), any(), config()) -> ok.
 rpc_broadcast(FromPeer, Msg, #swc_config{store = StoreName} = _Config) ->
@@ -352,12 +395,14 @@ sanitize_old_local_entries_by_storename(StoreName) ->
 init_and_reset_dkm(#swc_config{store = StoreName} = _Config) ->
     gen_server:cast(StoreName, init_dkm).
 
-get_init_sync(#swc_config{store = StoreName} = _Config) ->
-    gen_server:call(StoreName, get_init_sync).
+get_init_sync(#swc_config{group = Group} = _Config) ->
+    persistent_term:get(init_sync_key(Group), true).
 
 set_init_sync_by_groupname(Group, InitSync) when is_boolean(InitSync) ->
     StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
-    gen_server:call(StoreName, {set_init_sync, InitSync}).
+    Res = gen_server:call(StoreName, {set_init_sync, InitSync}, fast_call_timeout()),
+    persistent_term:put(init_sync_key(Group), InitSync),
+    Res.
 
 set_broadcast_by_groupname(Group, IsBroadcastEnabled) when
     is_boolean(IsBroadcastEnabled)
@@ -421,6 +466,7 @@ init([
                 end
         end,
     vmq_swc_group_coordinator:group_initialized(Group, Init1),
+    persistent_term:put(init_sync_key(Group), Init1),
     IsBroadcastEnabled =
         case Init1 of
             false -> false;
@@ -491,6 +537,30 @@ init([
     State1 = restore_subscriptions(StoreName, State0),
     {ok, State1}.
 
+handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
+    {Peer, _Actor} = Id,
+    case node(OwnerPid) == Peer of
+        true when SyncLock == undefined ->
+            MRef = monitor(process, OwnerPid),
+            Lock = {OwnerPid, MRef},
+            {reply, ok, State0#state{sync_lock = Lock}};
+        true ->
+            {reply, {error, already_locked}, State0};
+        false ->
+            {reply, {error, invalid_lock_request}, State0}
+    end;
+handle_call(get_node_clock, _From, #state{nodeclock = NodeClock} = State) ->
+    {reply, NodeClock, State};
+handle_call(get_watermark, _From, #state{watermark = Watermark} = State) ->
+    {reply, Watermark, State};
+handle_call(get_init_sync, _From, State) ->
+    {reply, State#state.init_sync, State};
+handle_call(
+    Request, From, #state{pending_db_write = Pending, deferred_calls = Deferred} = State
+) when
+    Pending =/= undefined
+->
+    {noreply, State#state{deferred_calls = Deferred ++ [{call, Request, From}]}};
 handle_call(
     {batch, Batch},
     _From,
@@ -539,20 +609,11 @@ handle_call(
     r_o_w_cache_clear(Config),
     {reply, ok, cache_node_clock(State1)};
 handle_call({subscribe, FullPrefix, ConvertFun, Pid}, _From, State0) ->
-    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, State0),
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, [], State0),
     {reply, ok, State1};
-handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
-    {Peer, _Actor} = Id,
-    case node(OwnerPid) == Peer of
-        true when SyncLock == undefined ->
-            MRef = monitor(process, OwnerPid),
-            Lock = {OwnerPid, MRef},
-            {reply, ok, State0#state{sync_lock = Lock}};
-        true ->
-            {reply, {error, already_locked}, State0};
-        false ->
-            {reply, {error, invalid_lock_request}, State0}
-    end;
+handle_call({subscribe, FullPrefix, ConvertFun, Pid, Opts}, _From, State0) ->
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, State0),
+    {reply, ok, State1};
 handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config = Config} = State0) ->
     spawn_link(
         fun() ->
@@ -625,13 +686,9 @@ handle_call(
     {noreply, State0};
 handle_call(get_dkm, _From, #state{dotkeymap = DKM} = State) ->
     {reply, DKM, State};
-handle_call(get_node_clock, _From, #state{nodeclock = NodeClock} = State) ->
-    {reply, NodeClock, State};
 handle_call({set_node_clock, NodeClock}, _From, #state{config = Config} = State) ->
     vmq_swc_db:put(Config, ?DB_DEFAULT, <<"BVV">>, term_to_binary(NodeClock)),
     {reply, ok, State#state{nodeclock = NodeClock}};
-handle_call(get_watermark, _From, #state{watermark = Watermark} = State) ->
-    {reply, Watermark, State};
 handle_call(reset_itr, _From, State) ->
     {reply, ok, State#state{iterator = undefined}};
 handle_call(
@@ -646,72 +703,23 @@ handle_call(
     {reply, ok, State0#state{watermark = Watermark}};
 handle_call(
     {sync_repair, _OriginPeer, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch},
-    _From,
+    From,
     #state{config = Config} = State0
 ) ->
-    RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
-    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
-    State2 =
-        case LastBatch of
-            false ->
-                UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
-                db_write(Config, lists:reverse([UpdateNodeClock_DBop | DbOps])),
-                State1;
-            {true, RemoteWatermark} ->
-                NodeClock0 = sync_clocks(
-                    {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
-                ),
-                Watermark = update_watermark_after_sync(
-                    State1#state.watermark,
-                    RemoteWatermark,
-                    State1#state.id,
-                    {RemotePeer, RemoteActor},
-                    NodeClock0,
-                    RemoteNodeClock
-                ),
-                UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
-                UpdateWatermark_DBop = update_watermark_db_op(Watermark),
-                db_write(
-                    Config, lists:reverse([UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps])
-                ),
-                incremental_gc(State1#state{watermark = Watermark, nodeclock = NodeClock0})
-        end,
-    {reply, ok, cache_node_clock(State2)};
+    {DbOps, State1} = sync_repair_db_ops(
+        repair, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch, State0
+    ),
+    {noreply, start_async_db_write(Config, DbOps, From, ok, cache_node_clock(State1))};
 handle_call(
     {sync_repair_init, _OriginPeer, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch},
-    _From,
+    From,
     #state{config = Config, dotkeymap = _DKM} = State0
 ) ->
     ?LOG_DEBUG("Initial SYNC REPAIR running from RemotePeer ~p~n", [RemotePeer]),
-    RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
-    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
-
-    State2 =
-        case LastBatch of
-            false ->
-                UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
-                db_write(Config, [UpdateNodeClock_DBop | DbOps]),
-                State1;
-            {true, RemoteWatermark} ->
-                NodeClock0 = sync_clocks(
-                    {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
-                ),
-                Watermark = update_watermark_after_sync(
-                    State1#state.watermark,
-                    RemoteWatermark,
-                    State1#state.id,
-                    {RemotePeer, RemoteActor},
-                    NodeClock0,
-                    RemoteNodeClock
-                ),
-                UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
-                UpdateWatermark_DBop = update_watermark_db_op(Watermark),
-                db_write(
-                    Config, [UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps]
-                ),
-                incremental_gc(State1#state{watermark = Watermark, nodeclock = NodeClock0})
-        end,
-    {reply, ok, cache_node_clock(State2)};
+    {DbOps, State1} = sync_repair_db_ops(
+        init_repair, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch, State0
+    ),
+    {noreply, start_async_db_write(Config, DbOps, From, ok, cache_node_clock(State1))};
 handle_call(nodeclock, _, #state{nodeclock = NodeClock} = State) ->
     {reply, NodeClock, State};
 handle_call(do_gc, _, #state{id = Id, nodeclock = NodeClock, config = Config} = State0) ->
@@ -725,14 +733,17 @@ handle_call(dump_dotkeymap, _, #state{dotkeymap = DKM} = State) ->
     {reply, vmq_swc_dkm:dump(DKM), State};
 handle_call({set_broadcast, IsBroadcastEnabled}, _From, State) ->
     {reply, ok, State#state{broadcast_enabled = IsBroadcastEnabled}};
-handle_call({set_init_sync, Synced}, _From, State) ->
+handle_call({set_init_sync, Synced}, _From, #state{group = Group} = State) ->
+    persistent_term:put(init_sync_key(Group), Synced),
     {reply, ok, State#state{init_sync = Synced}};
-handle_call(get_init_sync, _From, State) ->
-    {reply, State#state.init_sync, State};
 handle_call(Request, From, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid call ~p from ~p", [State#state.group, Request, From]),
     {reply, {error, wrong_request}, State}.
 
+handle_cast(Request, #state{pending_db_write = Pending, deferred_calls = Deferred} = State) when
+    Pending =/= undefined
+->
+    {noreply, State#state{deferred_calls = Deferred ++ [{cast, Request}]}};
 handle_cast({set_group_members, UpdatedPeerList}, State) ->
     {noreply, set_peers(UpdatedPeerList, State)};
 handle_cast(
@@ -810,12 +821,45 @@ handle_cast(init_dkm, #state{config = Config} = State) ->
     DKM = init_dotkeymap(Config),
     {noreply, State#state{dotkeymap = DKM}};
 handle_cast({subscribe, FullPrefix, ConvertFun, Pid}, State0) ->
-    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, State0),
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, [], State0),
+    {noreply, State1};
+handle_cast({subscribe, FullPrefix, ConvertFun, Pid, Opts}, State0) ->
+    State1 = upsert_subscription(FullPrefix, Pid, ConvertFun, Opts, State0),
     {noreply, State1};
 handle_cast(Request, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid cast ~p", [State#state.group, Request]),
     {noreply, State}.
 
+handle_info(
+    {async_db_write_done, Seq, Result},
+    #state{pending_db_write = {Seq, MRef, _Pid, From, Reply}} = State
+) ->
+    demonitor(MRef, [flush]),
+    case Result of
+        ok ->
+            gen_server:reply(From, Reply),
+            {noreply, drain_deferred_calls(State#state{pending_db_write = undefined})};
+        {error, Reason} ->
+            ?LOG_ERROR("Replica ~p: async SWC store DB write failed due to ~p", [
+                State#state.group, Reason
+            ]),
+            {stop, Reason, State#state{pending_db_write = undefined}}
+    end;
+handle_info(
+    {'DOWN', MRef, process, Pid, Reason},
+    #state{pending_db_write = {_Seq, MRef, Pid, From, _Reply}} = State
+) ->
+    gen_server:reply(From, {error, Reason}),
+    ?LOG_ERROR("Replica ~p: async SWC store DB write worker exited due to ~p", [
+        State#state.group, Reason
+    ]),
+    {stop, Reason, State#state{pending_db_write = undefined}};
+handle_info({'DOWN', MRef, process, Pid, _Info}, #state{sync_lock = {Pid, MRef}} = State) ->
+    {noreply, State#state{sync_lock = undefined}};
+handle_info(Info, #state{pending_db_write = Pending, deferred_calls = Deferred} = State) when
+    Pending =/= undefined
+->
+    {noreply, State#state{deferred_calls = Deferred ++ [{info, Info}]}};
 handle_info({prune_leaving, Leaving}, #state{dotkeymap = DKM} = State) ->
     lists:map(fun(L) -> vmq_swc_dkm:enforce_prune_for_peer(DKM, L) end, Leaving),
     {noreply, State};
@@ -849,8 +893,6 @@ handle_info(sync, #state{config = Config, sync_lock = undefined, peers = Peers} 
 handle_info(sync, State) ->
     maybe_schedule_sync(),
     {noreply, State};
-handle_info({'DOWN', MRef, process, Pid, _Info}, #state{sync_lock = {Pid, MRef}} = State) ->
-    {noreply, State#state{sync_lock = undefined}};
 handle_info(Info, State) ->
     ?LOG_ERROR("Replica ~p: Received invalid info ~p", [State#state.group, Info]),
     {noreply, State}.
@@ -865,6 +907,97 @@ code_change(_, _, State) ->
     {ok, State}.
 
 %% INTERNAL
+
+sync_call_timeout() ->
+    application:get_env(vmq_swc, sync_timeout, 60000).
+
+fast_call_timeout() ->
+    application:get_env(vmq_swc, fast_call_timeout, 5000).
+
+init_sync_key(Group) ->
+    {?MODULE, init_sync, Group}.
+
+start_async_db_write(Config, DbOps, From, Reply, #state{db_write_seq = Seq0} = State) ->
+    Seq = Seq0 + 1,
+    StorePid = self(),
+    {Pid, MRef} = spawn_monitor(fun() ->
+        Result =
+            try
+                db_write_batches(Config, DbOps)
+            catch
+                Class:Reason:Stack ->
+                    {error, {Class, Reason, Stack}}
+            end,
+        StorePid ! {async_db_write_done, Seq, Result}
+    end),
+    State#state{pending_db_write = {Seq, MRef, Pid, From, Reply}, db_write_seq = Seq}.
+
+drain_deferred_calls(#state{deferred_calls = []} = State) ->
+    State;
+drain_deferred_calls(#state{deferred_calls = [{call, Request, From} | Rest]} = State0) ->
+    State1 = State0#state{deferred_calls = Rest},
+    case handle_call(Request, From, State1) of
+        {reply, Reply, State2} ->
+            gen_server:reply(From, Reply),
+            drain_deferred_calls(State2);
+        {noreply, State2} ->
+            State2
+    end;
+drain_deferred_calls(#state{deferred_calls = [{cast, Request} | Rest]} = State0) ->
+    State1 = State0#state{deferred_calls = Rest},
+    case handle_cast(Request, State1) of
+        {noreply, State2} ->
+            drain_deferred_calls(State2)
+    end;
+drain_deferred_calls(#state{deferred_calls = [{info, Info} | Rest]} = State0) ->
+    State1 = State0#state{deferred_calls = Rest},
+    case handle_info(Info, State1) of
+        {noreply, State2} ->
+            drain_deferred_calls(State2);
+        {stop, Reason, State2} ->
+            exit({async_db_write_deferred_info_failed, Reason, State2})
+    end.
+
+sync_repair_db_ops(RepairType, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch, State0) ->
+    RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
+    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
+    case LastBatch of
+        false ->
+            UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
+            {[sync_repair_db_ops(RepairType, [UpdateNodeClock_DBop | DbOps])], State1};
+        {true, RemoteWatermark} ->
+            NodeClock0 = sync_clocks(
+                {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
+            ),
+            Watermark = update_watermark_after_sync(
+                State1#state.watermark,
+                RemoteWatermark,
+                State1#state.id,
+                {RemotePeer, RemoteActor},
+                NodeClock0,
+                RemoteNodeClock
+            ),
+            UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
+            UpdateWatermark_DBop = update_watermark_db_op(Watermark),
+            State2 = State1#state{watermark = Watermark, nodeclock = NodeClock0},
+            RepairDbOps = sync_repair_db_ops(RepairType, [
+                UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps
+            ]),
+            {GcDbOps, State3} = incremental_gc_db_ops(State2),
+            {[RepairDbOps, GcDbOps], State3}
+    end.
+
+sync_repair_db_ops(repair, DbOps) ->
+    lists:reverse(DbOps);
+sync_repair_db_ops(init_repair, DbOps) ->
+    DbOps.
+
+db_write_batches(_Config, []) ->
+    ok;
+db_write_batches(Config, [DbOps | Rest]) ->
+    ok = db_write(Config, DbOps),
+    db_write_batches(Config, Rest).
+
 set_peers(
     NewPeers,
     #state{id = Id, config = Config, nodeclock = LocalClock0, watermark = WM0} =
@@ -1093,6 +1226,32 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginP
                 %% RETAIN_DB is already up-to-date. In this case we must skip the feedback notification event
                 %% to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates)
                 ok;
+            (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == deleted ->
+                case skip_local_feedback(OriginPid, Opts) of
+                    true ->
+                        ok;
+                    false ->
+                        safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues})
+                end;
+            (Pid, {ConvertFun, Opts}) when FullPrefix == ?SUBSCRIBER_DB, Type == updated ->
+                case skip_local_feedback(OriginPid, Opts) of
+                    true ->
+                        ok;
+                    false ->
+                        safe_deliver_event(
+                            Pid,
+                            ConvertFun,
+                            {updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)}
+                        )
+                end;
+            (Pid, {ConvertFun, _Opts}) when Type == deleted ->
+                safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues});
+            (Pid, {ConvertFun, _Opts}) when Type == updated ->
+                safe_deliver_event(
+                    Pid,
+                    ConvertFun,
+                    {updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)}
+                );
             (Pid, ConvertFun) when Type == deleted ->
                 safe_deliver_event(Pid, ConvertFun, {deleted, FullPrefix, Key, OldValues});
             (Pid, ConvertFun) when Type == updated ->
@@ -1104,6 +1263,9 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions = Subscriptions}, OriginP
         end,
         SubsForPrefix
     ).
+
+skip_local_feedback(OriginPid, Opts) ->
+    OriginPid =/= nil andalso proplists:get_value(skip_local_feedback, Opts, false) == true.
 
 safe_deliver_event(Pid, ConvertFun, Event) ->
     try
@@ -1123,9 +1285,9 @@ safe_deliver_event(Pid, ConvertFun, Event) ->
 subs_reg_key(StoreName, FullPrefix, Pid) ->
     {StoreName, FullPrefix, Pid}.
 
-subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun) ->
+subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts) ->
     try
-        ets:insert(?SUBS_REGISTRY, {subs_reg_key(StoreName, FullPrefix, Pid), ConvertFun})
+        ets:insert(?SUBS_REGISTRY, {subs_reg_key(StoreName, FullPrefix, Pid), {ConvertFun, Opts}})
     catch
         Class:Reason ->
             ?LOG_WARNING(
@@ -1163,11 +1325,13 @@ restore_subscriptions(StoreName, State0) ->
     Entries = subs_reg_match_store(StoreName),
     {Reg1, Dead} =
         lists:foldl(
-            fun({{_Store, FullPrefix, Pid}, ConvertFun}, {Acc, DeadAcc}) ->
+            fun({{_Store, FullPrefix, Pid}, Subscription}, {Acc, DeadAcc}) ->
                 case is_process_alive(Pid) of
                     true ->
                         PrefixMap0 = maps:get(FullPrefix, Acc, #{}),
-                        PrefixMap1 = maps:put(Pid, ConvertFun, PrefixMap0),
+                        PrefixMap1 = maps:put(
+                            Pid, normalize_subscription(Subscription), PrefixMap0
+                        ),
                         {maps:put(FullPrefix, PrefixMap1, Acc), DeadAcc};
                     false ->
                         {Acc, [{FullPrefix, Pid} | DeadAcc]}
@@ -1180,14 +1344,19 @@ restore_subscriptions(StoreName, State0) ->
     State0#state{subscriptions = Reg1}.
 
 upsert_subscription(
-    FullPrefix, Pid, ConvertFun, #state{config = #swc_config{store = StoreName}} = State0
+    FullPrefix, Pid, ConvertFun, Opts, #state{config = #swc_config{store = StoreName}} = State0
 ) ->
-    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun),
+    subs_reg_upsert(StoreName, FullPrefix, Pid, ConvertFun, Opts),
     Subs0 = State0#state.subscriptions,
     PrefixMap0 = maps:get(FullPrefix, Subs0, #{}),
-    PrefixMap1 = maps:put(Pid, ConvertFun, PrefixMap0),
+    PrefixMap1 = maps:put(Pid, {ConvertFun, Opts}, PrefixMap0),
     Subs1 = maps:put(FullPrefix, PrefixMap1, Subs0),
     State0#state{subscriptions = Subs1}.
+
+normalize_subscription({ConvertFun, Opts}) when is_function(ConvertFun), is_list(Opts) ->
+    {ConvertFun, Opts};
+normalize_subscription(ConvertFun) when is_function(ConvertFun) ->
+    {ConvertFun, []}.
 
 process_write_op(
     OriginPid,
@@ -1272,11 +1441,16 @@ get_obj_for_key(Config, SKey) ->
     end.
 
 incremental_gc(
-    #state{config = Config, watermark = Watermark, dotkeymap = DKM, nodeclock = NodeClock} = State
+    #state{config = Config} = State0
 ) ->
-    DBOps = vmq_swc_dkm:prune(DKM, Watermark, [], NodeClock),
+    {DBOps, State} = incremental_gc_db_ops(State0),
     db_write(Config, DBOps),
     State.
+
+incremental_gc_db_ops(
+    #state{watermark = Watermark, dotkeymap = DKM, nodeclock = NodeClock} = State
+) ->
+    {vmq_swc_dkm:prune(DKM, Watermark, [], NodeClock), State}.
 
 % -spec remove_logs_for_peer(config(), dotkeymap(), peer()) -> ok.
 % remove_logs_for_peer(Config, DKM, Peer) ->

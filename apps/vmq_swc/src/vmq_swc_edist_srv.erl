@@ -25,6 +25,7 @@
     start_connection/2,
     stop_connection/2,
     rpc/5,
+    rpc/6,
     rpc_cast/5
 ]).
 
@@ -66,7 +67,22 @@ stop_connection(_Config, _Member) ->
     ok.
 
 rpc(SwcGroup, RemotePeer, Module, Function, Args) ->
-    gen_server:call({name(SwcGroup), RemotePeer}, {apply, Module, Function, Args}, infinity).
+    rpc(
+        SwcGroup,
+        RemotePeer,
+        Module,
+        Function,
+        Args,
+        application:get_env(vmq_swc, sync_timeout, 60000)
+    ).
+
+rpc(SwcGroup, RemotePeer, Module, Function, Args, Timeout) ->
+    try
+        gen_server:call({name(SwcGroup), RemotePeer}, {apply, Module, Function, Args}, Timeout)
+    catch
+        exit:{timeout, {gen_server, call, _}} ->
+            {error, timeout}
+    end.
 
 rpc_cast(SwcGroup, RemotePeer, Module, Function, Args) ->
     gen_server:cast({name(SwcGroup), RemotePeer}, {apply, Module, Function, Args}).

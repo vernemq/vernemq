@@ -6,6 +6,8 @@
           [{gen_fsm,sync_send_all_state_event,2}]}]).
 -endif.
 
+-define(RECEIVE_TIMEOUT, 30000).
+
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -24,6 +26,7 @@
          queue_offline_online_transition_test_std/1,
          queue_offline_online_transition_test_ignore_max/1,
          queue_offline_online_transition_test_ignore_max_lifo/1,
+         queue_online_takeover_keeps_extended_queue_size_test/1,
          queue_persistent_client_expiration_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1]).
@@ -43,13 +46,17 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    ok = ensure_vmq_server_loaded(),
+    reset_queue_test_env(),
     vmq_test_utils:setup(),
+    persistent_term:put({vmq_reg_trie, fanout_shard_count}, 1),
     vmq_config:set_env(queue_deliver_mode, fanout, false),
     enable_hooks(),
     Config.
 
 end_per_testcase(_, Config) ->
     vmq_test_utils:teardown(),
+    persistent_term:erase({vmq_reg_trie, fanout_shard_count}),
     Config.
 
 all() ->
@@ -62,6 +69,7 @@ all() ->
      queue_offline_online_transition_test_std,
      queue_offline_online_transition_test_ignore_max,
      queue_offline_online_transition_test_ignore_max_lifo,
+     queue_online_takeover_keeps_extended_queue_size_test,
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
@@ -221,7 +229,7 @@ queue_offline_transition_test(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -246,7 +254,7 @@ queue_offline_online_transition_test_std(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -272,7 +280,7 @@ queue_offline_online_transition_test_ignore_max(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -297,7 +305,7 @@ queue_offline_online_transition_test_ignore_max_lifo(_) ->
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
-    SessionPid1 ! {go_down_in, 1},
+    teardown_session(SessionPid1),
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -305,6 +313,55 @@ queue_offline_online_transition_test_ignore_max_lifo(_) ->
             queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
+
+queue_online_takeover_keeps_extended_queue_size_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-online-takeover-client">>},
+    application:set_env(vmq_server, override_max_online_messages, true),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{
+        cleanup_on_disconnect => false,
+        max_online_messages => 10,
+        max_offline_messages => 100,
+        queue_type => fifo,
+        queue_to_session_batch_size => 100
+    }),
+    {ok, false, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
+
+    Msgs = [
+        #deliver{qos = 1, msg = msg([<<"test">>, <<"takeover">>], payload(I), 1)}
+     || I <- lists:seq(1, 100)
+    ],
+    ok = vmq_queue:enqueue_many(QPid, Msgs),
+    {offline, fanout, 100, 0, false} = vmq_queue:status(QPid),
+
+    SessionPid1 = spawn(fun() -> passive_session(Parent) end),
+    {ok, _} = vmq_queue:add_session(QPid, SessionPid1, QueueOpts),
+    {online, fanout, 0, 1, false} = vmq_queue:status(QPid),
+
+    SessionPid2 = spawn(fun() -> passive_session(Parent) end),
+    AddSessionPid = spawn(fun() ->
+        Parent ! {add_session, vmq_queue:add_session(QPid, SessionPid2, QueueOpts)}
+    end),
+    receive
+        {passive_received, SessionPid1, QPid, 100} -> ok
+    after 1000 ->
+        exit(waiting_for_first_session_messages)
+    end,
+    SessionPid1 ! go_down,
+    receive
+        {add_session, {ok, _}} -> ok
+    after 1000 ->
+        exit(waiting_for_add_session)
+    end,
+    false = is_process_alive(AddSessionPid),
+
+    %% The takeover path should behave like offline wakeup and keep the extended online queue size.
+    receive
+        {passive_received, SessionPid2, QPid, 100} -> ok
+    after 1000 ->
+        exit(waiting_for_second_session_messages)
+    end,
+    SessionPid2 ! go_down.
 
 queue_persistent_client_expiration_test(_) ->
     Parent = self(),
@@ -396,6 +453,24 @@ queue_force_disconnect_cleanup_test(_) ->
 publish_multi({_, ClientId}, Topic) ->
     publish_multi(ClientId, Topic, []).
 
+ensure_vmq_server_loaded() ->
+    case application:load(vmq_server) of
+        ok -> ok;
+        {error, {already_loaded, vmq_server}} -> ok
+    end.
+
+reset_queue_test_env() ->
+    application:set_env(vmq_server, fanout_shard_count, 1),
+    application:set_env(vmq_server, fanout_async_handoff, false),
+    application:set_env(vmq_server, override_max_online_messages, false),
+    application:set_env(vmq_server, persistent_client_expiration, 0),
+    application:set_env(vmq_server, max_online_messages, 30000),
+    application:set_env(vmq_server, max_offline_messages, -1),
+    application:set_env(vmq_server, queue_deliver_mode, fanout),
+    application:set_env(vmq_server, queue_type, fifo),
+    application:set_env(vmq_server, max_drain_time, 100),
+    application:set_env(vmq_server, max_msgs_per_drain_step, 10).
+
 publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
     {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
@@ -418,6 +493,19 @@ receive_multi(QPid, Msgs) ->
             end;
         M ->
             exit({wrong_message, M})
+    after 60000 ->
+            exit({receive_multi_timeout, QPid, Msgs, vmq_queue:status(QPid)})
+    end.
+
+teardown_session(SessionPid) ->
+    MRef = monitor(process, SessionPid),
+    SessionPid ! {go_down_in, 1},
+    receive
+        {'DOWN', MRef, process, SessionPid, _} ->
+            ok
+    after 5000 ->
+            demonitor(MRef, [flush]),
+            exit({session_teardown_timeout, SessionPid})
     end.
 
 mock_session(Parent) ->
@@ -436,6 +524,23 @@ mock_session(Parent) ->
             ok
     end.
 
+passive_session(Parent) ->
+    receive
+        {to_session_fsm, {mail, QPid, new_data}} ->
+            vmq_queue:active(QPid),
+            passive_session(Parent);
+        {to_session_fsm, {mail, QPid, Msgs, _, _}} ->
+            Parent ! {passive_received, self(), QPid, length(Msgs)},
+            passive_session(Parent);
+        go_down ->
+            ok;
+        _ ->
+            passive_session(Parent)
+    end.
+
+payload(I) ->
+    list_to_binary("test-message-" ++ integer_to_list(I)).
+
 msg(Topic, Payload, QoS) ->
     #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
              mountpoint="",
@@ -453,6 +558,8 @@ receive_msg(QPid, QoS, Msg) ->
             ok;
         M ->
             exit({wrong_message, M})
+    after ?RECEIVE_TIMEOUT ->
+            exit({timeout, receive_msg, QPid, QoS, Msg})
     end.
 
 receive_persisted_msg(QPid, QoS, Msg) ->
@@ -466,6 +573,8 @@ receive_persisted_msg(QPid, QoS, Msg) ->
             ok;
         M ->
             exit({wrong_message, M})
+    after ?RECEIVE_TIMEOUT ->
+            exit({timeout, receive_persisted_msg, QPid, QoS, Msg})
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
