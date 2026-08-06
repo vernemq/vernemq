@@ -1032,6 +1032,7 @@ call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, E
                 EOpts,
                 undefined,
                 undefined,
+                [],
                 []
             );
         {ok, _Code, _RespHeaders, _RespBody} ->
@@ -1047,18 +1048,21 @@ call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, E
     map(),
     undefined | integer(),
     undefined | list(),
-    [binary()]
+    [binary()],
+    [any()]
 ) -> any().
-wait_auth_endpoint_response(ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks) ->
+wait_auth_endpoint_response(
+    ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks, DeferredMessages
+) ->
     Timeout = remaining_auth_response_timeout(Deadline),
     receive
         {hackney_response, ReqRef, {status, Code, _Reason}} ->
             wait_auth_endpoint_response(
-                ReqRef, Deadline, Hook, EOpts, Code, RespHeaders, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, Code, RespHeaders, BodyChunks, DeferredMessages
             );
         {hackney_response, ReqRef, {headers, Headers}} ->
             wait_auth_endpoint_response(
-                ReqRef, Deadline, Hook, EOpts, StatusCode, Headers, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, StatusCode, Headers, BodyChunks, DeferredMessages
             );
         {hackney_response, ReqRef, BodyChunk} when is_binary(BodyChunk) ->
             wait_auth_endpoint_response(
@@ -1068,36 +1072,50 @@ wait_auth_endpoint_response(ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeade
                 EOpts,
                 StatusCode,
                 RespHeaders,
-                [BodyChunk | BodyChunks]
+                [BodyChunk | BodyChunks],
+                DeferredMessages
             );
         {hackney_response, ReqRef, done} ->
+            requeue_deferred_messages(DeferredMessages),
             finalize_auth_endpoint_response(StatusCode, RespHeaders, BodyChunks, Hook, EOpts);
         {hackney_response, ReqRef, {error, Reason}} ->
+            requeue_deferred_messages(DeferredMessages),
             {error, Reason};
         {tcp_closed, _} = Msg ->
             cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
             self() ! Msg,
             {error, request_cancelled_client_closed};
         {ssl_closed, _} = Msg ->
             cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
             self() ! Msg,
             {error, request_cancelled_client_closed};
         {tcp_error, _, _} = Msg ->
             cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
             self() ! Msg,
             {error, request_cancelled_client_closed};
         {ssl_error, _, _} = Msg ->
             cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
             self() ! Msg,
             {error, request_cancelled_client_closed};
-        _Other ->
+        Other ->
             wait_auth_endpoint_response(
-                ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks
+                ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks, [
+                    Other | DeferredMessages
+                ]
             )
     after Timeout ->
         cancel_async_request(ReqRef),
+        requeue_deferred_messages(DeferredMessages),
         {error, timeout}
     end.
+
+-spec requeue_deferred_messages([any()]) -> ok.
+requeue_deferred_messages(Messages) ->
+    lists:foreach(fun(Msg) -> self() ! Msg end, lists:reverse(Messages)).
 
 -spec auth_response_deadline(timeout() | infinity) -> integer() | infinity.
 auth_response_deadline(infinity) ->
