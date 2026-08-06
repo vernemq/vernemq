@@ -315,8 +315,10 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
             undefined -> null;
             LT -> atom_to_binary(LT, utf8)
         end,
-    FilteredOpts = maps:without([listener_addr, listener_port, listener_type], Opts),
-    BaseArgs = [
+    AdditionalArgs = maps:to_list(
+        maps:without([listener_addr, listener_port, listener_type], Opts)
+    ),
+    all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
@@ -327,13 +329,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {listener_addr, ListenerAddr},
         {listener_port, ListenerPort},
         {listener_type, ListenerType}
-    ],
-    FullArgs =
-        case map_size(FilteredOpts) of
-            0 -> BaseArgs;
-            _ -> BaseArgs ++ [FilteredOpts]
-        end,
-    all_till_ok(auth_on_register, FullArgs).
+        | AdditionalArgs
+    ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
     'next'
@@ -386,8 +383,10 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
             undefined -> null;
             LT -> atom_to_binary(LT, utf8)
         end,
-    FilteredOpts = maps:without([listener_addr, listener_port, listener_type], Opts),
-    BaseArgs = [
+    AdditionalArgs = maps:to_list(
+        maps:without([listener_addr, listener_port, listener_type], Opts)
+    ),
+    all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
@@ -399,13 +398,8 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
         {listener_addr, ListenerAddr},
         {listener_port, ListenerPort},
         {listener_type, ListenerType}
-    ],
-    FullArgs =
-        case map_size(FilteredOpts) of
-            0 -> BaseArgs;
-            _ -> BaseArgs ++ [FilteredOpts]
-        end,
-    all_till_ok(auth_on_register_m5, FullArgs).
+        | AdditionalArgs
+    ]).
 
 -spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
     'next' | 'ok' | {'error', any()} | {'ok', payload() | [auth_on_publish_hook:msg_modifier()]}.
@@ -1330,7 +1324,7 @@ encode_payload(_, Args, Opts) ->
                 ({client_id, V}) -> {client_id, V};
                 ({properties, V}) -> {properties, encode_props(V, Opts)};
                 ({payload, V}) -> {payload, b64encode(V, Opts)};
-                (#{client_cert := C} = _V) -> {client_cert, b64encode(C, Opts)};
+                ({client_cert, C}) -> {client_cert, b64encode(C, Opts)};
                 (V) -> V
             end,
             Args

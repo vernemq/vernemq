@@ -72,6 +72,7 @@ groups() ->
 http() ->
     [
      auth_on_register_m5_test,
+     auth_on_register_m5_opts_test,
      auth_on_publish_m5_test,
      auth_on_publish_m5_no_payload_test,
      auth_on_publish_m5_modify_props_test,
@@ -385,6 +386,13 @@ auth_on_register_m5_test(_) ->
                          ?P_REQUEST_PROBLEM_INFO => true,
                          ?P_USER_PROPERTY => WantUserProps}]),
     [] = WantUserProps -- GotUserProps,
+    deregister_hook(auth_on_register_m5, ?ENDPOINT).
+
+auth_on_register_m5_opts_test(_) ->
+    register_hook(auth_on_register_m5, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_CLIENT_ID}, ?USERNAME, ?PASSWORD, true,
+                       #{}, ?OPTS]),
     deregister_hook(auth_on_register_m5, ?ENDPOINT).
 
 
