@@ -872,23 +872,8 @@ auth_on_register(Password, State) ->
         listener_type = ListenerType
     } = State,
     BasicHookArgs = [Peer, SubscriberId, User, Password, Clean],
-    ListenerInfo = #{
-        listener_addr => ListenerAddr,
-        listener_port => ListenerPort,
-        listener_type => ListenerType
-    },
-    HookArgs =
-        case ListenerAddr of
-            undefined ->
-                BasicHookArgs;
-            _ ->
-                ConnectionMetadata =
-                    case ConnOpts of
-                        M when is_map(M) -> maps:merge(M, ListenerInfo);
-                        _ -> ListenerInfo
-                    end,
-                BasicHookArgs ++ [ConnectionMetadata]
-        end,
+    ConnectionMetadata = connection_metadata(ConnOpts, ListenerAddr, ListenerPort, ListenerType),
+    HookArgs = maybe_append_connection_metadata(BasicHookArgs, ConnectionMetadata),
     case plugin_all_till_ok(auth_on_register, HookArgs, State, auth) of
         ok ->
             {ok, queue_opts(State, []), State};
@@ -926,6 +911,28 @@ auth_on_register(Password, State) ->
 -spec set_sock_opts([any()]) -> {'set_sock_opts', _}.
 set_sock_opts(Opts) ->
     self() ! {set_sock_opts, Opts}.
+
+connection_metadata(ConnOpts, ListenerAddr, ListenerPort, ListenerType) ->
+    Metadata =
+        case ConnOpts of
+            M when is_map(M) -> M;
+            _ -> #{}
+        end,
+    case ListenerAddr of
+        undefined ->
+            Metadata;
+        _ ->
+            Metadata#{
+                listener_addr => ListenerAddr,
+                listener_port => ListenerPort,
+                listener_type => ListenerType
+            }
+    end.
+
+maybe_append_connection_metadata(Args, Metadata) when map_size(Metadata) =:= 0 ->
+    Args;
+maybe_append_connection_metadata(Args, Metadata) ->
+    Args ++ [Metadata].
 
 -spec auth_on_subscribe(
     username(),

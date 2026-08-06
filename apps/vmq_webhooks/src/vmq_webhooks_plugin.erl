@@ -273,6 +273,28 @@ nullify(undefined) ->
 nullify(Val) ->
     Val.
 
+connection_args(Opts) ->
+    maps:to_list(Opts#{
+        listener_addr => listener_addr(maps:get(listener_addr, Opts, undefined)),
+        listener_port => nullify(maps:get(listener_port, Opts, undefined)),
+        listener_type => listener_type(maps:get(listener_type, Opts, undefined))
+    }).
+
+listener_addr(undefined) ->
+    null;
+listener_addr({local, _}) ->
+    <<"local">>;
+listener_addr(Addr) when is_tuple(Addr) ->
+    case inet:ntoa(Addr) of
+        {error, einval} -> null;
+        AddrStr -> list_to_binary(AddrStr)
+    end.
+
+listener_type(undefined) ->
+    null;
+listener_type(Type) ->
+    atom_to_binary(Type, utf8).
+
 -spec auth_on_register(peer(), subscriber_id(), username(), password(), boolean()) ->
     'next' | 'ok' | {'error', _} | {'ok', [auth_on_register_hook:reg_modifiers()]}.
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
@@ -303,21 +325,6 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
             {encrypted, _} -> credentials_obfuscation:decrypt(Password);
             A -> A
         end,
-    ListenerAddr =
-        case maps:get(listener_addr, Opts, undefined) of
-            undefined -> null;
-            {local, _} -> <<"local">>;
-            LAddr when is_tuple(LAddr) -> list_to_binary(inet:ntoa(LAddr))
-        end,
-    ListenerPort = nullify(maps:get(listener_port, Opts, undefined)),
-    ListenerType =
-        case maps:get(listener_type, Opts, undefined) of
-            undefined -> null;
-            LT -> atom_to_binary(LT, utf8)
-        end,
-    AdditionalArgs = maps:to_list(
-        maps:without([listener_addr, listener_port, listener_type], Opts)
-    ),
     all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
@@ -325,11 +332,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {client_id, ClientId},
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
-        {clean_session, CleanSession},
-        {listener_addr, ListenerAddr},
-        {listener_port, ListenerPort},
-        {listener_type, ListenerType}
-        | AdditionalArgs
+        {clean_session, CleanSession}
+        | connection_args(Opts)
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
@@ -371,21 +375,6 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
             {encrypted, _} -> credentials_obfuscation:decrypt(Password);
             A -> A
         end,
-    ListenerAddr =
-        case maps:get(listener_addr, Opts, undefined) of
-            undefined -> null;
-            {local, _} -> <<"local">>;
-            LAddr when is_tuple(LAddr) -> list_to_binary(inet:ntoa(LAddr))
-        end,
-    ListenerPort = nullify(maps:get(listener_port, Opts, undefined)),
-    ListenerType =
-        case maps:get(listener_type, Opts, undefined) of
-            undefined -> null;
-            LT -> atom_to_binary(LT, utf8)
-        end,
-    AdditionalArgs = maps:to_list(
-        maps:without([listener_addr, listener_port, listener_type], Opts)
-    ),
     all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
@@ -394,11 +383,8 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
-        {properties, Props},
-        {listener_addr, ListenerAddr},
-        {listener_port, ListenerPort},
-        {listener_type, ListenerType}
-        | AdditionalArgs
+        {properties, Props}
+        | connection_args(Opts)
     ]).
 
 -spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->

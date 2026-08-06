@@ -52,6 +52,10 @@ init_per_group(mqttv5_forward_connection_opts, Config) ->
 init_per_group(mqttws_forward_connection_opts, Config) ->
     Config1 = [{type, ws}, {port, 1884}, {address, "127.0.0.1"},
                {forward_connection_opts, true}|Config],
+    start_listener(Config1);
+init_per_group(mqttwss_forward_connection_opts, Config) ->
+    Config1 = [{type, wss}, {port, 1895}, {address, "127.0.0.1"},
+               {forward_connection_opts, true}|Config],
     start_listener(Config1).
 
 
@@ -81,7 +85,8 @@ all() ->
      {group, mqttv5},
      {group, mqttv4_forward_connection_opts},
      {group, mqttv5_forward_connection_opts},
-     {group, mqttws_forward_connection_opts}
+     {group, mqttws_forward_connection_opts},
+     {group, mqttwss_forward_connection_opts}
     ].
 
 groups() ->
@@ -100,7 +105,7 @@ groups() ->
         ],
     [
      {mqttv4, [shuffle,sequence],
-      [auth_on_register_change_username_test | Tests]},
+      [auth_on_register_change_username_test, auth_on_register_default_off_test | Tests]},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttws_allow_anonymous_override, [], [anon_success_test]},
@@ -116,7 +121,8 @@ groups() ->
      ]},
      {mqttv4_forward_connection_opts, [], [auth_on_register_listener_info_test]},
      {mqttv5_forward_connection_opts, [], [auth_on_register_listener_info_m5_test]},
-     {mqttws_forward_connection_opts, [], [auth_on_register_listener_info_ws_test]}
+     {mqttws_forward_connection_opts, [], [auth_on_register_listener_info_ws_test]},
+     {mqttwss_forward_connection_opts, [], [auth_on_register_listener_info_wss_test]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -262,6 +268,24 @@ auth_on_register_change_username_test(Config) ->
       auth_on_register, ?MODULE, hook_change_username, 5),
     ok = close(Socket, Config).
 
+auth_on_register_default_off_test(Config) ->
+    Connect = packet:gen_connect("listener-off", [{keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_default_off, 5
+    ),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_default_off_extended, 6
+    ),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_default_off, 5
+    ),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_default_off_extended, 6
+    ),
+    ok = close(Socket, Config).
+
 auth_on_register_listener_info_test(Config) ->
     Connect = packet:gen_connect("listener-info-test", [{keepalive, 10}]),
     Connack = packet:gen_connack(0),
@@ -290,6 +314,18 @@ auth_on_register_listener_info_ws_test(Config) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_listener_info_ws, 6),
+    ok = close(Socket, Config).
+
+auth_on_register_listener_info_wss_test(Config) ->
+    Connect = packet:gen_connect("listener-info-wss-test", [{keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_wss, 6
+    ),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_listener_info_wss, 6
+    ),
     ok = close(Socket, Config).
 
 ws_protocols_list_test(Config) ->
@@ -439,6 +475,22 @@ hook_listener_info_ws(
     #{listener_addr := {127, 0, 0, 1}, listener_port := 1884, listener_type := mqttws}
 ) ->
     ok.
+
+hook_listener_info_wss(
+    _, {"", <<"listener-info-wss-test">>}, _, _, _,
+    #{listener_addr := {127, 0, 0, 1}, listener_port := 1895, listener_type := mqttwss}
+) ->
+    ok.
+
+hook_listener_info_default_off(_, {"", <<"listener-off">>}, _, _, _) ->
+    ok.
+
+hook_listener_info_default_off_extended(
+    _, {"", <<"listener-off">>}, _, _, _, _
+) ->
+    {error, forward_connection_opts_should_be_off};
+hook_listener_info_default_off_extended(_, _, _, _, _, _) ->
+    next.
 
 hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->
     {ok, #{username => <<"new_username">>}}.
