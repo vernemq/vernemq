@@ -7,6 +7,7 @@
 -define(IGNORED_CLIENT_ID, <<"ignored-subscriber-id">>).
 -define(ALLOWED_CLIENT_ID, <<"allowed-subscriber-id">>).
 -define(LISTENER_INFO_CLIENT_ID, <<"listener-info">>).
+-define(LISTENER_INFO_UNIX_CLIENT_ID, <<"listener-info-unix">>).
 -define(BASE64_PAYLOAD_CLIENT_ID, <<"payload-is-base64-encoded">>).
 -define(NO_PAYLOAD_CLIENT_ID, <<"no-payload">>).
 -define(WITH_PROPERTIES, <<"with_properties">>).
@@ -24,5 +25,10 @@
     client_cert => <<"client cert">>,
     listener_addr => {127, 0, 0, 1},
     listener_port => 1883,
+    listener_type => mqtt
+}).
+-define(OPTS_UNIX_SOCKET, #{
+    listener_addr => {local, "/tmp/vmq_test.sock"},
+    listener_port => 0,
     listener_type => mqtt
 }).
