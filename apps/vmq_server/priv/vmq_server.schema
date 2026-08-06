@@ -2004,17 +2004,17 @@
 {mapping, "listener.ws.forward_connection_opts", "vmq_server.listeners", [
                                                                            {default, off},
                                                                            {datatype, flag},
-                                                                           hidden
+                                                                           {commented, off}
                                                                           ]}.
 {mapping, "listener.ws.$name.forward_connection_opts", "vmq_server.listeners", [
                                                                                  {datatype, flag},
                                                                                  hidden
                                                                                 ]}.
 {mapping, "listener.wss.forward_connection_opts", "vmq_server.listeners", [
-                                                                            {default, off},
-                                                                            {datatype, flag},
-                                                                            hidden
-                                                                           ]}.
+                                                                             {default, off},
+                                                                             {datatype, flag},
+                                                                             {commented, off}
+                                                                            ]}.
 {mapping, "listener.wss.$name.forward_connection_opts", "vmq_server.listeners", [
                                                                                   {datatype, flag},
                                                                                   hidden
