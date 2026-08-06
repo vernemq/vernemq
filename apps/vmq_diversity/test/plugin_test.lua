@@ -36,6 +36,12 @@ function auth_on_register(reg)
     assert(pwd == "test-password")
 
     assert(reg.clean_session == true)
+    if reg.client_id == "listener-info" then
+        assert(reg.listener_addr == "127.0.0.1")
+        assert(reg.listener_port == 1883)
+        assert(reg.listener_type == "mqtt")
+        return true
+    end
     if reg.client_id == "change-modifiers-id" then
        return {max_connection_lifetime = 4711, max_message_size = 1001}
     end
@@ -216,6 +222,12 @@ function auth_on_register_m5(reg)
     pwd = obf.decrypt(reg.password)
     assert(pwd == "test-password")
     assert(reg.clean_start == true)
+    if reg.client_id == "listener-info-m5" then
+       assert(reg.listener_addr == "127.0.0.1")
+       assert(reg.listener_port == 1883)
+       assert(reg.listener_type == "mqtt")
+       return true
+    end
     if reg.client_id == "changed-subscriber-id" then
         -- we must change subscriber_id
         print("auth_on_register_m5 changed subscriber_id called")
