@@ -42,6 +42,7 @@
 
 -export([
     auth_on_register/5,
+    auth_on_register/6,
     auth_on_publish/6,
     auth_on_subscribe/3,
     on_register/3,
@@ -55,6 +56,7 @@
     on_client_gone/1,
     on_session_expired/1,
     auth_on_register_m5/6,
+    auth_on_register_m5/7,
     on_register_m5/4,
     auth_on_publish_m5/7,
     on_publish_m5/7,
@@ -241,6 +243,26 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     ]),
     conv_res(auth_on_reg, Res).
 
+auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
+    Res = all_till_ok(auth_on_register, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(UserName)},
+        {password, nilify(Pwd)},
+        {clean_session, CleanSession}
+        | conn_opts(Opts)
+    ]),
+    conv_res(auth_on_reg, Res).
+
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -258,6 +280,27 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
         {password, nilify(Pwd)},
         {clean_start, CleanStart},
         {properties, conv_args_props(Props)}
+    ]),
+    conv_res(auth_on_reg, Res).
+
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, Opts) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    Pwd =
+        case Password of
+            {encrypted, P} -> P;
+            P -> P
+        end,
+    Res = all_till_ok(auth_on_register_m5, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(UserName)},
+        {password, nilify(Pwd)},
+        {clean_start, CleanStart},
+        {properties, conv_args_props(Props)}
+        | conn_opts(Opts)
     ]),
     conv_res(auth_on_reg, Res).
 
@@ -761,6 +804,28 @@ nilify(undefined) ->
     nil;
 nilify(Val) ->
     Val.
+
+conn_opts(Opts) ->
+    maps:to_list(Opts#{
+        listener_addr => listener_addr(maps:get(listener_addr, Opts, undefined)),
+        listener_port => nilify(maps:get(listener_port, Opts, undefined)),
+        listener_type => listener_type(maps:get(listener_type, Opts, undefined))
+    }).
+
+listener_addr(undefined) ->
+    nil;
+listener_addr({local, _}) ->
+    <<"local">>;
+listener_addr(Addr) when is_tuple(Addr) ->
+    case inet:ntoa(Addr) of
+        {error, einval} -> nil;
+        AddrStr -> list_to_binary(AddrStr)
+    end.
+
+listener_type(undefined) ->
+    nil;
+listener_type(Type) ->
+    atom_to_binary(Type, utf8).
 
 extract_qos({QoS, _SubInfo}) -> QoS;
 extract_qos(QoS) when is_integer(QoS) -> QoS.

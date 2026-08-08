@@ -273,6 +273,28 @@ nullify(undefined) ->
 nullify(Val) ->
     Val.
 
+connection_args(Opts) ->
+    maps:to_list(Opts#{
+        listener_addr => listener_addr(maps:get(listener_addr, Opts, undefined)),
+        listener_port => nullify(maps:get(listener_port, Opts, undefined)),
+        listener_type => listener_type(maps:get(listener_type, Opts, undefined))
+    }).
+
+listener_addr(undefined) ->
+    null;
+listener_addr({local, _}) ->
+    <<"local">>;
+listener_addr(Addr) when is_tuple(Addr) ->
+    case inet:ntoa(Addr) of
+        {error, einval} -> null;
+        AddrStr -> list_to_binary(AddrStr)
+    end.
+
+listener_type(undefined) ->
+    null;
+listener_type(Type) ->
+    atom_to_binary(Type, utf8).
+
 -spec auth_on_register(peer(), subscriber_id(), username(), password(), boolean()) ->
     'next' | 'ok' | {'error', _} | {'ok', [auth_on_register_hook:reg_modifiers()]}.
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
@@ -310,9 +332,8 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, Opts) ->
         {client_id, ClientId},
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
-        {clean_session, CleanSession},
-        % Opts will have the form #{client_cert => Cert}
-        Opts
+        {clean_session, CleanSession}
+        | connection_args(Opts)
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
@@ -362,8 +383,8 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, O
         {username, nullify(UserName)},
         {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
-        {properties, Props},
-        Opts
+        {properties, Props}
+        | connection_args(Opts)
     ]).
 
 -spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
@@ -1289,7 +1310,7 @@ encode_payload(_, Args, Opts) ->
                 ({client_id, V}) -> {client_id, V};
                 ({properties, V}) -> {properties, encode_props(V, Opts)};
                 ({payload, V}) -> {payload, b64encode(V, Opts)};
-                (#{client_cert := C} = _V) -> {client_cert, b64encode(C, Opts)};
+                ({client_cert, C}) -> {client_cert, b64encode(C, Opts)};
                 (V) -> V
             end,
             Args

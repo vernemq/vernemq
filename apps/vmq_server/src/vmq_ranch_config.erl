@@ -139,7 +139,10 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     ),
     case validate_plugin_chains(Opts) of
         ok ->
-            ProtocolOpts = protocol_opts_for_type(Type, Opts),
+            ListenerOpts = [
+                {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
+            ],
+            ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
             TransportMod = transport_for_type(Type),
             TransportOptions = maps:from_list(
                 [
@@ -479,7 +482,7 @@ default_session_opts(Opts) ->
     ActiveN = proplists:get_value(active_n, Opts, 1),
     AuthPlugins = proplists:get_value(auth_plugins, Opts, undefined),
     AuthzPlugins = proplists:get_value(authz_plugins, Opts, undefined),
-    [
+    PreviousDefaultOpts = [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
         {max_connection_lifetime, MaxConnectionLifeTime},
@@ -489,7 +492,18 @@ default_session_opts(Opts) ->
         {auth_plugins, AuthPlugins},
         {authz_plugins, AuthzPlugins}
         | MaybeProxyDefaults2
-    ].
+    ],
+    case proplists:get_value(forward_connection_opts, Opts, false) of
+        true ->
+            [
+                {listener_addr, proplists:get_value(listener_addr, Opts)},
+                {listener_port, proplists:get_value(listener_port, Opts)},
+                {listener_type, proplists:get_value(listener_type, Opts)}
+                | PreviousDefaultOpts
+            ];
+        false ->
+            PreviousDefaultOpts
+    end.
 
 validate_plugin_chains(Opts) ->
     {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
