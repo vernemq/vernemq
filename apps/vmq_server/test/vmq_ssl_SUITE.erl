@@ -485,7 +485,10 @@ connect_forward_conn_opts_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, undefined, _) -> ok.
 
-hook_conn_opts_handler(_, {"", <<"connect-success-test">>}, <<"test client">>, _, _, ConnOpts) when is_map(ConnOpts) ->
+hook_conn_opts_handler(_, {"", <<"connect-success-test">>}, <<"test client">>, _, _,
+                        #{listener_addr := {127,0,0,1},
+                          listener_port := 1888,
+                          listener_type := mqtts} = ConnOpts) when is_map(ConnOpts) ->
     ClientCert = maps:get(client_cert, ConnOpts, undefined),
     % just check whether the client cert is a binary (Pem)
     case ClientCert of

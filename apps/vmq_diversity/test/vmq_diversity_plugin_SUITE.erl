@@ -38,6 +38,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [auth_on_register_test,
+      auth_on_register_opts_test,
      auth_on_register_obf_test,
      auth_on_publish_test,
      auth_on_subscribe_test,
@@ -56,6 +57,7 @@ all() ->
       invalid_modifiers_test,
 
      auth_on_register_m5_test,
+      auth_on_register_m5_opts_test,
      auth_on_register_m5_modify_props_test,
      on_register_m5_test,
      on_publish_m5_test,
@@ -83,6 +85,16 @@ auth_on_register_test(_) ->
         [peer(), change_modifiers_id(), username(), password(), true]),
     {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_username(), username(), password(), true]).
+
+auth_on_register_opts_test(_) ->
+    ok = vmq_plugin:all_till_ok(auth_on_register, [
+        peer(),
+        {"", <<"listener-info">>},
+        username(),
+        password(),
+        true,
+        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt}
+    ]).
 
 auth_on_register_obf_test(_) ->
     {encrypted, Password} = credentials_obfuscation:encrypt(<<"test-password">>),
@@ -226,7 +238,18 @@ auth_on_register_m5_test(_) ->
     {ok, #{subscriber_id := {"override-mountpoint", <<"override-client-id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [peer(), changed_subscriber_id(), username(), password(), true, #{}]),
     {ok, #{username := <<"override-username">>}} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), changed_username(), username(), password(), true, #{}]).
+                       [peer(), changed_username(), username(), password(), true, #{}]).
+
+auth_on_register_m5_opts_test(_) ->
+    ok = vmq_plugin:all_till_ok(auth_on_register_m5, [
+        peer(),
+        {"", <<"listener-info-m5">>},
+        username(),
+        password(),
+        true,
+        #{},
+        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt}
+    ]).
 
 auth_on_register_m5_modify_props_test(_) ->
     WantUserProps = [{<<"k1">>, <<"v1">>},

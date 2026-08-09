@@ -73,6 +73,7 @@ http() ->
     [
      auth_on_register_m5_test,
      auth_on_register_m5_cancel_on_close_test,
+     auth_on_register_m5_opts_test,
      auth_on_publish_m5_test,
      auth_on_publish_m5_no_payload_test,
      auth_on_publish_m5_modify_props_test,
@@ -89,6 +90,7 @@ http() ->
      auth_on_register_test,
      auth_on_register_cancel_on_close_test,
      auth_on_register_opts_test,
+     auth_on_register_unix_socket_opts_test,
      auth_on_publish_test,
      auth_on_publish_no_payload_test,
      auth_on_subscribe_test,
@@ -311,7 +313,14 @@ auth_on_register_cancel_on_close_test(_) ->
 auth_on_register_opts_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                        [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, ?OPTS]),
+                        [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, ?OPTS]),
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
+auth_on_register_unix_socket_opts_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                        [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_UNIX_CLIENT_ID}, ?USERNAME, ?PASSWORD, true,
+                         ?OPTS_UNIX_SOCKET]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_publish_test(_) ->
@@ -427,6 +436,13 @@ auth_on_register_m5_cancel_on_close_test(_) ->
     after 100 ->
         ct:fail(close_message_not_preserved)
     end,
+    deregister_hook(auth_on_register_m5, ?ENDPOINT).
+
+auth_on_register_m5_opts_test(_) ->
+    register_hook(auth_on_register_m5, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_CLIENT_ID}, ?USERNAME, ?PASSWORD, true,
+                       #{}, ?OPTS]),
     deregister_hook(auth_on_register_m5, ?ENDPOINT).
 
 

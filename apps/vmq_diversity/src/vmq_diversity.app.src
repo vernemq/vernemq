@@ -33,6 +33,7 @@
         {script_dir, "priv"},
         {vmq_plugin_hooks, [
             {vmq_diversity_plugin, auth_on_register, 5, []},
+            {vmq_diversity_plugin, auth_on_register, 6, []},
             {vmq_diversity_plugin, auth_on_publish, 6, []},
             {vmq_diversity_plugin, auth_on_subscribe, 3, []},
             {vmq_diversity_plugin, on_register, 3, []},
@@ -42,6 +43,7 @@
             {vmq_diversity_plugin, on_deliver, 7, []},
 
             {vmq_diversity_plugin, auth_on_register_m5, 6, []},
+            {vmq_diversity_plugin, auth_on_register_m5, 7, []},
             {vmq_diversity_plugin, auth_on_publish_m5, 7, []},
             {vmq_diversity_plugin, auth_on_subscribe_m5, 4, []},
             {vmq_diversity_plugin, on_register_m5, 4, []},

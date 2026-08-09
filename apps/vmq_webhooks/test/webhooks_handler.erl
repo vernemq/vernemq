@@ -115,6 +115,31 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
+                   client_id := ?LISTENER_INFO_CLIENT_ID,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := ?USERNAME,
+                   password := ?PASSWORD,
+                   clean_session := true,
+                   client_cert := <<"client cert">>,
+                   listener_addr := ?PEER_BIN,
+                   listener_port := 1883,
+                   listener_type := <<"mqtt">>
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
+                   client_id := ?LISTENER_INFO_UNIX_CLIENT_ID,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := ?USERNAME,
+                   password := ?PASSWORD,
+                   clean_session := true,
+                   listener_addr := <<"local">>,
+                   listener_port := 0,
+                   listener_type := <<"mqtt">>
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
                    client_id := ?ALLOWED_CLIENT_ID,
                    mountpoint := ?MOUNTPOINT_BIN,
                    username := ?USERNAME,
@@ -139,6 +164,20 @@ auth_on_register(#{username := ?CHANGED_USERNAME}) ->
 auth_on_register(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
+auth_on_register_m5(#{peer_addr := ?PEER_BIN,
+                      peer_port := ?PEERPORT,
+                      client_id := ?LISTENER_INFO_CLIENT_ID,
+                      mountpoint := ?MOUNTPOINT_BIN,
+                      username := ?USERNAME,
+                      password := ?PASSWORD,
+                      clean_start := true,
+                      properties := #{},
+                      client_cert := <<"client cert">>,
+                      listener_addr := ?PEER_BIN,
+                      listener_port := 1883,
+                      listener_type := <<"mqtt">>
+                     }) ->
+    {200, #{result => <<"ok">>}};
 auth_on_register_m5(#{peer_addr := ?PEER_BIN,
                       peer_port := ?PEERPORT,
                       client_id := ?ALLOWED_CLIENT_ID,

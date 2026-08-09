@@ -36,6 +36,7 @@ groups() ->
     Tests =
         [proxy_protocol_inheritance_test,
          proxy_protocol_override_test,
+         forward_connection_opts_inheritance_test,
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
           allow_anonymous_override_test,
@@ -234,6 +235,19 @@ proxy_protocol_override_test(_Config) ->
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
+
+forward_connection_opts_inheritance_test(_Config) ->
+    Conf = [
+            %% tcp/mqtt
+            {["listener","tcp","forward_connection_opts"], "on"},
+            {["listener","tcp","default"],"127.0.0.1:1884"},
+            %% websocket
+            {["listener","ws","forward_connection_opts"], "on"},
+            {["listener","ws","default"],"127.0.0.1:800"}
+            | global_substitutions()
+           ],
+    true = expect(Conf, [vmq_server, listeners, mqtt,   {{127,0,0,1}, 1884}, forward_connection_opts]),
+    true = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800},  forward_connection_opts]).
 
 allow_anonymous_override_test(_Config) ->
     Conf = [
