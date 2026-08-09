@@ -1,3 +1,5 @@
+- Dependency: Update Hackney to 4.7.2.
+- vmq_webhooks: Improve webhook request handling by supporting cancellable auth webhook calls.
 - Adapt vmq_diversity to newer Luerl API return formats, related to Lua plugin loading and hook execution.
 - Dependency: Update Cuttlefish to 3.9.1
 - Dependency: Update Cowboy to 2.18.0
@@ -12,7 +14,7 @@
 - Dependency: update rebar3 binary to 3.27.0
 - Enhancement: Bound SWC metadata sync calls and repair writes with configurable timeouts to prevent stalled peers or slow stores from blocking anti-entropy indefinitely. New hidden setting: ` vmq_swc.fast_call_timeout`
 - New feature: allow sharding of fanout scenarios to increase throughput and lower backpressure on high-frequency publishers. (includes new settings `fanout.shard_count` and `fanout.async_handoff`)
-- New per listener setting `active_n` to define the number of incoming TCP packets read 
+- New per listener setting `active_n` to define the number of incoming TCP packets read
 - New feature: Listeners now can have individual authentication and authorization plugin chains (new `auth_n` and `auth_z` settings for named listeners).
 - Make VerneMQ run on Erlang/OTP 29.
 - Make VerneMQ run on Erlang/OTP 28.

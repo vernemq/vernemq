@@ -72,6 +72,7 @@ groups() ->
 http() ->
     [
      auth_on_register_m5_test,
+     auth_on_register_m5_cancel_on_close_test,
      auth_on_register_m5_opts_test,
      auth_on_publish_m5_test,
      auth_on_publish_m5_no_payload_test,
@@ -87,6 +88,7 @@ http() ->
 
 
      auth_on_register_test,
+     auth_on_register_cancel_on_close_test,
      auth_on_register_opts_test,
      auth_on_register_unix_socket_opts_test,
      auth_on_publish_test,
@@ -112,8 +114,10 @@ http() ->
      cache_auth_on_subscribe_m5,
      cache_expired_entry,
      cli_allow_query_parameters_test,
-     metrics_test
-    ].
+     metrics_test,
+     auth_register_cancel_metrics_test,
+     auth_register_timeout_metrics_test
+     ].
 
 https() ->
     [
@@ -287,6 +291,25 @@ auth_on_register_test(_) ->
                       [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
+auth_on_register_cancel_on_close_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    Self = self(),
+    _ = erlang:send_after(50, Self, {tcp_closed, make_ref()}),
+    Start = erlang:monotonic_time(millisecond),
+    {error, request_cancelled_client_closed} = vmq_plugin:all_till_ok(
+        auth_on_register,
+        [?PEER, {?MOUNTPOINT, ?CANCEL_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]
+    ),
+    Elapsed = erlang:monotonic_time(millisecond) - Start,
+    true = Elapsed < 3000,
+    receive
+        {tcp_closed, _} ->
+            ok
+    after 100 ->
+        ct:fail(close_message_not_preserved)
+    end,
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
 auth_on_register_opts_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_register,
@@ -394,6 +417,25 @@ auth_on_register_m5_test(_) ->
                          ?P_REQUEST_PROBLEM_INFO => true,
                          ?P_USER_PROPERTY => WantUserProps}]),
     [] = WantUserProps -- GotUserProps,
+    deregister_hook(auth_on_register_m5, ?ENDPOINT).
+
+auth_on_register_m5_cancel_on_close_test(_) ->
+    register_hook(auth_on_register_m5, ?ENDPOINT),
+    Self = self(),
+    _ = erlang:send_after(50, Self, {tcp_closed, make_ref()}),
+    Start = erlang:monotonic_time(millisecond),
+    {error, request_cancelled_client_closed} = vmq_plugin:all_till_ok(
+        auth_on_register_m5,
+        [?PEER, {?MOUNTPOINT, ?CANCEL_CLIENT_ID_M5}, ?USERNAME, ?PASSWORD, true, #{}]
+    ),
+    Elapsed = erlang:monotonic_time(millisecond) - Start,
+    true = Elapsed < 3000,
+    receive
+        {tcp_closed, _} ->
+            ok
+    after 100 ->
+        ct:fail(close_message_not_preserved)
+    end,
     deregister_hook(auth_on_register_m5, ?ENDPOINT).
 
 auth_on_register_m5_opts_test(_) ->
@@ -649,6 +691,52 @@ metrics_test(_) ->
     {ok, [{text, _Text}]} = vmq_server_cmd:metrics(),
     deregister_hook(on_session_expired, ?ENDPOINT).
 
+auth_register_cancel_metrics_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    StartCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    StartTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    StartElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    Self = self(),
+    _ = erlang:send_after(50, Self, {tcp_closed, make_ref()}),
+    {error, request_cancelled_client_closed} = vmq_plugin:all_till_ok(
+        auth_on_register,
+        [?PEER, {?MOUNTPOINT, ?CANCEL_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]
+    ),
+    EndCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    EndTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    EndElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    1 = EndCancelled - StartCancelled,
+    0 = EndTimeouts - StartTimeouts,
+    true = EndElapsed > StartElapsed,
+    receive
+        {tcp_closed, _} ->
+            ok
+    after 100 ->
+        ct:fail(close_message_not_preserved)
+    end,
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
+auth_register_timeout_metrics_test(_) ->
+    Endpoint = ?ENDPOINT ++ "/slow_chunks",
+    register_hook(auth_on_register, Endpoint, ["--response_timeout=100"]),
+    StartCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    StartTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    StartElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    Start = erlang:monotonic_time(millisecond),
+    {error, timeout} = vmq_plugin:all_till_ok(
+        auth_on_register,
+        [?PEER, {?MOUNTPOINT, ?TIMEOUT_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]
+    ),
+    Elapsed = erlang:monotonic_time(millisecond) - Start,
+    true = Elapsed < 700,
+    EndCancelled = find_metric_value(webhooks_auth_on_register_cancelled),
+    EndTimeouts = find_metric_value(webhooks_auth_on_register_timeouts),
+    EndElapsed = find_metric_value(webhooks_auth_on_register_elapsed_ms),
+    0 = EndCancelled - StartCancelled,
+    1 = EndTimeouts - StartTimeouts,
+    true = EndElapsed > StartElapsed,
+    deregister_hook(auth_on_register, Endpoint).
+
 find_metric_value(Id) ->
     Metrics = vmq_metrics:metrics(),
     {value, {_MetricDef, Value}} = lists:search(fun({Metric, _V}) ->
@@ -756,8 +844,11 @@ cert_path(Config, Filename) ->
     FullCertPath.
 
 register_hook(Hook, Endpoint) ->
+    register_hook(Hook, Endpoint, []).
+
+register_hook(Hook, Endpoint, Opts) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"]).
+                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"] ++ Opts).
 
 deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",

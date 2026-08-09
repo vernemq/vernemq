@@ -18,6 +18,9 @@
 -include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([
     init/3,
@@ -956,10 +959,49 @@ auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess, State) ->
         ok ->
             AuthSuccess(User, SubscriberId, Topics);
         {ok, NewTopics} when is_list(NewTopics) ->
-            AuthSuccess(User, SubscriberId, NewTopics);
+            auth_on_subscribe_modifiers(User, SubscriberId, NewTopics, AuthSuccess);
         {error, _} ->
             {error, not_allowed}
     end.
+
+auth_on_subscribe_modifiers(User, SubscriberId, Topics, AuthSuccess) ->
+    {AllowedTopics, ReturnCodes} = split_subscribe_topics(Topics),
+    case AllowedTopics of
+        [] ->
+            {ok, ReturnCodes};
+        _ ->
+            case AuthSuccess(User, SubscriberId, AllowedTopics) of
+                {ok, AllowedReturnCodes} ->
+                    {ok, merge_subscribe_return_codes(ReturnCodes, AllowedReturnCodes)};
+                Res ->
+                    Res
+            end
+    end.
+
+split_subscribe_topics(Topics) ->
+    {AllowedTopicsRev, ReturnCodesRev} =
+        lists:foldl(
+            fun
+                ({_Topic, not_allowed}, {AllowedAcc, ReturnCodeAcc}) ->
+                    {AllowedAcc, [not_allowed | ReturnCodeAcc]};
+                ({_Topic, QoS} = TopicQoS, {AllowedAcc, ReturnCodeAcc}) when
+                    QoS =:= 0; QoS =:= 1; QoS =:= 2
+                ->
+                    {[TopicQoS | AllowedAcc], [allowed | ReturnCodeAcc]};
+                ({_Topic, _ReturnCode}, {AllowedAcc, ReturnCodeAcc}) ->
+                    {AllowedAcc, [not_allowed | ReturnCodeAcc]}
+            end,
+            {[], []},
+            Topics
+        ),
+    {lists:reverse(AllowedTopicsRev), lists:reverse(ReturnCodesRev)}.
+
+merge_subscribe_return_codes([allowed | Rest], [ReturnCode | AllowedReturnCodes]) ->
+    [ReturnCode | merge_subscribe_return_codes(Rest, AllowedReturnCodes)];
+merge_subscribe_return_codes([ReturnCode | Rest], AllowedReturnCodes) ->
+    [ReturnCode | merge_subscribe_return_codes(Rest, AllowedReturnCodes)];
+merge_subscribe_return_codes([], []) ->
+    [].
 
 -spec unsubscribe(
     username(),
@@ -1784,3 +1826,31 @@ subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
     );
 subtopics(Topics, _Proto) ->
     vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined).
+
+-ifdef(TEST).
+auth_on_subscribe_modifiers_filters_rejected_topics_test() ->
+    User = <<"user">>,
+    SubscriberId = {[], <<"client">>},
+    Allowed = {[<<"rewritten">>], 1},
+    Rejected = {[<<"forbidden">>], not_allowed},
+    AuthSuccess =
+        fun(User0, SubscriberId0, Topics) ->
+            ?assertEqual(User, User0),
+            ?assertEqual(SubscriberId, SubscriberId0),
+            ?assertEqual([Allowed], Topics),
+            {ok, [1]}
+        end,
+    ?assertEqual(
+        {ok, [1, not_allowed]},
+        auth_on_subscribe_modifiers(User, SubscriberId, [Allowed, Rejected], AuthSuccess)
+    ).
+
+auth_on_subscribe_modifiers_all_rejected_test() ->
+    AuthSuccess = fun(_, _, _) -> error(should_not_subscribe_rejected_topics) end,
+    ?assertEqual(
+        {ok, [not_allowed]},
+        auth_on_subscribe_modifiers(
+            <<"user">>, {[], <<"client">>}, [{[<<"forbidden">>], not_allowed}], AuthSuccess
+        )
+    ).
+-endif.

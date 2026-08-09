@@ -14,11 +14,12 @@
 
 -module(vmq_webhooks_metrics).
 
--export([init/0, incr/2, incr/3, metrics/0]).
+-export([init/0, incr/2, incr/3, incr_auth/2, incr_auth/3, metrics/0]).
 
 -include_lib("vmq_server/include/vmq_metrics.hrl").
 
 -type counter_type() :: requests | errors | bytes_sent.
+-type auth_counter_type() :: cancelled | timeouts | elapsed_ms.
 -type hook() ::
     on_register
     | on_register_m5
@@ -46,6 +47,8 @@
     | on_client_offline
     | on_client_gone.
 
+-type auth_hook() :: auth_on_register | auth_on_register_m5.
+
 -spec metrics() -> [{Type, Labels, Id, Description, Name, Value}] when
     Type :: atom(),
     Labels :: [metric_label()],
@@ -55,11 +58,16 @@
     Value :: term().
 metrics() ->
     MetricKeys = [{H, CT} || H <- all_hooks(), CT <- all_counter_types()],
+    AuthMetricKeys = [{H, CT} || H <- all_auth_hooks(), CT <- all_auth_counter_types()],
     CounterRef = persistent_term:get(?MODULE),
     [
         hook_and_counter_type_to_metric(CounterRef, Hook, CounterType)
      || {Hook, CounterType} <- MetricKeys
-    ].
+    ] ++
+        [
+            auth_hook_and_counter_type_to_metric(CounterRef, Hook, CounterType)
+         || {Hook, CounterType} <- AuthMetricKeys
+        ].
 
 hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
     Index = met2idx(Hook, CounterType),
@@ -79,9 +87,29 @@ hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
     Value = counters:get(CounterRef, Index),
     {counter, [], Id, Id, Description, Value}.
 
+auth_hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
+    Index = auth_met2idx(Hook, CounterType),
+    HookBin = atom_to_binary(Hook, utf8),
+    CounterTypeBin = atom_to_binary(CounterType, utf8),
+    Name = <<"webhooks_", HookBin/binary, "_", CounterTypeBin/binary>>,
+    Id = binary_to_atom(Name, utf8),
+    Description =
+        case CounterType of
+            cancelled ->
+                <<"Number of ", HookBin/binary, " webhook requests cancelled due to client close">>;
+            timeouts ->
+                <<"Number of ", HookBin/binary, " webhook requests that timed out">>;
+            elapsed_ms ->
+                <<"Total elapsed milliseconds spent in ", HookBin/binary, " webhook requests">>
+        end,
+    Value = counters:get(CounterRef, Index),
+    {counter, [], Id, Id, Description, Value}.
+
 -spec init() -> ok.
 init() ->
-    NumCounters = length(all_hooks()) * length(all_counter_types()),
+    NumCounters =
+        length(all_hooks()) * length(all_counter_types()) +
+            length(all_auth_hooks()) * length(all_auth_counter_types()),
     CounterRef = counters:new(NumCounters, [write_concurrency]),
     persistent_term:put(?MODULE, CounterRef),
     application:set_env(vmq_webhooks, vmq_metrics_mfa, {?MODULE, metrics, []}).
@@ -94,6 +122,16 @@ incr(Hook, CounterType) ->
 incr(Hook, CounterType, Value) ->
     CounterRef = persistent_term:get(?MODULE),
     Index = met2idx(Hook, CounterType),
+    counters:add(CounterRef, Index, Value).
+
+-spec incr_auth(auth_hook(), auth_counter_type()) -> ok.
+incr_auth(Hook, CounterType) ->
+    incr_auth(Hook, CounterType, 1).
+
+-spec incr_auth(auth_hook(), auth_counter_type(), non_neg_integer()) -> ok.
+incr_auth(Hook, CounterType, Value) ->
+    CounterRef = persistent_term:get(?MODULE),
+    Index = auth_met2idx(Hook, CounterType),
     counters:add(CounterRef, Index, Value).
 
 -spec all_hooks() -> [hook()].
@@ -129,6 +167,14 @@ all_hooks() ->
 -spec all_counter_types() -> [counter_type()].
 all_counter_types() ->
     [requests, errors, bytes_sent].
+
+-spec all_auth_hooks() -> [auth_hook()].
+all_auth_hooks() ->
+    [auth_on_register, auth_on_register_m5].
+
+-spec all_auth_counter_types() -> [auth_counter_type()].
+all_auth_counter_types() ->
+    [cancelled, timeouts, elapsed_ms].
 
 -spec met2idx(hook(), counter_type()) -> non_neg_integer().
 met2idx(on_register, requests) ->
@@ -281,3 +327,17 @@ met2idx(on_client_offline, bytes_sent) ->
     74;
 met2idx(on_client_gone, bytes_sent) ->
     75.
+
+-spec auth_met2idx(auth_hook(), auth_counter_type()) -> non_neg_integer().
+auth_met2idx(auth_on_register, cancelled) ->
+    76;
+auth_met2idx(auth_on_register_m5, cancelled) ->
+    77;
+auth_met2idx(auth_on_register, timeouts) ->
+    78;
+auth_met2idx(auth_on_register_m5, timeouts) ->
+    79;
+auth_met2idx(auth_on_register, elapsed_ms) ->
+    80;
+auth_met2idx(auth_on_register_m5, elapsed_ms) ->
+    81.

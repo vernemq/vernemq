@@ -19,6 +19,9 @@
 -include_lib("kernel/include/logger.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([
     init/3,
@@ -1519,13 +1522,55 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess, State) ->
         {ok, Modifiers} ->
             NewTopics = maps:get(topics, Modifiers, []),
             NewProps = maps:get(properties, Modifiers, #{}),
-            case AuthSuccess(User, SubscriberId, NewTopics, NewProps) of
-                {ok, NewTopics1} -> {ok, Modifiers#{topics => NewTopics1}};
-                Res -> Res
-            end;
+            auth_on_subscribe_modifiers(
+                User, SubscriberId, NewTopics, NewProps, AuthSuccess, Modifiers
+            );
         {error, Error} ->
             {error, Error}
     end.
+
+auth_on_subscribe_modifiers(User, SubscriberId, Topics, Props, AuthSuccess, Modifiers) ->
+    {AllowedTopics, ReturnCodes} = split_subscribe_topics(Topics),
+    case AllowedTopics of
+        [] ->
+            {ok, Modifiers#{topics => ReturnCodes}};
+        _ ->
+            case AuthSuccess(User, SubscriberId, AllowedTopics, Props) of
+                {ok, AllowedReturnCodes} ->
+                    {ok, Modifiers#{
+                        topics => merge_subscribe_return_codes(ReturnCodes, AllowedReturnCodes)
+                    }};
+                Res ->
+                    Res
+            end
+    end.
+
+split_subscribe_topics(Topics) ->
+    {AllowedTopicsRev, ReturnCodesRev} =
+        lists:foldl(
+            fun
+                ({_Topic, QoS} = TopicQoS, {AllowedAcc, ReturnCodeAcc}) when
+                    QoS =:= 0; QoS =:= 1; QoS =:= 2
+                ->
+                    {[TopicQoS | AllowedAcc], [allowed | ReturnCodeAcc]};
+                ({_Topic, {QoS, SubOpts}} = TopicQoS, {AllowedAcc, ReturnCodeAcc}) when
+                    (QoS =:= 0 orelse QoS =:= 1 orelse QoS =:= 2) andalso is_map(SubOpts)
+                ->
+                    {[TopicQoS | AllowedAcc], [allowed | ReturnCodeAcc]};
+                ({_Topic, _ReturnCode} = TopicReturnCode, {AllowedAcc, ReturnCodeAcc}) ->
+                    {AllowedAcc, [TopicReturnCode | ReturnCodeAcc]}
+            end,
+            {[], []},
+            Topics
+        ),
+    {lists:reverse(AllowedTopicsRev), lists:reverse(ReturnCodesRev)}.
+
+merge_subscribe_return_codes([allowed | Rest], [ReturnCode | AllowedReturnCodes]) ->
+    [ReturnCode | merge_subscribe_return_codes(Rest, AllowedReturnCodes)];
+merge_subscribe_return_codes([ReturnCode | Rest], AllowedReturnCodes) ->
+    [ReturnCode | merge_subscribe_return_codes(Rest, AllowedReturnCodes)];
+merge_subscribe_return_codes([], []) ->
+    [].
 
 -type unsubsuccessfun() ::
     fun((subscriber_id(), [{topic(), qos()}]) -> ok | {error, not_ready}).
@@ -2442,3 +2487,37 @@ plugin_all_till_ok_authz(Hook, HookArgs, #state{authz_plugins = Plugins}) ->
 
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
+
+-ifdef(TEST).
+auth_on_subscribe_modifiers_filters_rejected_topics_test() ->
+    User = <<"user">>,
+    SubscriberId = {[], <<"client">>},
+    Props = #{},
+    Allowed = {[<<"rewritten">>], {1, #{no_local => false}}},
+    Rejected = {[<<"forbidden">>], 135},
+    Modifiers = #{topics => [Allowed, Rejected]},
+    AuthSuccess =
+        fun(User0, SubscriberId0, Topics, Props0) ->
+            ?assertEqual(User, User0),
+            ?assertEqual(SubscriberId, SubscriberId0),
+            ?assertEqual(Props, Props0),
+            ?assertEqual([Allowed], Topics),
+            {ok, [{[<<"rewritten">>], {1, #{no_local => false}}}]}
+        end,
+    ?assertEqual(
+        {ok, #{topics => [{[<<"rewritten">>], {1, #{no_local => false}}}, Rejected]}},
+        auth_on_subscribe_modifiers(
+            User, SubscriberId, [Allowed, Rejected], Props, AuthSuccess, Modifiers
+        )
+    ).
+
+auth_on_subscribe_modifiers_all_rejected_test() ->
+    Rejected = {[<<"forbidden">>], 135},
+    AuthSuccess = fun(_, _, _, _) -> error(should_not_subscribe_rejected_topics) end,
+    ?assertEqual(
+        {ok, #{topics => [Rejected]}},
+        auth_on_subscribe_modifiers(
+            <<"user">>, {[], <<"client">>}, [Rejected], #{}, AuthSuccess, #{topics => [Rejected]}
+        )
+    ).
+-endif.

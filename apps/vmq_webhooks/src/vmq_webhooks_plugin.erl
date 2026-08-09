@@ -43,6 +43,8 @@
 -behaviour(on_deliver_m5_hook).
 -behaviour(on_auth_m5_hook).
 
+-dialyzer({nowarn_function, ssl_options/1}).
+
 -export([
     auth_on_register/5,
     auth_on_register/6,
@@ -890,6 +892,7 @@ ssl_options(Endpoint) ->
         KeyFileOpts,
         KeyfilePasswordOpts
     ]).
+
 -spec maybe_ssl_opts(binary()) -> proplists:proplist().
 maybe_ssl_opts(Endpoint) ->
     case Endpoint of
@@ -899,7 +902,7 @@ maybe_ssl_opts(Endpoint) ->
         _ ->
             []
     end.
--spec maybe_call_endpoint(_, _, hook_name(), [{atom(), _}, ...]) -> any().
+-spec maybe_call_endpoint(_, _, hook_name(), [any()]) -> any().
 maybe_call_endpoint(Endpoint, EOpts, Hook, Args) when
     Hook =:= auth_on_register;
     Hook =:= auth_on_publish;
@@ -933,7 +936,7 @@ maybe_call_endpoint(Endpoint, EOpts, Hook, Args) ->
         binary(), binary()},
     map(),
     hook_name(),
-    [{atom(), _}, ...]
+    [any()]
 ) -> any().
 call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Method = post,
@@ -948,34 +951,27 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
         ] ++ maybe_ssl_opts(Endpoint),
     Args1 = filter_args(Args0, Hook, EOpts),
     Payload = encode_payload(Hook, Args1, EOpts),
+    AuthStart = maybe_auth_timer_start(Hook),
     Res =
-        case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
-            {ok, 200, RespHeaders, CRef} ->
-                case hackney:body(CRef) of
-                    {ok, Body} ->
-                        case vmq_json:is_json(Body) of
-                            true ->
-                                handle_response(
-                                    Hook,
-                                    parse_headers(RespHeaders),
-                                    vmq_json:decode(Body, [{labels, binary}, {return_maps, false}]),
-                                    EOpts
-                                );
-                            false ->
-                                {error, received_payload_not_json}
-                        end;
-                    {error, _} = E ->
-                        E
-                end;
-            {ok, Code, _, CRef} ->
-                hackney:close(CRef),
-                {error, {invalid_response_code, Code}};
-            {error, _} = E ->
-                E
+        case Hook of
+            auth_on_register ->
+                call_endpoint_auth_with_cancel(
+                    Method, Endpoint, Headers, Payload, Opts, Hook, EOpts
+                );
+            auth_on_register_m5 ->
+                call_endpoint_auth_with_cancel(
+                    Method, Endpoint, Headers, Payload, Opts, Hook, EOpts
+                );
+            _ ->
+                call_endpoint_sync(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts)
         end,
+    maybe_record_auth_metrics(Hook, AuthStart, Res),
     vmq_webhooks_metrics:incr(Hook, requests),
     vmq_webhooks_metrics:incr(Hook, bytes_sent, size(Payload)),
     case Res of
+        {error, request_cancelled_client_closed} ->
+            ?LOG_DEBUG("calling endpoint cancelled due to closed client connection", []),
+            {error, request_cancelled_client_closed};
         {decoded_error, Reason} ->
             vmq_webhooks_metrics:incr(Hook, errors),
             ?LOG_DEBUG("calling endpoint received error due to ~p", [Reason]),
@@ -988,9 +984,221 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             Res
     end.
 
+-spec maybe_auth_timer_start(hook_name()) -> undefined | integer().
+maybe_auth_timer_start(Hook) ->
+    case is_auth_register_hook(Hook) of
+        true -> erlang:monotonic_time(millisecond);
+        false -> undefined
+    end.
+
+-spec maybe_record_auth_metrics(hook_name(), undefined | integer(), any()) -> ok.
+maybe_record_auth_metrics(_Hook, undefined, _Res) ->
+    ok;
+maybe_record_auth_metrics(Hook, StartMs, Res) when
+    Hook =:= auth_on_register; Hook =:= auth_on_register_m5
+->
+    EndMs = erlang:monotonic_time(millisecond),
+    ElapsedMs = erlang:max(0, EndMs - StartMs),
+    vmq_webhooks_metrics:incr_auth(Hook, elapsed_ms, ElapsedMs),
+    case Res of
+        {error, request_cancelled_client_closed} ->
+            vmq_webhooks_metrics:incr_auth(Hook, cancelled);
+        {error, timeout} ->
+            vmq_webhooks_metrics:incr_auth(Hook, timeouts);
+        _ ->
+            ok
+    end;
+maybe_record_auth_metrics(_Hook, _StartMs, _Res) ->
+    ok.
+
+-spec is_auth_register_hook(hook_name()) -> boolean().
+is_auth_register_hook(auth_on_register) ->
+    true;
+is_auth_register_hook(auth_on_register_m5) ->
+    true;
+is_auth_register_hook(_) ->
+    false.
+
+-spec call_endpoint_sync(
+    atom(), binary(), [{binary(), binary()}], binary(), list(), hook_name(), map()
+) ->
+    any().
+call_endpoint_sync(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
+    case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
+        {ok, 200, RespHeaders, RespBody} ->
+            decode_endpoint_response(Hook, RespHeaders, RespBody, EOpts);
+        {ok, Code, _, _RespBody} ->
+            {error, {invalid_response_code, Code}};
+        {error, _} = E ->
+            E
+    end.
+
+-spec call_endpoint_auth_with_cancel(
+    atom(),
+    binary(),
+    [{binary(), binary()}],
+    binary(),
+    list(),
+    hook_name(),
+    map()
+) -> any().
+call_endpoint_auth_with_cancel(Method, Endpoint, Headers, Payload, Opts, Hook, EOpts) ->
+    case hackney:request(Method, Endpoint, Headers, Payload, [async | Opts]) of
+        {ok, ReqRef} ->
+            Deadline = auth_response_deadline(maps:get(response_timeout, EOpts)),
+            wait_auth_endpoint_response(
+                ReqRef,
+                Deadline,
+                Hook,
+                EOpts,
+                undefined,
+                undefined,
+                [],
+                []
+            );
+        {ok, _Code, _RespHeaders, _RespBody} ->
+            {error, invalid_response};
+        {error, _} = E ->
+            E
+    end.
+
+-spec wait_auth_endpoint_response(
+    pid(),
+    integer() | infinity,
+    hook_name(),
+    map(),
+    undefined | integer(),
+    undefined | list(),
+    [binary()],
+    [any()]
+) -> any().
+wait_auth_endpoint_response(
+    ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks, DeferredMessages
+) ->
+    Timeout = remaining_auth_response_timeout(Deadline),
+    receive
+        {hackney_response, ReqRef, {status, Code, _Reason}} ->
+            wait_auth_endpoint_response(
+                ReqRef, Deadline, Hook, EOpts, Code, RespHeaders, BodyChunks, DeferredMessages
+            );
+        {hackney_response, ReqRef, {headers, Headers}} ->
+            wait_auth_endpoint_response(
+                ReqRef, Deadline, Hook, EOpts, StatusCode, Headers, BodyChunks, DeferredMessages
+            );
+        {hackney_response, ReqRef, BodyChunk} when is_binary(BodyChunk) ->
+            wait_auth_endpoint_response(
+                ReqRef,
+                Deadline,
+                Hook,
+                EOpts,
+                StatusCode,
+                RespHeaders,
+                [BodyChunk | BodyChunks],
+                DeferredMessages
+            );
+        {hackney_response, ReqRef, done} ->
+            requeue_deferred_messages(DeferredMessages),
+            finalize_auth_endpoint_response(StatusCode, RespHeaders, BodyChunks, Hook, EOpts);
+        {hackney_response, ReqRef, {error, Reason}} ->
+            requeue_deferred_messages(DeferredMessages),
+            {error, Reason};
+        {tcp_closed, _} = Msg ->
+            cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
+            self() ! Msg,
+            {error, request_cancelled_client_closed};
+        {ssl_closed, _} = Msg ->
+            cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
+            self() ! Msg,
+            {error, request_cancelled_client_closed};
+        {tcp_error, _, _} = Msg ->
+            cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
+            self() ! Msg,
+            {error, request_cancelled_client_closed};
+        {ssl_error, _, _} = Msg ->
+            cancel_async_request(ReqRef),
+            requeue_deferred_messages(DeferredMessages),
+            self() ! Msg,
+            {error, request_cancelled_client_closed};
+        Other ->
+            wait_auth_endpoint_response(
+                ReqRef, Deadline, Hook, EOpts, StatusCode, RespHeaders, BodyChunks, [
+                    Other | DeferredMessages
+                ]
+            )
+    after Timeout ->
+        cancel_async_request(ReqRef),
+        requeue_deferred_messages(DeferredMessages),
+        {error, timeout}
+    end.
+
+-spec requeue_deferred_messages([any()]) -> ok.
+requeue_deferred_messages(Messages) ->
+    lists:foreach(fun(Msg) -> self() ! Msg end, lists:reverse(Messages)).
+
+-spec auth_response_deadline(timeout() | infinity) -> integer() | infinity.
+auth_response_deadline(infinity) ->
+    infinity;
+auth_response_deadline(Timeout) when is_integer(Timeout) ->
+    erlang:monotonic_time(millisecond) + Timeout.
+
+-spec remaining_auth_response_timeout(integer() | infinity) -> timeout() | infinity.
+remaining_auth_response_timeout(infinity) ->
+    infinity;
+remaining_auth_response_timeout(Deadline) when is_integer(Deadline) ->
+    erlang:max(0, Deadline - erlang:monotonic_time(millisecond)).
+
+-spec finalize_auth_endpoint_response(
+    undefined | integer(),
+    undefined | list(),
+    [binary()],
+    hook_name(),
+    map()
+) -> any().
+finalize_auth_endpoint_response(200, RespHeaders, BodyChunks, Hook, EOpts) when
+    is_list(RespHeaders)
+->
+    Body = iolist_to_binary(lists:reverse(BodyChunks)),
+    decode_endpoint_response(Hook, RespHeaders, Body, EOpts);
+finalize_auth_endpoint_response(Code, _, _, _Hook, _EOpts) when is_integer(Code) ->
+    {error, {invalid_response_code, Code}};
+finalize_auth_endpoint_response(_, _, _, _Hook, _EOpts) ->
+    {error, invalid_response}.
+
+-spec cancel_async_request(pid()) -> ok.
+cancel_async_request(ReqRef) ->
+    _ = catch hackney:close(ReqRef),
+    drain_async_responses(ReqRef),
+    ok.
+
+-spec drain_async_responses(pid()) -> ok.
+drain_async_responses(ReqRef) ->
+    receive
+        {hackney_response, ReqRef, _} ->
+            drain_async_responses(ReqRef)
+    after 0 ->
+        ok
+    end.
+
+-spec decode_endpoint_response(hook_name(), list(), binary(), map()) -> any().
+decode_endpoint_response(Hook, RespHeaders, Body, EOpts) ->
+    case vmq_json:is_json(Body) of
+        true ->
+            handle_response(
+                Hook,
+                parse_headers(RespHeaders),
+                vmq_json:decode(Body, [{labels, binary}, {return_maps, false}]),
+                EOpts
+            );
+        false ->
+            {error, received_payload_not_json}
+    end.
+
 -spec parse_headers([any()]) -> #{'max_age' => integer()}.
 parse_headers(Headers) ->
-    case hackney_headers:parse(<<"cache-control">>, Headers) of
+    case lookup_header(<<"cache-control">>, Headers) of
         CC when is_binary(CC) ->
             case parse_max_age(CC) of
                 MaxAge when is_integer(MaxAge) -> #{max_age => MaxAge};
@@ -999,6 +1207,19 @@ parse_headers(Headers) ->
         _ ->
             #{}
     end.
+
+-spec lookup_header(binary(), [any()]) -> binary() | undefined.
+lookup_header(_HeaderName, []) ->
+    undefined;
+lookup_header(HeaderName, [{K, V} | Rest]) when is_binary(K), is_binary(V) ->
+    case hackney_bstr:to_lower(K) of
+        HeaderName ->
+            V;
+        _ ->
+            lookup_header(HeaderName, Rest)
+    end;
+lookup_header(HeaderName, [_ | Rest]) ->
+    lookup_header(HeaderName, Rest).
 
 -spec parse_max_age(binary()) -> 'undefined' | integer() | {'error', 'badarg'}.
 parse_max_age(<<>>) -> undefined;
@@ -1218,7 +1439,7 @@ norm_payload(Mods, EOpts) ->
         Mods
     ).
 
--spec filter_args([{atom(), _}, ...], hook_name(), map()) -> [{atom(), _}].
+-spec filter_args([any()], hook_name(), map()) -> [any()].
 filter_args(Args, Hook, #{no_payload := true}) when
     Hook =:= auth_on_publish;
     Hook =:= auth_on_publish_m5
@@ -1227,7 +1448,7 @@ filter_args(Args, Hook, #{no_payload := true}) when
 filter_args(Args, _, _) ->
     Args.
 
--spec encode_payload(hook_name(), [{atom(), _}], map()) -> binary().
+-spec encode_payload(hook_name(), [any()], map()) -> binary().
 encode_payload(Hook, Args, Opts) when
     Hook =:= auth_on_subscribe_m5;
     Hook =:= on_subscribe_m5
