@@ -142,7 +142,7 @@ jobs:
                 ./rebar3 ct --suite="${SUITES}")
       - run: ./rebar3 cover --verbose
       - name: Archive coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: _build/ci_tests+test/cover/
@@ -153,7 +153,7 @@ jobs:
         run: |
           tar -czf ct_test_report.tar.gz _build/ci_tests+test/logs/
       - name: Archive CT test report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ ! cancelled() }}
         with:
           name: ct-test-report
@@ -240,7 +240,7 @@ jobs:
                 test -n "${SUITES}" &&
                 ./rebar3 ct --suite="${SUITES}")
       - name: Upload JUnit Test Report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always() # always run even if the previous step fails
         with:
           name: junit-test-results-${{ runner.os }}-${{ matrix.otp }}
@@ -283,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Event File
           path: ${{ github.event_path }}
