@@ -1,3 +1,5 @@
+## VerneMQ 2.2.0
+
 - Dependency: Update Hackney to 4.7.2.
 - vmq_webhooks: Improve webhook request handling by supporting cancellable auth webhook calls.
 - Adapt vmq_diversity to newer Luerl API return formats, related to Lua plugin loading and hook execution.
