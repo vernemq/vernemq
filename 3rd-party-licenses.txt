@@ -2304,6 +2304,8 @@ Apache License
    limitations under the License.
 
 mysql:
+(final license is LGPL-3.0, since this is an exception/extension to
+the GPL, both the GPL + LGPL license documents are included below)
 ---------------------------------------
 GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
