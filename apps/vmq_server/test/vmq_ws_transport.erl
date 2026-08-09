@@ -69,13 +69,14 @@ connect(Host, Port, Opts, Timeout) ->
             {ok, Handshake} = Transport:recv(Socket, 0, 6000),
             {ok, {http_response, {1, 1}, 101, "Switching Protocols"}, Rest}
 		= erlang:decode_packet(http, Handshake, []),
-            [Headers, <<>>] = do_decode_headers(
+            [Headers, WsRest] = do_decode_headers(
                                 erlang:decode_packet(httph, Rest, []), []),
             {'Connection', "Upgrade"} = lists:keyfind('Connection', 1, Headers),
             {'Upgrade', "websocket"} = lists:keyfind('Upgrade', 1, Headers),
             {"sec-websocket-accept", "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="}
 		= lists:keyfind("sec-websocket-accept", 1, Headers),
             ReturnSocket = return_socket(IsSSL, Socket),
+            store_rest(ReturnSocket, WsRest),
             case lists:keyfind("sec-websocket-protocol", 1, Headers) of
                 {"sec-websocket-protocol", "mqtt"} -> {ok, ReturnSocket};
                 {"sec-websocket-protocol", "mqttv3.1"} -> {ok, ReturnSocket};
