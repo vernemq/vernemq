@@ -48,6 +48,7 @@ groups() ->
          default_eccs_test,
          invalid_eccs_test,
          tls_handshake_timeout_test,
+         syslog_test,
          listener_auth_plugin_chain_test,
          listener_authz_plugin_chain_test,
          listener_auth_plugin_unknown_plugin_test,
@@ -399,6 +400,46 @@ tls_handshake_timeout_test(_Config) ->
     2000 = expect(Conf, [vmq_server, listeners, vmqs,  {{127,0,0,1}, 1234}, tls_handshake_timeout]),
     infinity = expect(Conf, [vmq_server, listeners, https,  {{127,0,0,1}, 443}, tls_handshake_timeout]).
 
+syslog_test(Config) ->
+    CAFile = dummy_file(Config, "syslog-ca.crt"),
+    rfc3164 = expect_vmq(
+        [{["log", "syslog"], "on"}],
+        [syslog, protocol]),
+    BaseConf = [
+        {["log", "syslog"], "on"},
+        {["log", "syslog", "remote", "host"], "syslog.example.com"},
+        {["log", "syslog", "remote", "port"], "6514"},
+        {["log", "syslog", "facility"], "local0"}
+    ],
+    {rfc3164, udp} = expect_vmq(
+        [{["log", "syslog", "remote", "protocol"], "udp"} | BaseConf],
+        [syslog, protocol]),
+    {rfc5424, udp} = expect_vmq(
+        [{["log", "syslog", "format"], "rfc5424"} | BaseConf],
+        [syslog, protocol]),
+    {rfc5424, tcp} = expect_vmq(
+        [{["log", "syslog", "format"], "rfc5424"},
+         {["log", "syslog", "remote", "protocol"], "tcp"} | BaseConf],
+        [syslog, protocol]),
+    {rfc5424, tls, [{verify, verify_peer}, {cacertfile, CAFile}]} = expect_vmq(
+        [{["log", "syslog", "format"], "rfc5424"},
+         {["log", "syslog", "remote", "protocol"], "tls"},
+         {["log", "syslog", "remote", "tls", "cafile"], CAFile} | BaseConf],
+        [syslog, protocol]),
+    case catch expect_vmq(
+        [{["log", "syslog", "remote", "protocol"], "tls"},
+         {["log", "syslog", "remote", "tls", "cafile"], CAFile} | BaseConf],
+        [syslog, protocol]) of
+        {{error, apply_translations, _}, _} -> ok;
+        _ -> ct:fail("Expected TLS SysLog to require rfc5424 format")
+    end,
+    "vernemq" = expect_vmq(
+        [{["log", "syslog", "app_name"], "vernemq"} | BaseConf],
+        [syslog, app_name]),
+    "syslog.example.com" = expect_vmq(BaseConf, [syslog, dest_host]),
+    6514 = expect_vmq(BaseConf, [syslog, dest_port]),
+    local0 = expect_vmq(BaseConf, [syslog, facility]).
+
 listener_auth_plugin_chain_test(_Config) ->
     Conf = [
             {["plugins", "vmq_webhooks"], "on"},
@@ -451,6 +492,19 @@ expect(Conf, Setting) ->
         Gen ->
             deep_find(Gen, Setting)
     end.
+
+expect_vmq(Conf, Setting) ->
+    Schema = cuttlefish_schema:files([root_schema_file()]),
+    case cuttlefish_generator:map(Schema, Conf ++ [{["log", "console"], "off"}]) of
+        {error, _, _} = Error ->
+            StackTrace = ?stacktrace,
+            throw({Error, StackTrace});
+        Generated ->
+            deep_find(Generated, Setting)
+    end.
+
+root_schema_file() ->
+    filename:join([code:lib_dir(vmq_server), "..", "..", "..", "..", "files", "vmq.schema"]).
 
 deep_find(Value, []) ->
     Value;
