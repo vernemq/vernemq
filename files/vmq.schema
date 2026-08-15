@@ -199,6 +199,50 @@
                                                    hidden
                                                  ]}.
 
+%% @doc The SysLog message format. Default rfc3164. TLS requires rfc5424.
+{mapping, "log.syslog.format", "syslog.protocol", [
+             {default, rfc3164},
+             {datatype, {enum, [rfc3164, rfc5424]}}
+            ]}.
+
+%% @doc The SysLog facility used for local and remote messages. Default daemon.
+{mapping, "log.syslog.facility", "syslog.facility", [
+             {default, daemon},
+             {datatype, {enum, [kern, kernel, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, ntp, logaudit, logalert, clock, local0, local1, local2, local3, local4, local5, local6, local7]}}
+            ]}.
+
+%% @doc The application name included in SysLog messages.
+{mapping, "log.syslog.app_name", "syslog.app_name", [
+             {datatype, string}
+            ]}.
+
+%% @doc The remote SysLog server hostname or IP address. Setting this enables
+%% remote SysLog delivery.
+{mapping, "log.syslog.remote.host", "syslog.dest_host", [
+               {datatype, string}
+              ]}.
+%% @doc The remote SysLog server port. Default 514.
+{mapping, "log.syslog.remote.port", "syslog.dest_port", [
+               {default, 514},
+               {datatype, integer},
+               {validators, ["syslog_port"]}
+              ]}.
+%% @doc The transport for remote SysLog delivery: udp, tcp, or tls. Default udp.
+{mapping, "log.syslog.remote.protocol", "syslog.protocol", [
+             {default, udp},
+             {datatype, {enum, [udp, tcp, tls]}}
+            ]}.
+%% @doc The CA certificate file used to verify the remote TLS SysLog server.
+%% Required when the remote protocol is tls.
+{mapping, "log.syslog.remote.tls.cafile", "syslog.protocol", [
+               {datatype, file}
+              ]}.
+
+{validator, "syslog_port", "must be between 1 and 65535",
+ fun(Port) ->
+   Port >= 1 andalso Port =< 65535
+ end}.
+
 %% @doc The minimal level for all loggers. Should stay "all".
 {mapping, "log.level", "kernel.logger_level", [{default, all},
                                                   {datatype, {enum, [all, debug, info, warning, error]}},
@@ -296,6 +340,27 @@
                       end,
 
 SyslogLoggerHandler
+ end
+}.
+
+{translation,
+ "syslog.protocol",
+ fun(Conf) ->
+  SyslogFormat = cuttlefish:conf_get("log.syslog.format", Conf),
+  case cuttlefish:conf_get("log.syslog.remote.protocol", Conf) of
+    udp ->
+      case cuttlefish:conf_get("log.syslog.remote.host", Conf, undefined) of
+        undefined -> SyslogFormat;
+        _ -> {SyslogFormat, udp}
+      end;
+    tcp -> {SyslogFormat, tcp};
+    tls ->
+      case {SyslogFormat, cuttlefish:conf_get("log.syslog.remote.tls.cafile", Conf, undefined)} of
+        {rfc3164, _} -> throw("log.syslog.format must be rfc5424 for TLS SysLog");
+        {rfc5424, undefined} -> throw("log.syslog.remote.tls.cafile is required for TLS SysLog");
+        {rfc5424, CAFile} -> {rfc5424, tls, [{verify, verify_peer}, {cacertfile, CAFile}]}
+      end
+  end
  end
 }.
 
