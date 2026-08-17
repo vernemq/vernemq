@@ -1,3 +1,5 @@
+- Enchancement: Extend configuration for `syslog` to support remote SysLog logging
+
 ## VerneMQ 2.2.0
 
 - Dependency: Update Hackney to 4.7.2.
