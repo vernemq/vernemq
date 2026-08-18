@@ -18,6 +18,7 @@
     {env, [
         {pool_max_connections, 100},
         {pool_timeout, 60000},
+        {connect_options, [{nodelay, true}]},
         {vmq_plugin_hooks, [
             {vmq_webhooks_plugin, auth_on_register, 5, []},
             {vmq_webhooks_plugin, auth_on_register, 6, []},
