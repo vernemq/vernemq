@@ -947,6 +947,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Opts =
         [
             {pool, Endpoint},
+            {connect_options, connect_options()},
             {recv_timeout, maps:get(response_timeout, EOpts)}
         ] ++ maybe_ssl_opts(Endpoint),
     Args1 = filter_args(Args0, Hook, EOpts),
@@ -983,6 +984,10 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
         Res ->
             Res
     end.
+
+-spec connect_options() -> [any()].
+connect_options() ->
+    application:get_env(vmq_webhooks, connect_options, [{nodelay, true}]).
 
 -spec maybe_auth_timer_start(hook_name()) -> undefined | integer().
 maybe_auth_timer_start(Hook) ->
