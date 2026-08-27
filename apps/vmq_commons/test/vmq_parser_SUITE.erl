@@ -29,11 +29,12 @@ all() ->
      enough_data_max_exceeded,
      enough_data_max_not_exceeded,
      not_enough_data_max_exceeded,
-     not_enough_data_max_not_exceeded,
-     parse_unparse_tests,
-     no_null_char_in_client,
-     subscribe_invalid_wildcard_in_word
-    ].
+      not_enough_data_max_not_exceeded,
+      parse_unparse_tests,
+      suback_rejects_invalid_return_codes,
+      no_null_char_in_client,
+      subscribe_invalid_wildcard_in_word
+     ].
 
 %%--------------------------------------------------------------------
 %% TEST CASES
@@ -121,6 +122,12 @@ parse_unparse_tests(_Config) ->
     compare_frame("pingreq", vmq_parser:gen_pingreq()),
     compare_frame("pingresp", vmq_parser:gen_pingresp()),
     compare_frame("disconnect", vmq_parser:gen_disconnect()).
+
+suback_rejects_invalid_return_codes(_Config) ->
+    {{mqtt_suback, 123, {error, cant_parse_acks}}, <<>>} =
+        vmq_parser:parse(<<16#90, 3, 0, 123, 3>>),
+    {{mqtt_suback, 123, {error, cant_parse_acks}}, <<>>} =
+        vmq_parser:parse(<<16#90, 3, 0, 123, 4>>).
 
 compare_frame(Test, Frame) ->
     io:format(user, "---- compare test: ~p~n", [Test]),

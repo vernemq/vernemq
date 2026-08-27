@@ -138,13 +138,13 @@ variable(
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt_puback{message_id = MessageId};
-variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt_pubrec{message_id = MessageId};
-variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt_pubrel{message_id = MessageId};
-variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt_pubcomp{message_id = MessageId};
 variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) when
     MessageId > 0
@@ -170,12 +170,12 @@ variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>)
         E ->
             E
     end;
-variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Acks/binary>>) ->
+variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Acks/binary>>) when MessageId > 0 ->
     #mqtt_suback{
         qos_table = parse_acks(Acks, []),
         message_id = MessageId
     };
-variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt_unsuback{message_id = MessageId};
 variable(<<?CONNECT:4, 0:4>>, <<L:16/big, PMagic:L/binary, _/binary>>) when
     not ((PMagic == ?PROTOCOL_MAGIC_311) or
@@ -312,10 +312,12 @@ parse_acks(<<>>, Acks) ->
     Acks;
 parse_acks(<<128:8, Rest/binary>>, Acks) ->
     parse_acks(Rest, [not_allowed | Acks]);
-parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks) when
+parse_acks(<<0:6, QoS:2, Rest/binary>>, Acks) when
     is_integer(QoS) and ((QoS >= 0) and (QoS =< 2))
 ->
-    parse_acks(Rest, [QoS | Acks]).
+    parse_acks(Rest, [QoS | Acks]);
+parse_acks(_, _) ->
+    {error, cant_parse_acks}.
 
 -spec serialise(mqtt_frame()) -> binary() | iolist().
 serialise(#mqtt_publish{

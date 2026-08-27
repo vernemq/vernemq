@@ -1,3 +1,4 @@
+- Spec compliance: enforce non-zero message ids.
 - Enchancement: Extend configuration for `syslog` to support remote SysLog logging
 
 ## VerneMQ 2.2.0

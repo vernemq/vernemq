@@ -148,19 +148,19 @@ variable(
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt5_puback{
         message_id = MessageId,
         reason_code = ?M5_SUCCESS,
         properties = #{}
     };
-variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
+variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) when MessageId > 0 ->
     #mqtt5_puback{
         message_id = MessageId,
         reason_code = ReasonCode,
         properties = #{}
     };
-variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
+variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedPubackProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_puback{
@@ -171,19 +171,19 @@ variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt5_pubrec{
         message_id = MessageId,
         reason_code = ?M5_SUCCESS,
         properties = #{}
     };
-variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
+variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) when MessageId > 0 ->
     #mqtt5_pubrec{
         message_id = MessageId,
         reason_code = ReasonCode,
         properties = #{}
     };
-variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
+variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedPubrecProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubrec{
@@ -194,19 +194,19 @@ variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt5_pubrel{
         message_id = MessageId,
         reason_code = ?M5_SUCCESS,
         properties = #{}
     };
-variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) when MessageId > 0 ->
     #mqtt5_pubrel{
         message_id = MessageId,
         reason_code = ReasonCode,
         properties = #{}
     };
-variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedPubrelProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubrel{
@@ -217,19 +217,19 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/bi
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) when MessageId > 0 ->
     #mqtt5_pubcomp{
         message_id = MessageId,
         reason_code = ?M5_SUCCESS,
         properties = #{}
     };
-variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
+variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) when MessageId > 0 ->
     #mqtt5_pubcomp{
         message_id = MessageId,
         reason_code = ReasonCode,
         properties = #{}
     };
-variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
+variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedPubcompProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubcomp{
@@ -240,7 +240,7 @@ variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) -
         {error, Reason} ->
             {error, Reason}
     end;
-variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
+variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedSubProps) of
         {ok, Properties, Topics} ->
             case parse_topics(Topics, ?SUBSCRIBE, []) of
@@ -256,7 +256,7 @@ variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
         E ->
             E
     end;
-variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
+variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedSubackProps) of
         {ok, Properties, RCData} ->
             case parse_acks(RCData, [], ?allowedSubackRCs) of
@@ -272,7 +272,7 @@ variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
         E ->
             E
     end;
-variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
+variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedUnsubProps) of
         {ok, Properties, TopicData} ->
             case parse_topics(TopicData, ?UNSUBSCRIBE, []) of
@@ -288,7 +288,7 @@ variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) -
         E ->
             E
     end;
-variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
+variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) when MessageId > 0 ->
     case parse_properties(Rest, ?allowedUnsubackProps) of
         {ok, Properties, RCData} ->
             case parse_acks(RCData, [], ?allowedUnsubackRCs) of
@@ -1288,6 +1288,8 @@ varint_data(Data) ->
         {VarInt, Rest} when byte_size(Rest) >= VarInt ->
             <<VarData:VarInt/binary, Rest1/binary>> = Rest,
             {VarData, Rest1};
+        {_VarInt, _Rest} ->
+            {error, cant_parse_varint};
         error ->
             {error, cant_parse_varint}
     end.
