@@ -206,7 +206,9 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) when 
         reason_code = ReasonCode,
         properties = #{}
     };
-variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when MessageId > 0 ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) when
+    MessageId > 0
+->
     case parse_properties(Rest, ?allowedPubrelProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubrel{
