@@ -33,6 +33,7 @@ register_config() ->
         [
             "vmq_webhooks.pool_max_connections",
             "vmq_webhooks.pool_timeout",
+            "vmq_webhooks.connect_options",
             "vmq_webhooks.cafile",
             "vmq_webhooks.certfile",
             "vmq_webhooks.keyfile",

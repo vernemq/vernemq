@@ -127,9 +127,25 @@
 %% @doc Configure the timeout that we keep the connection alive in the
 %% webhooks connection pool, expressed in milliseconds.
 {mapping, "vmq_webhooks.pool_timeout", "vmq_webhooks.pool_timeout",
- [{datatype, integer},
-  hidden,
-  {default, 60000}]}.
+  [{datatype, integer},
+   hidden,
+   {default, 60000}]}.
+
+%% @doc Set the TCP connection options for webhook HTTP client connections.
+%% The options will be given to gen_tcp:connect/4. Note that "binary",
+%% "{active, false}", and "{packet, raw}" are hard-coded options in Hackney.
+{mapping, "vmq_webhooks.connect_options", "vmq_webhooks.connect_options", [
+  {default, "[{nodelay, true}]"},
+  {datatype, string},
+  hidden
+]}.
+{translation, "vmq_webhooks.connect_options",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("vmq_webhooks.connect_options", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
 
 %% @doc Configure a Certificate Authority file to verify when calling
 %% HTTPS webhooks.

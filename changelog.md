@@ -1,3 +1,6 @@
+- Dependency: Update Hackney to 4.7.4
+- Enhancement: Add `connect_options` to vmq_webhooks, defaults to [{no_delay, true}]. Fixes
+  performance regression in Hackney (Nagle's).
 - Enchancement: Extend configuration for `syslog` to support remote SysLog logging
 
 ## VerneMQ 2.2.0
