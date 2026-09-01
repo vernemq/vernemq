@@ -86,6 +86,11 @@ vmq_listener_start_cmd() ->
                 (_) -> false
             end}
         ]},
+        {proxy_protocol_trusted_proxy, [{longname, "proxy_protocol_trusted_proxy"}]},
+        {proxy_protocol_timeout, [
+            {longname, "proxy_protocol_timeout"},
+            {typecast, fun(N) -> list_to_integer(N) end}
+        ]},
         {proxy_xff_trusted_intermediate, [{longname, "proxy_xff_trusted_intermediate"}]},
         {proxy_xff_support, [
             {longname, "proxy_xff_support"},
@@ -538,7 +543,11 @@ vmq_listener_start_usage() ->
         "  --proxy_protocol_use_cn_as_username\n",
         "      If PROXY v2 is enabled for this listener use this flag\n",
         "      to decide if the common name should replace the MQTT username\n",
-        "      Enabled by default (use `=false`) to disable\n\n",
+        "      Enabled by default (use `=false`) to disable\n",
+        "  --proxy_protocol_trusted_proxy=IpAddr[;IpAddr]\n",
+        "      Semicolon-separated list of trusted direct proxy IP addresses\n",
+        "  --proxy_protocol_timeout=Milliseconds\n",
+        "      Time to wait for the PROXY protocol header; defaults to 10000\n\n",
         "SSL Options\n\n",
         "  --ssl\n",
         "      use SSL for this listener, without this option, all other SSL\n",

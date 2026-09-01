@@ -54,9 +54,21 @@ start_link(Ref, Transport, Opts) ->
     {ok, Pid}.
 
 init(Ref, Parent, Transport, Opts) ->
+    case maybe_recv_tls_proxy_header(Ref, Transport, Opts) of
+        {ok, ProxyInfo} ->
+            init_after_proxy_header(Ref, Parent, Transport, Opts, ProxyInfo);
+        {error, {proxy_protocol_error, Error}} ->
+            ?LOG_WARNING("Proxy Protocol Error: ~p~n", [Error]),
+            ok;
+        {error, Reason} ->
+            ?LOG_DEBUG("could not get proxy protocol header: ~p", [Reason]),
+            ok
+    end.
+
+init_after_proxy_header(Ref, Parent, Transport, Opts, ProxyInfo) ->
     {ok, Socket} = ranch:handshake(Ref),
 
-    case peer_info(Socket, Transport, Opts) of
+    case peer_info(Socket, Transport, Opts, ProxyInfo) of
         {ok, {Peer, NewOpts}} ->
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState = FsmMod:init(Peer, NewOpts),
@@ -101,53 +113,100 @@ init(Ref, Parent, Transport, Opts) ->
             ok
     end.
 
--spec peer_info(any(), any(), list(any())) -> {ok, {peer(), list(any())}} | {error, any()}.
-peer_info(Socket, Transport, Opts) ->
+-spec maybe_recv_tls_proxy_header(ranch:ref(), any(), list(any())) ->
+    {ok, undefined | map()} | {error, any()}.
+maybe_recv_tls_proxy_header(Ref, ranch_ssl, Opts) ->
     case lists:keyfind(proxy_header, 1, Opts) of
         {proxy_header, true} ->
-            case Transport:recv_proxy_header(Socket, 10000) of
-                % request is not proxied, but direct. (like from a loadbalancer healthcheck)
-                {ok, #{command := local, version := _}} ->
-                    peer_info_no_proxy(undefined, Socket, Transport, Opts);
-                {ok,
-                    #{
-                        src_address := SrcAddr,
-                        src_port := SrcPort
-                    } = ProxyInfo} ->
-                    Peer = {SrcAddr, SrcPort},
-                    UseCN = proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true),
-                    case {maps:get(ssl, ProxyInfo, #{}), UseCN} of
-                        {#{cn := CN}, true} ->
-                            {ok, {Peer, [{preauth, CN} | Opts]}};
-                        _ ->
-                            peer_info_no_proxy(Peer, Socket, Transport, Opts)
-                    end;
-                {error, 'protocol_error', Error} ->
+            TrustedProxy = proplists:get_value(proxy_protocol_trusted_proxy, Opts, undefined),
+            Timeout = proplists:get_value(proxy_protocol_timeout, Opts, 10000),
+            case vmq_proxy_protocol:recv_proxy_header(Ref, Timeout, TrustedProxy) of
+                {ok, ProxyInfo} ->
+                    {ok, ProxyInfo};
+                {error, protocol_error, Error} ->
                     {error, {proxy_protocol_error, Error}};
                 {error, Error} ->
                     {error, Error}
             end;
         _ ->
-            peer_info_no_proxy(undefined, Socket, Transport, Opts)
+            {ok, undefined}
+    end;
+maybe_recv_tls_proxy_header(_, _, _) ->
+    {ok, undefined}.
+
+-spec peer_info(any(), any(), list(any()), undefined | map()) ->
+    {ok, {peer(), list(any())}} | {error, any()}.
+peer_info(Socket, Transport, Opts, undefined) ->
+    case lists:keyfind(proxy_header, 1, Opts) of
+        {proxy_header, true} ->
+            TrustedProxy = proplists:get_value(proxy_protocol_trusted_proxy, Opts, undefined),
+            case vmq_proxy_protocol:check_trusted_proxy(Socket, TrustedProxy) of
+                ok ->
+                    peer_info_proxy_header(Socket, Transport, Opts);
+                Error ->
+                    Error
+            end;
+        _ ->
+            peer_info_no_proxy(undefined, Socket, Transport, Opts, undefined)
+    end;
+peer_info(Socket, Transport, Opts, ProxyInfo) ->
+    peer_info_proxy(Socket, Transport, Opts, ProxyInfo).
+
+peer_info_proxy_header(Socket, Transport, Opts) ->
+    Timeout = proplists:get_value(proxy_protocol_timeout, Opts, 10000),
+    case vmq_proxy_protocol:recv_proxy_header(Socket, Timeout) of
+        % request is not proxied, but direct. (like from a loadbalancer healthcheck)
+        {ok, #{command := local, version := _} = ProxyInfo} ->
+            peer_info_no_proxy(undefined, Socket, Transport, Opts, ProxyInfo);
+        {ok,
+            #{
+                src_address := SrcAddr,
+                src_port := SrcPort
+            } = ProxyInfo} ->
+            Peer = {SrcAddr, SrcPort},
+            UseCN = proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true),
+            case {maps:get(ssl, ProxyInfo, #{}), UseCN} of
+                {#{cn := CN}, true} ->
+                    {ok,
+                        {Peer, [
+                            {preauth, CN} | maybe_add_conn_opts(Socket, Transport, Opts, ProxyInfo)
+                        ]}};
+                _ ->
+                    peer_info_no_proxy(Peer, Socket, Transport, Opts, ProxyInfo)
+            end;
+        {error, 'protocol_error', Error} ->
+            {error, {proxy_protocol_error, Error}};
+        {error, Error} ->
+            {error, Error}
     end.
 
-peer_info_no_proxy(undefined, Socket, Transport, Opts) ->
+peer_info_proxy(Socket, Transport, Opts, #{command := local, version := _} = ProxyInfo) ->
+    peer_info_no_proxy(undefined, Socket, Transport, Opts, ProxyInfo);
+peer_info_proxy(
+    Socket,
+    Transport,
+    Opts,
+    #{src_address := SrcAddr, src_port := SrcPort} = ProxyInfo
+) ->
+    Peer = {SrcAddr, SrcPort},
+    UseCN = proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true),
+    case {maps:get(ssl, ProxyInfo, #{}), UseCN} of
+        {#{cn := CN}, true} ->
+            {ok, {Peer, [{preauth, CN} | maybe_add_conn_opts(Socket, Transport, Opts, ProxyInfo)]}};
+        _ ->
+            peer_info_no_proxy(Peer, Socket, Transport, Opts, ProxyInfo)
+    end.
+
+peer_info_no_proxy(undefined, Socket, Transport, Opts, ProxyInfo) ->
     case Transport:peername(Socket) of
         {ok, Peer} ->
-            peer_info_no_proxy(Peer, Socket, Transport, Opts);
+            peer_info_no_proxy(Peer, Socket, Transport, Opts, ProxyInfo);
         {error, Error} ->
             {error, Error}
     end;
-peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
+peer_info_no_proxy(Peer, Socket, Transport, Opts, ProxyInfo) ->
     UseCN = proplists:get_value(use_identity_as_username, Opts, false),
-    ForwardConnOpts = proplists:get_value(forward_connection_opts, Opts, false),
-    Opts1 =
-        case {Transport, ForwardConnOpts} of
-            {ranch_ssl, true} ->
-                [{conn_opts, #{client_cert => vmq_ssl:client_cert(Socket)}} | Opts];
-            _ ->
-                Opts
-        end,
+    Opts1 = maybe_add_conn_opts(Socket, Transport, Opts, ProxyInfo),
     case {Transport, UseCN} of
         {ranch_ssl, true} ->
             CN = vmq_ssl:socket_to_common_name(Socket),
@@ -155,6 +214,29 @@ peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
         _ ->
             {ok, {Peer, Opts1}}
     end.
+
+maybe_add_conn_opts(Socket, ranch_ssl, Opts, ProxyInfo) ->
+    case proplists:get_value(forward_connection_opts, Opts, false) of
+        true ->
+            ConnOpts0 = #{client_cert => vmq_ssl:client_cert(Socket)},
+            ConnOpts =
+                case ProxyInfo of
+                    M when is_map(M) -> ConnOpts0#{proxy_protocol => M};
+                    _ -> ConnOpts0
+                end,
+            [{conn_opts, ConnOpts} | Opts];
+        false ->
+            Opts
+    end;
+maybe_add_conn_opts(_, ranch_tcp, Opts, ProxyInfo) ->
+    case {proplists:get_value(forward_connection_opts, Opts, false), ProxyInfo} of
+        {true, M} when is_map(M) ->
+            [{conn_opts, #{proxy_protocol => M}} | Opts];
+        _ ->
+            Opts
+    end;
+maybe_add_conn_opts(_, _, Opts, _) ->
+    Opts.
 
 start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent, ActiveN) ->
     active(MaskedSocket, ActiveN),
