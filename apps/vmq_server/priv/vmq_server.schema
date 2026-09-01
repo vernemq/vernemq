@@ -958,9 +958,43 @@
                                                                  ]}.
 
 {mapping, "listener.ssl.$name", "vmq_server.listeners", [
-                                                            {commented, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
-                                                            {datatype, ip}
-                                                           ]}.
+                                                             {commented, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
+                                                             {datatype, ip}
+                                                            ]}.
+
+{mapping, "listener.ssl.proxy_protocol", "vmq_server.listeners", [
+                                                                   {default, off},
+                                                                   {datatype, flag},
+                                                                   hidden
+                                                                  ]}.
+{mapping, "listener.ssl.$name.proxy_protocol", "vmq_server.listeners", [
+                                                                         {datatype, flag},
+                                                                         hidden
+                                                                        ]}.
+
+%% @doc listener.ssl.proxy_protocol_trusted_proxy configures the list of direct
+%% proxy IP addresses allowed to send PROXY protocol headers to MQTT TLS
+%% listeners. The list is semicolon-separated. If unset, no direct proxy IP
+%% check is performed.
+{mapping, "listener.ssl.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
+                                                                   {default, ""},
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}.
+{mapping, "listener.ssl.$name.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}.
+
+{mapping, "listener.ssl.proxy_protocol_timeout", "vmq_server.listeners", [
+                                                                   {default, 10000},
+                                                                   {datatype, integer},
+                                                                   hidden
+                                                                  ]}.
+{mapping, "listener.ssl.$name.proxy_protocol_timeout", "vmq_server.listeners", [
+                                                                         {datatype, integer},
+                                                                         hidden
+                                                                        ]}.
 
 %% @doc listener.tcp.proxy_protocol specifies if the listener accepts
 %% connections opened by a proxy server that supports the PROXY protocol. This
@@ -973,12 +1007,36 @@
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.tcp.$name.proxy_protocol", "vmq_server.listeners", [
-                                                                        {datatype, flag},
-                                                                        hidden
-                                                                       ]}.
+                                                                         {datatype, flag},
+                                                                         hidden
+                                                                        ]}.
+
+%% @doc listener.tcp.proxy_protocol_trusted_proxy configures the list of direct
+%% proxy IP addresses allowed to send PROXY protocol headers to MQTT TCP
+%% listeners. The list is semicolon-separated. If unset, no direct proxy IP
+%% check is performed.
+{mapping, "listener.tcp.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
+                                                                   {default, ""},
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}.
+{mapping, "listener.tcp.$name.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}.
+
+{mapping, "listener.tcp.proxy_protocol_timeout", "vmq_server.listeners", [
+                                                                   {default, 10000},
+                                                                   {datatype, integer},
+                                                                   hidden
+                                                                  ]}.
+{mapping, "listener.tcp.$name.proxy_protocol_timeout", "vmq_server.listeners", [
+                                                                         {datatype, integer},
+                                                                         hidden
+                                                                        ]}.
 
 {mapping, "listener.ws.proxy_protocol", "vmq_server.listeners", [
-                                                                  {default, off},
+                                                                   {default, off},
                                                                   {datatype, flag},
                                                                   hidden
                                                                  ]}.
@@ -1036,16 +1094,24 @@
 %% @doc If 'listener.tcp.proxy_protocol' is enabled, you may enable
 %% 'listener.tcp.proxy_protocol_use_cn_as_username' to use the CN
 %% (sni_hostname) passed via the PROXY protocol instead of the MQTT
-%% username. The option can be specified either for all tcp or
+%% username. The option can be specified either for all tcp, ssl, or
 %% websocket listeners:
 %%
 %%     - listener.tcp.proxy_protocol_use_cn_as_username
+%%     - listener.ssl.proxy_protocol_use_cn_as_username
 %%     - listener.ws.proxy_protocol_use_cn_as_username
 %%
 %% or for a specific listener:
 %%
 %%     - listener.tcp.my_tcp_listener.use_cn_as_username
+%%     - listener.ssl.my_ssl_listener.use_cn_as_username
 %%     - listener.ws.my_ws_listener.use_cn_as_username
+{mapping, "listener.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                            {default, on},
+                                                                            {datatype, flag},
+                                                                            hidden
+                                                                           ]}.
+
 {mapping, "listener.tcp.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
                                                                             {default, on},
                                                                             {datatype, flag},
@@ -1053,12 +1119,23 @@
                                                                            ]}.
 
 {mapping, "listener.tcp.$name.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                                   {datatype, flag},
+                                                                                   hidden
+                                                                                  ]}.
+
+{mapping, "listener.ssl.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                            {default, on},
+                                                                            {datatype, flag},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.ssl.$name.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
                                                                                   {datatype, flag},
                                                                                   hidden
                                                                                  ]}.
 
 {mapping, "listener.ws.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
-                                                                           {default, on},
+                                                                            {default, on},
                                                                            {datatype, flag},
                                                                            hidden
                                                                           ]}.

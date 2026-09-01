@@ -142,6 +142,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
             ListenerOpts = [
                 {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
             ],
+            maybe_warn_untrusted_proxy_protocol(Type, AAddr, Port, ListenerOpts),
             ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
             TransportMod = transport_for_type(Type),
             TransportOptions = maps:from_list(
@@ -462,9 +463,19 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults2]
         end,
     MaybeProxyDefaults2 =
+        case lists:keyfind(proxy_protocol_trusted_proxy, 1, Opts) of
+            false -> MaybeProxyDefaults;
+            {_, V3} -> [{proxy_protocol_trusted_proxy, V3} | MaybeProxyDefaults]
+        end,
+    MaybeProxyDefaults3 =
+        case lists:keyfind(proxy_protocol_timeout, 1, Opts) of
+            false -> MaybeProxyDefaults2;
+            {_, V4} -> [{proxy_protocol_timeout, V4} | MaybeProxyDefaults2]
+        end,
+    MaybeProxyDefaults4 =
         case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
             false ->
-                MaybeProxyDefaults;
+                MaybeProxyDefaults3;
             {_, V2} ->
                 [
                     {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
@@ -472,7 +483,7 @@ default_session_opts(Opts) ->
                     {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, undefined)},
                     {xff_use_cn_as_username,
                         proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
-                    | MaybeProxyDefaults
+                    | MaybeProxyDefaults3
                 ]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3, 4]),
@@ -491,7 +502,7 @@ default_session_opts(Opts) ->
         {active_n, ActiveN},
         {auth_plugins, AuthPlugins},
         {authz_plugins, AuthzPlugins}
-        | MaybeProxyDefaults2
+        | MaybeProxyDefaults4
     ],
     case proplists:get_value(forward_connection_opts, Opts, false) of
         true ->
@@ -541,6 +552,29 @@ validate_plugin_chain_members(Key, [Plugin | _], _EnabledPlugins) ->
     {error, {invalid_plugin_name, Key, Plugin}};
 validate_plugin_chain_members(_Key, [], _EnabledPlugins) ->
     ok.
+
+maybe_warn_untrusted_proxy_protocol(Type, Addr, Port, Opts) ->
+    case
+        {
+            proplists:get_value(proxy_protocol, Opts, false),
+            proplists:get_value(proxy_protocol_trusted_proxy, Opts, "")
+        }
+    of
+        {true, ""} ->
+            ?LOG_WARNING(
+                "PROXY protocol is enabled on ~p listener(~p, ~p) without proxy_protocol_trusted_proxy; "
+                "only expose this listener to trusted proxies",
+                [Type, Addr, Port]
+            );
+        {true, undefined} ->
+            ?LOG_WARNING(
+                "PROXY protocol is enabled on ~p listener(~p, ~p) without proxy_protocol_trusted_proxy; "
+                "only expose this listener to trusted proxies",
+                [Type, Addr, Port]
+            );
+        _ ->
+            ok
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
