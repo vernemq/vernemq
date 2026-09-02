@@ -89,6 +89,7 @@ all() ->
      cluster_leave_dead_node_test,
      shared_subs_random_policy_test,
      shared_subs_prefer_local_policy_test,
+     shared_subs_prefer_local_ignores_stale_local_subscribers,
      shared_subs_local_only_policy_test,
      cross_node_publish_subscribe,
      late_join_node_syncs_subscriptions,
@@ -622,6 +623,56 @@ shared_subs_prefer_local_policy_test(Config) ->
 
     %% cleanup
     [ok = gen_tcp:close(S) || S <- LocalSubscriberSockets ++ RemoteSubscriberSockets],
+    ok.
+
+shared_subs_prefer_local_ignores_stale_local_subscribers(Config) ->
+    ensure_cluster(Config),
+    [{RestartPeer, RestartNodeName, RestartNodePort}, {_, _, OtherNodePort} | _] = Nodes =
+        nodes_(Config),
+    set_shared_subs_policy(prefer_local, nodenames(Config)),
+
+    SharedTopic = <<"$share/share/sharedtopic">>,
+    LocalSubSocket = connect(RestartNodePort,
+                             <<"stale-local-shared-subscriber">>,
+                             [{keepalive, 60}, {clean_session, true}]),
+    subscribe(LocalSubSocket, SharedTopic, 1),
+    RemoteSubSocket = connect(OtherNodePort,
+                              <<"remote-shared-subscriber">>,
+                              [{keepalive, 60}, {clean_session, true}]),
+    subscribe(RemoteSubSocket, SharedTopic, 1),
+
+    ok =
+        wait_until_converged(Nodes,
+                             fun(N) -> rpc:call(N, vmq_reg, total_subscriptions, []) end,
+                             [{total, 2}]),
+
+    ok = vmq_cluster_test_utils:stop_peer(RestartPeer, RestartNodeName),
+    {ok, _, _RestartNodeName} =
+        vmq_cluster_test_utils:start_node(RestartNodeName,
+                                          Config,
+                                          ?FUNCTION_NAME),
+    {ok, _} =
+        rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
+    ok = rpc:call(RestartNodeName, vmq_auth, register_hooks, []),
+
+    ok =
+        wait_until_converged(Nodes,
+                             fun(N) -> rpc:call(N, vmq_reg, total_subscriptions, []) end,
+                             [{total, 2}]),
+
+    PublisherSocket = connect(RestartNodePort,
+                              <<"stale-local-shared-publisher">>,
+                              [{keepalive, 60}, {clean_session, true}]),
+    Payloads = publish_to_topic(PublisherSocket, <<"sharedtopic">>, 1, 2),
+    ok = gen_tcp:send(PublisherSocket, packet:gen_disconnect()),
+    ok = gen_tcp:close(PublisherSocket),
+
+    spawn_receivers([RemoteSubSocket]),
+    receive_msgs(Payloads),
+    receive_nothing(200),
+
+    ok = gen_tcp:send(RemoteSubSocket, packet:gen_disconnect()),
+    ok = gen_tcp:close(RemoteSubSocket),
     ok.
 
 shared_subs_local_only_policy_test(Config) ->
