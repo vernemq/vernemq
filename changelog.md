@@ -1,3 +1,4 @@
+- Bugfix: Aggregate labelless graphite metrics to summarize instead of drop metrics
 - Bugfix: Fix `vmq_swc` dot-key-map GC on standalone nodes by ensuring the local watermark row is initialized. 
 - Dependency: Update Hackney to 4.7.4
 - Enhancement: Add `connect_options` to vmq_webhooks, defaults to [{no_delay, true}]. Fixes

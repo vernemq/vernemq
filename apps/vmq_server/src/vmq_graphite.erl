@@ -184,7 +184,7 @@ handle_info(timeout, Socket) ->
                             end
                     end,
                     false,
-                    vmq_metrics:metrics(#{aggregate => false})
+                    vmq_metrics:metrics(#{aggregate => not IncludeLabels})
                 ),
             case DoReconnect of
                 true ->

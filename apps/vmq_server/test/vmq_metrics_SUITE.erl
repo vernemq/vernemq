@@ -11,6 +11,7 @@
 -export([simple_systree_test/1,
          histogram_systree_test/1,
          simple_graphite_test/1,
+         simple_graphite_aggregation_test/1,
          simple_prometheus_test/1,
          simple_cli_test/1]).
 
@@ -33,7 +34,7 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(retry_interval, 10),
     application:set_env(vmq_server, vmq_metrics_mfa, {?MODULE, plugin_metrics, []}),
     application:set_env(vmq_server, http_modules_auth, #{vmq_metrics_http => "noauth"}),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     vmq_metrics:reset_counters(),
     Config.
 
@@ -50,6 +51,7 @@ all() ->
     [simple_systree_test,
      histogram_systree_test,
      simple_graphite_test,
+     simple_graphite_aggregation_test,
      simple_prometheus_test,
      simple_cli_test].
 
@@ -97,6 +99,35 @@ simple_graphite_test(_) ->
     true = recv_data(GraphiteSocket2, WantLabels),
 
     gen_tcp:close(SubSocket),
+    gen_tcp:close(GraphiteSocket2),
+    gen_tcp:close(LSocket).
+
+simple_graphite_aggregation_test(_) ->
+    vmq_server_cmd:set_config(graphite_enabled, true),
+    vmq_server_cmd:set_config(graphite_host, "localhost"),
+    vmq_server_cmd:set_config(graphite_interval, 1000),
+    vmq_server_cmd:set_config(graphite_include_labels, false),
+    % one MQTT v4 and one MQTT v5 subscribe, so mqtt.subscribe.received
+    % has to be aggregated across both label variants to be correct
+    SubSocket = sample_subscribe(),
+    SubSocketM5 = sample_subscribe_m5(),
+    {ok, LSocket} = gen_tcp:listen(2003, [binary, {packet, raw},
+                                          {active, false},
+                                          {reuseaddr, true}]),
+    {ok, GraphiteSocket1} = gen_tcp:accept(LSocket), %% vmq_graphite connects
+    Want = [<<"mqtt.subscribe.received 2">>], %% Aggregated both the version 3.1.1 & version 5 into the same metric
+    true = recv_data(GraphiteSocket1, Want),
+    gen_tcp:close(GraphiteSocket1),
+
+    vmq_server_cmd:set_config(graphite_include_labels, true),
+    {ok, GraphiteSocket2} = gen_tcp:accept(LSocket), %% vmq_graphite connects
+    WantLabels = [<<"mqtt.subscribe.received 1">>,
+                  <<"mqtt.subscribe.received.mqtt_version_4 1">>,
+                  <<"mqtt.subscribe.received.mqtt_version_5 1">>],
+    true = recv_data(GraphiteSocket2, WantLabels),
+    
+    gen_tcp:close(SubSocket),
+    gen_tcp:close(SubSocketM5),
     gen_tcp:close(GraphiteSocket2),
     gen_tcp:close(LSocket).
 
@@ -190,11 +221,19 @@ plugin_metrics() ->
       {10, 100, #{10 => 4,  100 => 6, 1000 => 8, infinity => 10}}}].
 
 enable_on_subscribe() ->
-    vmq_plugin_mgr:enable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
+           [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
+                     convert, 4}}]).
 disable_on_subscribe() ->
-    vmq_plugin_mgr:disable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
+           [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
+                      convert, 4}}]).
 
 hook_auth_on_subscribe(_, _, _) -> ok.
 
@@ -207,6 +246,18 @@ sample_subscribe() ->
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     ok = packet:expect_packet(SubSocket, "suback", Suback),
+    SubSocket.
+
+sample_subscribe_m5() ->
+    %% let the metrics system do some increments
+    Connect = packetv5:gen_connect("metrics-test-m5", [{keepalive,60}]),
+    Connack = packetv5:gen_connack(),
+    SubTopic = packetv5:gen_subtopic(<<"$SYS/+/mqtt/subscribe/received">>, 0),
+    Subscribe = packetv5:gen_subscribe(53, [SubTopic], #{}),
+    Suback = packetv5:gen_suback(53, [0], #{}),
+    {ok, SubSocket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = packetv5:expect_frame(SubSocket, Suback),
     SubSocket.
 
 histogram_systree_test(Suffix, Val) ->
