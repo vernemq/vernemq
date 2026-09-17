@@ -499,7 +499,7 @@ subscribe_retain_handling_flags_test(Cfg) ->
 
     %% dont_send
     {ok, Socket3} = packetv5:do_client_connect(Connect, Connack, []),
-    ok = SubFun(Socket3, Topic, 0, dont_send),
+    ok = SubFun(Socket3, Topic, 4, dont_send),
     {error, timeout} = gen_tcp:recv(Socket3, 0, 100),
 
     %% send_if_new_sub
@@ -598,4 +598,3 @@ disable_on_publish() ->
 disable_on_message_drop() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            on_message_drop, ?MODULE, hook_on_message_drop, 3).
-
