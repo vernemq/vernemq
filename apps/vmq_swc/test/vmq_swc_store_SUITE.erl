@@ -53,6 +53,8 @@ init_per_testcase(init_sync_procedure_on_test, Config) ->
     Config;
 init_per_testcase(store_restart_test, Config) ->
     init_per_testcase(basic_store_test, Config);
+init_per_testcase(standalone_dkm_gc_test, Config) ->
+    init_per_testcase(basic_store_test, Config);
 init_per_testcase(bad_convertfun_test, Config) ->
     init_per_testcase(basic_store_test, Config);
 init_per_testcase(init_sync_procedure_off_test, Config) ->
@@ -81,6 +83,8 @@ end_per_testcase(basic_store_test, _Config) ->
     application:stop(vmq_swc);
 end_per_testcase(store_restart_test, _Config) ->
     application:stop(vmq_swc);
+end_per_testcase(standalone_dkm_gc_test, _Config) ->
+    application:stop(vmq_swc);
 end_per_testcase(bad_convertfun_test, _Config) ->
     application:stop(vmq_swc);
 end_per_testcase(init_sync_procedure_off_test, _Config) ->
@@ -106,6 +110,7 @@ all() ->
 
 groups() ->
     AllTests = [basic_store_test,
+                standalone_dkm_gc_test,
                 init_sync_procedure_off_test,
                 init_sync_procedure_on_test,
                 init_sync_persistent_update_test,
@@ -144,6 +149,27 @@ basic_store_test(_Config) ->
               KVsForPrefix = vmq_swc:fold(basic, fun(K,V, Acc) -> [{K, V}|Acc] end, [], P, []),
               ?assertEqual(KVsForPrefix, maps:get(P, KVPairsByPrefix))
         end, Prefixes).
+
+standalone_dkm_gc_test(_Config) ->
+    Group = basic,
+    StoreName = list_to_atom("vmq_swc_store_" ++ atom_to_list(Group)),
+    Prefix = {standalone, dkm_gc},
+    Key = key1,
+    SKey = sext:encode({Prefix, Key}),
+
+    NodeClock = vmq_swc_store:node_clock_by_storename(StoreName),
+    [Id] = swc_node:ids(NodeClock),
+    Watermark = vmq_swc_store:watermark_by_storename(StoreName),
+    ?assert(lists:member(Id, swc_watermark:peers(Watermark))),
+
+    ok = vmq_swc:put(Group, Prefix, Key, value1, []),
+    DKM0 = vmq_swc_store:get_dkm_by_storename(StoreName),
+    ?assert(lists:keymember(SKey, 1, maps:get(latest, vmq_swc_dkm:dump(DKM0)))),
+
+    ok = vmq_swc:delete(Group, Prefix, Key),
+    ok = vmq_swc_store:do_gc(StoreName, node()),
+    DKM1 = vmq_swc_store:get_dkm_by_storename(StoreName),
+    ?assertNot(lists:keymember(SKey, 1, maps:get(latest, vmq_swc_dkm:dump(DKM1)))).
 
 init_sync_procedure_off_test(_Config) ->
     Config = vmq_swc:config(basic),

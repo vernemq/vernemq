@@ -1006,13 +1006,14 @@ set_peers(
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
+    MissingWatermarkPeers = NewPeers -- swc_watermark:peers(WM0),
 
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
     ?LOG_DEBUG("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
 
     {NodeClock, Watermark} =
-        case {AddedPeers, LeftPeers} of
-            {[], []} ->
+        case {AddedPeers, LeftPeers, MissingWatermarkPeers} of
+            {[], [], []} ->
                 {LocalClock0, WM0};
             _ ->
                 %% Ensure the node clock contains all required peers
