@@ -1,3 +1,6 @@
+## VerneMQ 2.2.1
+
+- Bugfix: Fix stale local shared subscriptions after trie restart
 - Spec compliance: enforce non-zero message ids.
 - Bugfix: Aggregate labelless graphite metrics to summarize instead of drop metrics
 - Bugfix: Fix `vmq_swc` dot-key-map GC on standalone nodes by ensuring the local watermark row is initialized. 
