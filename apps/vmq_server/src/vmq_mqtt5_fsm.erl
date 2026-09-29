@@ -673,7 +673,7 @@ connected(#mqtt5_pubcomp{message_id = MessageId, reason_code = RC}, State) ->
             _ = vmq_metrics:incr(?MQTT5_PUBCOMP_INVALID_ERROR),
             %% TODOv5: we should probably not terminate normally here
             %% but use one of the new reason codes.
-            terminate(?NORMAL_DISCONNECT, State)
+            terminate(?INVALID_PUBCOMP_ERROR, State)
     end;
 connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties = Props0}, State) ->
     #state{
