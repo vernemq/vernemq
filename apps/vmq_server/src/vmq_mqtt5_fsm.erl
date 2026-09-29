@@ -420,8 +420,9 @@ pre_connect_auth(
     },
     State
 ) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
-    terminate_by_client(RC, Properties, State);
+    RCN = disconnect_rc2rcn(RC),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RCN}),
+    terminate_by_client(RC, RCN, Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
 
@@ -835,8 +836,9 @@ connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
     {State, [serialise_frame(Frame)]};
 connected(#mqtt5_disconnect{properties = Properties, reason_code = RC}, State) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
-    terminate_by_client(RC, Properties, State);
+    RCN = disconnect_rc2rcn(RC),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RCN}),
+    terminate_by_client(RC, RCN, Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
@@ -960,8 +962,8 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
--spec terminate_by_client(reason_code(), properties(), state()) -> any().
-terminate_by_client(RC, Props0, #state{queue_pid = QPid} = State) ->
+-spec terminate_by_client(reason_code(), reason_code_name(), properties(), state()) -> any().
+terminate_by_client(RC, RCN, Props0, #state{queue_pid = QPid} = State) ->
     OldSInt = State#state.session_expiry_interval,
     NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
     {Out, NewState} =
@@ -991,7 +993,13 @@ terminate_by_client(RC, Props0, #state{queue_pid = QPid} = State) ->
             %% but we do for now.
             schedule_last_will_msg(NewState)
     end,
+    ProtoReason = terminate_proto_reason(client_disconnect_reason(RCN)),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT, ProtoReason}),
+    record_disconnect_reason(NewState, ProtoReason),
     {stop, normal, Out}.
+
+client_disconnect_reason(?NORMAL_DISCONNECT) -> ?CLIENT_DISCONNECT;
+client_disconnect_reason(RCN) -> RCN.
 
 -spec terminate(reason_code_name() | {error, any()}, state()) -> any().
 terminate(Reason, State) ->
@@ -1033,10 +1041,41 @@ terminate(
             _ ->
                 [gen_disconnect(Reason, Props)]
         end,
+    ProtoReason = terminate_proto_reason(Reason),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT, ProtoReason}),
+    record_disconnect_reason(State, ProtoReason),
     {stop, terminate_reason(Reason), Out}.
+
+record_disconnect_reason(
+    #state{queue_pid = QueuePid, username = Username},
+    ProtoReason
+) when is_pid(QueuePid) ->
+    try
+        vmq_queue:set_username(QueuePid, normalise_username(Username)),
+        vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason)
+    catch
+        exit:Error ->
+            lager:debug("can't record disconnect reason ~p due to ~p", [ProtoReason, Error]),
+            ok
+    end;
+record_disconnect_reason(_State, _ProtoReason) ->
+    ok.
 
 terminate_reason(Reason) ->
     vmq_mqtt_fsm_util:terminate_reason(Reason).
+
+terminate_proto_reason(Reason) ->
+    NewReason =
+        case Reason of
+            {error, {unexpected_message, _}} -> ?UNEXPECTED_FRAME_TYPE;
+            {error, {wrong_auth_method, _}} -> ?WRONG_AUTH_METHOD;
+            {error, {queue_down, _QPid, _}} -> ?QUEUE_DOWN;
+            _ -> Reason
+        end,
+    vmq_mqtt_fsm_util:terminate_proto_reason(NewReason).
+
+normalise_username({preauth, UserName}) -> UserName;
+normalise_username(UserName) -> UserName.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal

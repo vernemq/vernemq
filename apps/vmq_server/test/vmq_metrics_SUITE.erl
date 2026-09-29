@@ -1,4 +1,5 @@
 -module(vmq_metrics_SUITE).
+-include("../src/vmq_metrics.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -13,7 +14,8 @@
          histogram_systree_test/1,
          simple_graphite_test/1,
          simple_prometheus_test/1,
-         simple_cli_test/1]).
+         simple_cli_test/1,
+         disconnect_reasons_are_in_lockstep_test/1]).
 
 -export([hook_auth_on_subscribe/4]).
 -export([plugin_metrics/0]).
@@ -57,10 +59,54 @@ groups() ->
      histogram_systree_test,
      simple_graphite_test,
      simple_prometheus_test,
-     simple_cli_test],
+     simple_cli_test,
+     disconnect_reasons_are_in_lockstep_test],
     [
         {mqtt, [], Tests}
     ].
+
+%% A disconnect reason is spread over four places that have to agree:
+%% the protobuf enum, the ?REASON_* macros, met2idx/1 and the metric
+%% definitions. met2idx/1 has no catch-all, so a reason that reaches
+%% vmq_metrics:incr/1 without an index crashes the session that is
+%% trying to terminate. Walk the protobuf enum - the one list that is
+%% introspectable at runtime - and prove every symbol survives the
+%% other three.
+disconnect_reasons_are_in_lockstep_test(_Cfg) ->
+    Metrics = vmq_metrics:metrics(#{aggregate => false}),
+    DisconnectMetrics = [
+        {Id, Reason, Version}
+         || {#metric_def{id = {Metric, MetricReason} = Id, labels = Labels}, _} <- Metrics,
+            Metric =:= mqtt_disconnect orelse Metric =:= mqtt5_disconnect,
+            {reason_code, Reason} <- Labels,
+            {mqtt_version, Version} <- Labels,
+            atom_to_list(MetricReason) =:= Reason
+    ],
+    lists:foreach(
+        fun({Id, _Reason, Version}) ->
+            _ = vmq_metrics:incr(Id),
+            ExpectedVersion = case element(1, Id) of
+                mqtt_disconnect -> "4";
+                mqtt5_disconnect -> "5"
+            end,
+            ExpectedVersion = Version
+        end,
+        DisconnectMetrics
+    ),
+    Symbols = [
+        Symbol
+        || {Symbol, _Value} <- disconnect_reason_pb:fetch_enum_def('eventssidecar.v1.Reason')
+    ],
+    Exposed = [list_to_atom(Reason) || {_Id, Reason, _Version} <- DisconnectMetrics],
+    lists:foreach(
+        fun(Symbol) ->
+            case lists:member(Symbol, Exposed) of
+                true -> ok;
+                false -> ct:fail({reason_not_exposed_as_a_metric, Symbol})
+            end
+        end,
+        Symbols
+    ).
 
 simple_systree_test(_Cfg) ->
     Socket = sample_subscribe(),

@@ -1,4 +1,7 @@
 -module(vmq_queue_hooks_SUITE).
+
+-include_lib("vmq_commons/src/vmq_types_mqtt5.hrl").
+
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -13,7 +16,13 @@
          queue_hooks_lifecycle_test3/1,
          queue_hooks_lifecycle_test4/1,
          queue_hooks_lifecycle_test5/1,
-         queue_hooks_lifecycle_test6/1]).
+         queue_hooks_lifecycle_test6/1,
+         disconnect_reason_v4_client_disconnect_test/1,
+         disconnect_reason_v5_client_disconnect_test/1,
+         disconnect_reason_v5_client_reason_code_test/1,
+         disconnect_reason_v5_tcp_closed_test/1,
+         disconnect_reason_v5_keepalive_test/1,
+         disconnect_reason_v5_session_taken_over_test/1]).
 
 -export([hook_auth_on_subscribe/4,
          hook_auth_on_publish/7,
@@ -67,7 +76,13 @@ all() ->
      queue_hooks_lifecycle_test3,
      queue_hooks_lifecycle_test4,
      queue_hooks_lifecycle_test5,
-     queue_hooks_lifecycle_test6].
+     queue_hooks_lifecycle_test6,
+     disconnect_reason_v4_client_disconnect_test,
+     disconnect_reason_v5_client_disconnect_test,
+     disconnect_reason_v5_client_reason_code_test,
+     disconnect_reason_v5_tcp_closed_test,
+     disconnect_reason_v5_keepalive_test,
+     disconnect_reason_v5_session_taken_over_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -170,6 +185,73 @@ queue_hooks_lifecycle_test6(_) ->
     ok = hook_called(on_topic_unsubscribed).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Disconnect reasons reported to on_client_gone
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% pins the existing v3.1.1 behaviour, so that the shared reason table
+%% can be extended for MQTT 5 without moving it
+disconnect_reason_v4_client_disconnect_test(_) ->
+    Connect = packet:gen_connect("queue-client", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = hook_called(on_client_wakeup),
+    ok = gen_tcp:send(Socket, packet:gen_disconnect()),
+    ok = gen_tcp:close(Socket),
+    'REASON_MQTT_CLIENT_DISCONNECT' = disconnect_reason(reason_gone).
+
+%% a plain MQTT 5 DISCONNECT says no more than v3.1.1 does, and is
+%% reported the same way
+disconnect_reason_v5_client_disconnect_test(_) ->
+    {ok, Socket} = connect_v5("queue-client"),
+    ok = gen_tcp:send(Socket, packetv5:gen_disconnect()),
+    ok = gen_tcp:close(Socket),
+    'REASON_MQTT_CLIENT_DISCONNECT' = disconnect_reason(reason_gone).
+
+%% ...but when the client says why, that is what gets reported
+disconnect_reason_v5_client_reason_code_test(_) ->
+    {ok, Socket} = connect_v5("queue-client"),
+    ok = gen_tcp:send(Socket, packetv5:gen_disconnect(?M5_PACKET_TOO_LARGE, #{})),
+    ok = gen_tcp:close(Socket),
+    'REASON_PACKET_TOO_LARGE' = disconnect_reason(reason_gone).
+
+disconnect_reason_v5_tcp_closed_test(_) ->
+    {ok, Socket} = connect_v5("queue-client"),
+    ok = gen_tcp:close(Socket),
+    'REASON_TCP_CLOSED' = disconnect_reason(reason_gone).
+
+disconnect_reason_v5_keepalive_test(_) ->
+    Connect = packetv5:gen_connect("queue-client", [{keepalive, 1}]),
+    {ok, Socket} = packetv5:do_client_connect(Connect, packetv5:gen_connack(), []),
+    ok = hook_called(on_client_wakeup),
+    %% say nothing until the broker gives up on us
+    'REASON_DISCONNECT_KEEP_ALIVE' = disconnect_reason(reason_gone),
+    ok = gen_tcp:close(Socket).
+
+disconnect_reason_v5_session_taken_over_test(_) ->
+    {ok, Socket} = connect_v5("queue-client"),
+    {ok, NewSocket} = connect_v5("queue-client"),
+    'REASON_SESSION_TAKEN_OVER' = disconnect_reason(reason_gone),
+    ok = gen_tcp:close(Socket),
+    ok = gen_tcp:close(NewSocket).
+
+connect_v5(ClientId) ->
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60}]),
+    {ok, Socket} = packetv5:do_client_connect(Connect, packetv5:gen_connack(), []),
+    ok = hook_called(on_client_wakeup),
+    {ok, Socket}.
+
+%% the hooks fire asynchronously once the queue notices the session is
+%% down, so wait for the reason rather than reading it straight away
+disconnect_reason(Key) ->
+    case ets:lookup(?MODULE, Key) of
+        [] ->
+            timer:sleep(50),
+            disconnect_reason(Key);
+        [{Key, Reason}] ->
+            Reason
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_called(Hook) ->
@@ -190,14 +272,16 @@ hook_on_client_wakeup({"" , <<"queue-client">>}, SessionId) ->
 hook_on_client_wakeup(_, _) ->
     ok.
 
-hook_on_client_gone({"" , <<"queue-client">>}, _, _, SessionId) ->
+hook_on_client_gone({"" , <<"queue-client">>}, Reason, _, SessionId) ->
     ets:insert(?MODULE, {on_client_gone, true}),
+    ets:insert(?MODULE, {reason_gone, Reason}),
     ets:insert(?MODULE, {session_id_gone, SessionId});
 hook_on_client_gone(_, _, _, _) ->
     ok.
 
-hook_on_client_offline({"" , <<"queue-client">>}, _, _, SessionId) ->
+hook_on_client_offline({"" , <<"queue-client">>}, Reason, _, SessionId) ->
     ets:insert(?MODULE, {on_client_offline, true}),
+    ets:insert(?MODULE, {reason_offline, Reason}),
     ets:insert(?MODULE, {session_id_offline, SessionId});
 hook_on_client_offline(_, _, _, _) ->
     ok.

@@ -100,4 +100,6 @@
 -define(EXIT_SIGNAL_RECEIVED, exit_signal_received).
 -define(UNEXPECTED_FRAME_TYPE, unexpected_frame_type).
 -define(NORMAL, normal).
+-define(WRONG_AUTH_METHOD, wrong_auth_method).
+-define(QUEUE_DOWN, queue_down).
 -endif.
