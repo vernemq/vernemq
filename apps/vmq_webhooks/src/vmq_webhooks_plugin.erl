@@ -1238,7 +1238,10 @@ lookup_header(HeaderName, [_ | Rest]) ->
 
 -spec cache_control_directives(binary()) -> [binary()].
 cache_control_directives(CC) ->
-    [hackney_bstr:to_lower(trim_ows(Directive)) || Directive <- binary:split(CC, <<",">>, [global])].
+    [
+        hackney_bstr:to_lower(trim_ows(Directive))
+     || Directive <- binary:split(CC, <<",">>, [global])
+    ].
 
 -spec trim_ows(binary()) -> binary().
 trim_ows(Bin) ->
