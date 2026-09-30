@@ -34,7 +34,7 @@
 
 % vmq_reg, session FSMs (& misc)
 -callback add_session(Queue :: pid(), Session :: pid(), Opts :: map()) ->
-    {ok, #{initial_msg_id := msg_id()}}
+    {ok, #{initial_msg_id := msg_id(), waiting_acks => map()}}
     | {error, any()}.
 -callback get_sessions(Queue :: pid()) -> [pid()].
 -callback set_opts(Queue :: pid(), Opts :: list()) -> ok.

@@ -656,6 +656,23 @@ connected(#mqtt5_pubrel{message_id = MessageId, reason_code = RC}, State) ->
                 })
                 | Msgs
             ]};
+        PubRec when is_record(PubRec, mqtt5_pubrec) ->
+            Cnt = fc_decr_cnt(State#state.fc_receive_cnt, pubrel),
+            {NewState, Msgs} =
+                handle_waiting_msgs(
+                    State#state{
+                        fc_receive_cnt = Cnt,
+                        waiting_acks = maps:remove({qos2, MessageId}, WAcks)
+                    }
+                ),
+            _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?SUCCESS}),
+            {NewState, [
+                serialise_frame(#mqtt5_pubcomp{
+                    message_id = MessageId,
+                    reason_code = ?M5_SUCCESS
+                })
+                | Msgs
+            ]};
         not_found ->
             _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND}),
             {State, [
@@ -1203,7 +1220,7 @@ register_subscriber(
             session_present := SessionPresent,
             initial_msg_id := MsgId,
             queue_pid := QPid
-        }} ->
+        } = SessionOpts} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_m5, [
                 Peer,
@@ -1216,7 +1233,11 @@ register_subscriber(
                 F,
                 SessionPresent,
                 OutProps1,
-                State#state{queue_pid = QPid, next_msg_id = MsgId}
+                State#state{
+                    queue_pid = QPid,
+                    next_msg_id = MsgId,
+                    waiting_acks = maps:get(waiting_acks, SessionOpts, #{})
+                }
             );
         {error, Reason} ->
             ?LOG_WARNING(
@@ -1880,6 +1901,8 @@ handle_waiting_acks_and_msgs(State) ->
         lists:foldl(
             fun
                 ({{qos2, MsgId}, #mqtt5_pubrec{} = Frame}, Acc) ->
+                    [{{qos2, MsgId}, Frame} | Acc];
+                ({{qos2, MsgId}, {#mqtt5_pubrec{} = Frame, _Msg}}, Acc) ->
                     [{{qos2, MsgId}, Frame} | Acc];
                 ({{qos2, _}, _}, Acc) ->
                     Acc;
