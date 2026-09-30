@@ -1,3 +1,5 @@
+- Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart
