@@ -1,3 +1,5 @@
+- Enhancement: Fix vmq_webhooks caching to honor Cache-Control: no-store/no-cache and avoid storing responses with non-positive max-age, preventing stale cache entries from accumulating.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart
