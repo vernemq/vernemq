@@ -90,6 +90,7 @@ http() ->
      auth_on_register_test,
      auth_on_register_cancel_on_close_test,
      auth_on_register_opts_test,
+     auth_on_register_null_opts_test,
      auth_on_register_unix_socket_opts_test,
      auth_on_publish_test,
      auth_on_publish_no_payload_test,
@@ -314,6 +315,13 @@ auth_on_register_opts_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_register,
                         [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, ?OPTS]),
+    deregister_hook(auth_on_register, ?ENDPOINT).
+
+auth_on_register_null_opts_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                        [?PEER, {?MOUNTPOINT, ?LISTENER_INFO_NULLS_CLIENT_ID}, ?USERNAME, ?PASSWORD, true,
+                         ?OPTS_NULLS]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_register_unix_socket_opts_test(_) ->

@@ -1,3 +1,10 @@
+- Enhancement: Forward the TLS SNI (server name indication) as `tls_sni` to the extended
+  `auth_on_register` and `auth_on_register_m5` hooks for SSL and WSS listeners with
+  `forward_connection_opts` enabled. Supported in `vmq_webhooks` and `vmq_diversity`.
+- Bugfix: vmq_webhooks no longer crashes when serializing a missing client certificate
+  (`client_cert` is now sent as `null`) for SSL listeners with `forward_connection_opts`
+  enabled but without `require_certificate`.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart

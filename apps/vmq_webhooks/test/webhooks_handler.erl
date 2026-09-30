@@ -123,7 +123,8 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
                    client_cert := <<"client cert">>,
                    listener_addr := ?PEER_BIN,
                    listener_port := 1883,
-                   listener_type := <<"mqtt">>
+                   listener_type := <<"mqtt">>,
+                   tls_sni := <<"mqtt.example.com">>
                  }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
@@ -136,6 +137,20 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
                    listener_addr := <<"local">>,
                    listener_port := 0,
                    listener_type := <<"mqtt">>
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
+                   client_id := ?LISTENER_INFO_NULLS_CLIENT_ID,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := ?USERNAME,
+                   password := ?PASSWORD,
+                   clean_session := true,
+                   client_cert := null,
+                   listener_addr := ?PEER_BIN,
+                   listener_port := 8883,
+                   listener_type := <<"mqtts">>,
+                   tls_sni := null
                  }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
@@ -175,7 +190,8 @@ auth_on_register_m5(#{peer_addr := ?PEER_BIN,
                       client_cert := <<"client cert">>,
                       listener_addr := ?PEER_BIN,
                       listener_port := 1883,
-                      listener_type := <<"mqtt">>
+                      listener_type := <<"mqtt">>,
+                      tls_sni := <<"mqtt.example.com">>
                      }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register_m5(#{peer_addr := ?PEER_BIN,
