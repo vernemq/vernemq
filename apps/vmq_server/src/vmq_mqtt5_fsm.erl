@@ -1216,11 +1216,12 @@ register_subscriber(
             QueueOpts
         )
     of
-        {ok, #{
-            session_present := SessionPresent,
-            initial_msg_id := MsgId,
-            queue_pid := QPid
-        } = SessionOpts} ->
+        {ok,
+            #{
+                session_present := SessionPresent,
+                initial_msg_id := MsgId,
+                queue_pid := QPid
+            } = SessionOpts} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_m5, [
                 Peer,

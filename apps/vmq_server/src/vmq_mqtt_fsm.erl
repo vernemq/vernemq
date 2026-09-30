@@ -732,11 +732,12 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                             QueueOpts
                         )
                     of
-                        {ok, #{
-                            session_present := SessionPresent,
-                            initial_msg_id := MsgId,
-                            queue_pid := QPid
-                        } = SessionOpts} ->
+                        {ok,
+                            #{
+                                session_present := SessionPresent,
+                                initial_msg_id := MsgId,
+                                queue_pid := QPid
+                            } = SessionOpts} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [
                                 Peer,
@@ -795,11 +796,12 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                     queue_opts(State, [])
                 )
             of
-                {ok, #{
-                    session_present := SessionPresent,
-                    initial_msg_id := MsgId,
-                    queue_pid := QPid
-                } = SessionOpts} ->
+                {ok,
+                    #{
+                        session_present := SessionPresent,
+                        initial_msg_id := MsgId,
+                        queue_pid := QPid
+                    } = SessionOpts} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, SessionPresent, State#state{

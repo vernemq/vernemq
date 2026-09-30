@@ -564,8 +564,7 @@ offline(Event, State) ->
     {next_state, offline, State}.
 offline({add_session, SessionPid, Opts}, _From, State) ->
     {State1, ReturnOpts} = add_session_with_opts(SessionPid, Opts, State, true),
-    {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
-        State1};
+    {reply, {ok, ReturnOpts}, state_change(add_session, offline, online), State1};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, state_change(migrate, offline, drain), State#state{
@@ -930,8 +929,7 @@ handle_session_down(
                 false ->
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
-            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                State1};
+            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online), State1};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->
@@ -1125,7 +1123,9 @@ insert_from_queue(_F, {empty, _}, #state{sessions = Sessions} = State) ->
 insert_from_queue_collect(F, {{value, Msg}, Q}, State, InitialWaitingAcks) when is_tuple(Msg) ->
     NewInitialWaitingAcks = maybe_collect_waiting_ack(Msg, InitialWaitingAcks),
     insert_from_queue_collect(F, F(Q), insert(Msg, State), NewInitialWaitingAcks);
-insert_from_queue_collect(F, {{value, MsgRef}, Q}, State, InitialWaitingAcks) when is_binary(MsgRef) ->
+insert_from_queue_collect(F, {{value, MsgRef}, Q}, State, InitialWaitingAcks) when
+    is_binary(MsgRef)
+->
     insert_from_queue_collect(F, F(Q), insert(MsgRef, State), InitialWaitingAcks);
 insert_from_queue_collect(_F, {empty, _}, #state{sessions = #{}} = State, InitialWaitingAcks) ->
     {State, InitialWaitingAcks};
