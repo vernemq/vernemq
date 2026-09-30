@@ -1201,16 +1201,26 @@ decode_endpoint_response(Hook, RespHeaders, Body, EOpts) ->
             {error, received_payload_not_json}
     end.
 
--spec parse_headers([any()]) -> #{'max_age' => integer()}.
+-spec parse_headers([any()]) -> #{'max_age' => pos_integer()}.
 parse_headers(Headers) ->
     case lookup_header(<<"cache-control">>, Headers) of
         CC when is_binary(CC) ->
-            case parse_max_age(CC) of
-                MaxAge when is_integer(MaxAge) -> #{max_age => MaxAge};
-                _ -> #{}
-            end;
+            parse_cache_control(CC);
         _ ->
             #{}
+    end.
+
+-spec parse_cache_control(binary()) -> #{'max_age' => pos_integer()}.
+parse_cache_control(CC) ->
+    Directives = cache_control_directives(CC),
+    case has_no_cache_directive(Directives) of
+        true ->
+            #{};
+        false ->
+            case parse_max_age(Directives) of
+                MaxAge when is_integer(MaxAge), MaxAge > 0 -> #{max_age => MaxAge};
+                _ -> #{}
+            end
     end.
 
 -spec lookup_header(binary(), [any()]) -> binary() | undefined.
@@ -1226,10 +1236,57 @@ lookup_header(HeaderName, [{K, V} | Rest]) when is_binary(K), is_binary(V) ->
 lookup_header(HeaderName, [_ | Rest]) ->
     lookup_header(HeaderName, Rest).
 
--spec parse_max_age(binary()) -> 'undefined' | integer() | {'error', 'badarg'}.
-parse_max_age(<<>>) -> undefined;
-parse_max_age(<<"max-age=", MaxAgeVal/binary>>) -> digits(MaxAgeVal);
-parse_max_age(<<_, Rest/binary>>) -> parse_max_age(Rest).
+-spec cache_control_directives(binary()) -> [binary()].
+cache_control_directives(CC) ->
+    [
+        hackney_bstr:to_lower(trim_ows(Directive))
+     || Directive <- binary:split(CC, <<",">>, [global])
+    ].
+
+-spec trim_ows(binary()) -> binary().
+trim_ows(Bin) ->
+    trim_ows_right(trim_ows_left(Bin)).
+
+-spec trim_ows_left(binary()) -> binary().
+trim_ows_left(<<C, Rest/binary>>) when C =:= $\s; C =:= $\t ->
+    trim_ows_left(Rest);
+trim_ows_left(Bin) ->
+    Bin.
+
+-spec trim_ows_right(binary()) -> binary().
+trim_ows_right(Bin) ->
+    Size = byte_size(Bin),
+    case Size of
+        0 ->
+            Bin;
+        _ ->
+            C = binary:at(Bin, Size - 1),
+            case C of
+                $\s -> trim_ows_right(binary:part(Bin, 0, Size - 1));
+                $\t -> trim_ows_right(binary:part(Bin, 0, Size - 1));
+                _ -> Bin
+            end
+    end.
+
+-spec has_no_cache_directive([binary()]) -> boolean().
+has_no_cache_directive([]) ->
+    false;
+has_no_cache_directive([<<"no-store">> | _]) ->
+    true;
+has_no_cache_directive([<<"no-cache">> | _]) ->
+    true;
+has_no_cache_directive([<<"no-cache=", _/binary>> | _]) ->
+    true;
+has_no_cache_directive([_ | Rest]) ->
+    has_no_cache_directive(Rest).
+
+-spec parse_max_age([binary()]) -> 'undefined' | integer() | {'error', 'badarg'}.
+parse_max_age([]) ->
+    undefined;
+parse_max_age([<<"max-age=", MaxAgeVal/binary>> | _]) ->
+    digits(MaxAgeVal);
+parse_max_age([_ | Rest]) ->
+    parse_max_age(Rest).
 
 -spec digits(binary()) -> integer() | {'error', 'badarg'}.
 digits(<<D, Rest/binary>>) when D >= $0, D =< $9 ->
@@ -1610,9 +1667,17 @@ enc_topic(Topic) ->
 
 -ifdef(TEST).
 parse_max_age_test() ->
-    ?assertEqual(undefined, parse_max_age(<<>>)),
-    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=">>)),
-    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=x">>)),
-    ?assertEqual(45, parse_max_age(<<"  max-age=45,sthelse">>)),
-    ?assertEqual(45, parse_max_age(<<"max-age=45">>)).
+    ?assertEqual(undefined, parse_max_age([])),
+    ?assertEqual({error, badarg}, parse_max_age([<<"max-age=">>])),
+    ?assertEqual({error, badarg}, parse_max_age([<<"max-age=x">>])),
+    ?assertEqual(45, parse_max_age([<<"max-age=45">>])),
+    ?assertEqual(45, parse_max_age([<<"public">>, <<"max-age=45">>])).
+
+parse_cache_control_test() ->
+    ?assertEqual(#{max_age => 45}, parse_cache_control(<<"max-age=45">>)),
+    ?assertEqual(#{max_age => 45}, parse_cache_control(<<"  max-age=45,sthelse">>)),
+    ?assertEqual(#{max_age => 45}, parse_cache_control(<<"public, MAX-AGE=45">>)),
+    ?assertEqual(#{}, parse_cache_control(<<"max-age=0">>)),
+    ?assertEqual(#{}, parse_cache_control(<<"no-store, max-age=45">>)),
+    ?assertEqual(#{}, parse_cache_control(<<"no-cache, max-age=45">>)).
 -endif.
