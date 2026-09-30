@@ -1280,9 +1280,7 @@ has_no_cache_directive([<<"no-cache=", _/binary>> | _]) ->
 has_no_cache_directive([_ | Rest]) ->
     has_no_cache_directive(Rest).
 
--spec parse_max_age(binary() | [binary()]) -> 'undefined' | integer() | {'error', 'badarg'}.
-parse_max_age(CC) when is_binary(CC) ->
-    parse_max_age(cache_control_directives(CC));
+-spec parse_max_age([binary()]) -> 'undefined' | integer() | {'error', 'badarg'}.
 parse_max_age([]) ->
     undefined;
 parse_max_age([<<"max-age=", MaxAgeVal/binary>> | _]) ->
@@ -1669,15 +1667,16 @@ enc_topic(Topic) ->
 
 -ifdef(TEST).
 parse_max_age_test() ->
-    ?assertEqual(undefined, parse_max_age(<<>>)),
-    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=">>)),
-    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=x">>)),
-    ?assertEqual(45, parse_max_age(<<"  max-age=45,sthelse">>)),
-    ?assertEqual(45, parse_max_age(<<"max-age=45">>)),
-    ?assertEqual(45, parse_max_age(<<"public, MAX-AGE=45">>)).
+    ?assertEqual(undefined, parse_max_age([])),
+    ?assertEqual({error, badarg}, parse_max_age([<<"max-age=">>])),
+    ?assertEqual({error, badarg}, parse_max_age([<<"max-age=x">>])),
+    ?assertEqual(45, parse_max_age([<<"max-age=45">>])),
+    ?assertEqual(45, parse_max_age([<<"public">>, <<"max-age=45">>])).
 
 parse_cache_control_test() ->
     ?assertEqual(#{max_age => 45}, parse_cache_control(<<"max-age=45">>)),
+    ?assertEqual(#{max_age => 45}, parse_cache_control(<<"  max-age=45,sthelse">>)),
+    ?assertEqual(#{max_age => 45}, parse_cache_control(<<"public, MAX-AGE=45">>)),
     ?assertEqual(#{}, parse_cache_control(<<"max-age=0">>)),
     ?assertEqual(#{}, parse_cache_control(<<"no-store, max-age=45">>)),
     ?assertEqual(#{}, parse_cache_control(<<"no-cache, max-age=45">>)).
