@@ -732,11 +732,12 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                             QueueOpts
                         )
                     of
-                        {ok, #{
-                            session_present := SessionPresent,
-                            initial_msg_id := MsgId,
-                            queue_pid := QPid
-                        }} ->
+                        {ok,
+                            #{
+                                session_present := SessionPresent,
+                                initial_msg_id := MsgId,
+                                queue_pid := QPid
+                            } = SessionOpts} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [
                                 Peer,
@@ -744,7 +745,10 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                                 State1#state.username
                             ]),
                             State2 = State1#state{
-                                queue_pid = QPid, next_msg_id = MsgId, conn_opts = undefined
+                                queue_pid = QPid,
+                                next_msg_id = MsgId,
+                                conn_opts = undefined,
+                                waiting_acks = maps:get(waiting_acks, SessionOpts, #{})
                             },
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
@@ -792,15 +796,19 @@ check_user(#mqtt_connect{username = User, password = Password} = F, State) ->
                     queue_opts(State, [])
                 )
             of
-                {ok, #{
-                    session_present := SessionPresent,
-                    initial_msg_id := MsgId,
-                    queue_pid := QPid
-                }} ->
+                {ok,
+                    #{
+                        session_present := SessionPresent,
+                        initial_msg_id := MsgId,
+                        queue_pid := QPid
+                    } = SessionOpts} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, SessionPresent, State#state{
-                        queue_pid = QPid, username = User, next_msg_id = MsgId
+                        queue_pid = QPid,
+                        username = User,
+                        next_msg_id = MsgId,
+                        waiting_acks = maps:get(waiting_acks, SessionOpts, #{})
                     });
                 {error, Reason} ->
                     ?LOG_WARNING(

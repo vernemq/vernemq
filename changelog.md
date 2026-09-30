@@ -1,3 +1,5 @@
+- Fix QoS 2 duplicate PUBLISH handling after session resume to avoid duplicate onward delivery when a client retransmits with DUP=1.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart

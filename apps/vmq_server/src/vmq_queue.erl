@@ -164,7 +164,7 @@ enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) 
     gen_fsm:sync_send_event(Queue, {enqueue_many, NMsgs, Opts}, infinity).
 
 -spec add_session(pid(), pid(), map()) ->
-    {ok, #{initial_msg_id := msg_id()}}
+    {ok, #{initial_msg_id := msg_id(), waiting_acks => map()}}
     | {error, any()}.
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
@@ -281,8 +281,7 @@ online({set_opts, SessionPid, Opts}, _From, #state{opts = OldOpts} = State) ->
     {reply, ok, online, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State0) ->
     %% allow multiple sessions per queue
-    RetOpts = #{initial_msg_id => State0#state.initial_msg_id},
-    State1 = unset_timers(add_session_(SessionPid, Opts, State0, false)),
+    {State1, RetOpts} = add_session_with_opts(SessionPid, Opts, State0, false),
     {reply, {ok, RetOpts}, online, State1};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State) when
     State#state.waiting_call == undefined
@@ -564,9 +563,8 @@ offline(Event, State) ->
     ?LOG_ERROR("got unknown event in offline state ~p", [Event]),
     {next_state, offline, State}.
 offline({add_session, SessionPid, Opts}, _From, State) ->
-    ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
-    {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
-        unset_timers(add_session_(SessionPid, Opts, State, true))};
+    {State1, ReturnOpts} = add_session_with_opts(SessionPid, Opts, State, true),
+    {reply, {ok, ReturnOpts}, state_change(add_session, offline, online), State1};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, state_change(migrate, offline, drain), State#state{
@@ -828,6 +826,10 @@ allowed_state(FsmState, AllowedStates) ->
     Any = lists:member(any, AllowedStates),
     Any orelse lists:member(FsmState, AllowedStates).
 
+add_session_with_opts(SessionPid, Opts, State, AllowExtendedQueueSize) ->
+    {NewState, InitialWaitingAcks} = add_session_(SessionPid, Opts, State, AllowExtendedQueueSize),
+    {unset_timers(NewState), session_return_opts(State, InitialWaitingAcks)}.
+
 add_session_(
     SessionPid,
     Opts,
@@ -875,7 +877,7 @@ add_session_(
             _ ->
                 Sessions
         end,
-    insert_from_queue(
+    insert_from_queue_collect(
         Offline#queue{type = QueueType},
         State#state{
             deliver_mode = DeliverMode,
@@ -914,7 +916,12 @@ handle_session_down(
             %% last session gone
             %% ... but we've a new session waiting
             %%     no need to go into offline state
-            RetOpts = #{initial_msg_id => State#state.initial_msg_id},
+            {State1, RetOpts} = add_session_with_opts(
+                NewSessionPid,
+                Opts,
+                NewState#state{waiting_call = undefined},
+                true
+            ),
             gen_fsm:reply(From, {ok, RetOpts}),
             case DeletedSession#session.cleanup_on_disconnect of
                 true ->
@@ -922,8 +929,7 @@ handle_session_down(
                 false ->
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
-            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, true)};
+            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online), State1};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->
@@ -1100,6 +1106,11 @@ insert_from_queue(#queue{type = fifo, queue = Q, backup = BQ}, State) ->
 insert_from_queue(#queue{type = lifo, queue = Q, backup = BQ}, State) ->
     insert_from_queue(fun queue:out_r/1, queue:out_r(queue:join(BQ, Q)), State).
 
+insert_from_queue_collect(#queue{type = fifo, queue = Q, backup = BQ}, State) ->
+    insert_from_queue_collect(fun queue:out/1, queue:out(queue:join(BQ, Q)), State, #{});
+insert_from_queue_collect(#queue{type = lifo, queue = Q, backup = BQ}, State) ->
+    insert_from_queue_collect(fun queue:out_r/1, queue:out_r(queue:join(BQ, Q)), State, #{}).
+
 insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
     insert_from_queue(F, F(Q), insert(Msg, State));
 insert_from_queue(F, {{value, MsgRef}, Q}, State) when is_binary(MsgRef) ->
@@ -1108,6 +1119,18 @@ insert_from_queue(_F, {empty, _}, #state{sessions = #{}} = State) ->
     State;
 insert_from_queue(_F, {empty, _}, #state{sessions = Sessions} = State) ->
     reset_ignore_max(maps:keys(Sessions), State).
+
+insert_from_queue_collect(F, {{value, Msg}, Q}, State, InitialWaitingAcks) when is_tuple(Msg) ->
+    NewInitialWaitingAcks = maybe_collect_waiting_ack(Msg, InitialWaitingAcks),
+    insert_from_queue_collect(F, F(Q), insert(Msg, State), NewInitialWaitingAcks);
+insert_from_queue_collect(F, {{value, MsgRef}, Q}, State, InitialWaitingAcks) when
+    is_binary(MsgRef)
+->
+    insert_from_queue_collect(F, F(Q), insert(MsgRef, State), InitialWaitingAcks);
+insert_from_queue_collect(_F, {empty, _}, #state{sessions = #{}} = State, InitialWaitingAcks) ->
+    {State, InitialWaitingAcks};
+insert_from_queue_collect(_F, {empty, _}, #state{sessions = Sessions} = State, InitialWaitingAcks) ->
+    {reset_ignore_max(maps:keys(Sessions), State), InitialWaitingAcks}.
 
 reset_ignore_max([SessionPid | Rest], #state{sessions = Sessions} = State) ->
     #session{queue = Queue} = Session = maps:get(SessionPid, Sessions),
@@ -1123,6 +1146,14 @@ reset_ignore_max([SessionPid | Rest], #state{sessions = Sessions} = State) ->
     reset_ignore_max(Rest, State#state{sessions = NewSessions});
 reset_ignore_max([], State) ->
     State.
+
+session_return_opts(#state{initial_msg_id = InitialMsgId}, InitialWaitingAcks) ->
+    #{initial_msg_id => InitialMsgId, waiting_acks => InitialWaitingAcks}.
+
+maybe_collect_waiting_ack({{qos2, MsgId}, Frame}, Acc) ->
+    maps:put({qos2, MsgId}, Frame, Acc);
+maybe_collect_waiting_ack(_, Acc) ->
+    Acc.
 
 insert_many(MsgsOrRefs, State) ->
     lists:foldl(
