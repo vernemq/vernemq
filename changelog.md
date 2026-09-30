@@ -1,3 +1,5 @@
+- Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart
