@@ -1,3 +1,5 @@
+- Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart
