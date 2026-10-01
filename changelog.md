@@ -1,3 +1,5 @@
+- Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
+
 ## VerneMQ 2.2.1
 
 - Bugfix: Fix stale local shared subscriptions after trie restart
