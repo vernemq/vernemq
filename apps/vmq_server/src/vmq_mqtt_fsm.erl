@@ -31,8 +31,6 @@
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
--define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
-
 -record(state, {
     %% mqtt layer requirements
     next_msg_id = undefined :: undefined | msg_id(),
@@ -372,7 +370,7 @@ connected(
                 Persisted,
                 SessionId
             ]),
-            maybe_send_puback(Name, PubPid, PubMsgId),
+            vmq_mqtt_fsm_util:maybe_send_puback(Name, PubPid, PubMsgId),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -1249,7 +1247,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 -spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
     [mqtt_puback()].
 maybe_send_immediate_puback(AclName, MessageId) ->
-    case should_send_puback(AclName) of
+    case vmq_mqtt_fsm_util:should_send_puback(AclName) of
         true ->
             [];
         false ->
@@ -1954,18 +1952,3 @@ check_mqtt_auth_errors(QoSTable) ->
 extract_qos(not_allowed) -> not_allowed;
 extract_qos(QoS) when is_integer(QoS) -> QoS;
 extract_qos({QoS, _SubInfo}) -> QoS.
-
--spec maybe_send_puback(binary() | undefined, pid() | undefined, msg_id()) -> ok.
-maybe_send_puback(Name, PubPid, PubMsgId) ->
-    case should_send_puback(Name) of
-        true when is_pid(PubPid) ->
-            vmq_ranch:send_puback(PubPid, PubMsgId);
-        _ ->
-            ok
-    end.
-
--spec should_send_puback(binary() | undefined) -> boolean().
-should_send_puback(undefined) ->
-    false;
-should_send_puback(AclName) ->
-    ets:member(?DELAYED_PUBACK_TBL, AclName).

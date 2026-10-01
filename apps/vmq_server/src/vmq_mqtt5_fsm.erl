@@ -462,7 +462,9 @@ connected(
                     msg_ref = msg_ref(),
                     sg_policy = SGPolicy,
                     properties = Properties,
-                    expiry_ts = msg_expiration(Properties)
+                    expiry_ts = msg_expiration(Properties),
+                    pub_msg_id = MessageId,
+                    pub_pid = self()
                 },
                 dispatch_publish(QoS, MessageId, Msg, State)
         end,
@@ -547,7 +549,9 @@ connected(
             qos = QoS,
             acl_name = Name,
             persisted = Persisted,
-            properties = Properties
+            properties = Properties,
+            pub_msg_id = PubMsgId,
+            pub_pid = PubPid
         } ->
             _ = vmq_plugin:all(on_delivery_complete_m5, [
                 Username,
@@ -561,6 +565,7 @@ connected(
                 SessionId,
                 Properties
             ]),
+            vmq_mqtt_fsm_util:maybe_send_puback(Name, PubPid, PubMsgId),
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, puback),
             handle_waiting_msgs(State#state{
                 fc_send_cnt = Cnt, waiting_acks = maps:remove(MessageId, WAcks)
@@ -1818,18 +1823,9 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
         reg_view = RegView
     } = State,
     case publish(RegView, User, SubscriberId, Msg, State) of
-        {ok, _, SessCtrl, NewState} ->
-            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?SUCCESS}),
+        {ok, #vmq_msg{acl_name = AclName}, SessCtrl, NewState} ->
             %% TODOv5: return properties in puback success
-            {NewState,
-                [
-                    serialise_frame(#mqtt5_puback{
-                        message_id = MessageId,
-                        reason_code = ?M5_SUCCESS,
-                        properties = #{}
-                    })
-                ],
-                SessCtrl};
+            {NewState, maybe_send_immediate_puback(AclName, MessageId), SessCtrl};
         {error, {RCN, Props}} when is_map(Props) ->
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, RCN}),
             {State, [
@@ -1852,6 +1848,23 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
                 message_id = MessageId, reason_code = ?M5_IMPL_SPECIFIC_ERROR, properties = #{}
             },
             [serialise_frame(Frame)]
+    end.
+
+-spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
+    [mqtt_puback()].
+maybe_send_immediate_puback(AclName, MessageId) ->
+    case vmq_mqtt_fsm_util:should_send_puback(AclName) of
+        true ->
+            [];
+        false ->
+            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?SUCCESS}),
+            [
+                serialise_frame(#mqtt5_puback{
+                    message_id = MessageId,
+                    reason_code = ?M5_SUCCESS,
+                    properties = #{}
+                })
+            ]
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), error | receive_max(), state()) ->

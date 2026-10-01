@@ -26,10 +26,13 @@
     peertoa/1,
     terminate_reason/1,
     terminate_proto_reason/1,
-    generate_session_id/0
+    generate_session_id/0,
+    maybe_send_puback/3,
+    should_send_puback/1
 ]).
 
 -define(TO_SESSION, to_session_fsm).
+-define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
 
 -spec msg_ref() -> msg_ref().
 msg_ref() ->
@@ -203,3 +206,18 @@ terminate_proto_reason(Reason) ->
         ?UNSPECIFIED_ERROR -> ?REASON_UNSPECIFIED_ERROR;
         _ -> ?REASON_UNSPECIFIED
     end.
+
+-spec maybe_send_puback(binary() | undefined, pid() | undefined, msg_id()) -> ok.
+maybe_send_puback(Name, PubPid, PubMsgId) ->
+    case should_send_puback(Name) of
+        true when is_pid(PubPid) ->
+            vmq_ranch:send_puback(PubPid, PubMsgId);
+        _ ->
+            ok
+    end.
+
+-spec should_send_puback(binary() | undefined) -> boolean().
+should_send_puback(undefined) ->
+    false;
+should_send_puback(AclName) ->
+    ets:member(?DELAYED_PUBACK_TBL, AclName).
