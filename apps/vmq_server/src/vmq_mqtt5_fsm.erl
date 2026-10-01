@@ -1074,9 +1074,6 @@ terminate_proto_reason(Reason) ->
         end,
     vmq_mqtt_fsm_util:terminate_proto_reason(NewReason).
 
-normalise_username({preauth, UserName}) -> UserName;
-normalise_username(UserName) -> UserName.
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
