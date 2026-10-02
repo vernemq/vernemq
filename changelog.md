@@ -1,3 +1,4 @@
+- Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
 - Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
 
 ## VerneMQ 2.2.1
