@@ -217,7 +217,9 @@
     qos :: qos(),
     no_local :: no_local(),
     rap :: rap(),
-    retain_handling :: retain_handling()
+    retain_handling :: retain_handling(),
+    non_retry = false :: flag(),
+    non_persistence = false :: flag()
 }).
 -type mqtt5_subscribe_topic() :: #mqtt5_subscribe_topic{}.
 

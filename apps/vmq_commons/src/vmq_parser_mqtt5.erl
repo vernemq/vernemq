@@ -419,7 +419,8 @@ parse_topics(<<>>, _, []) ->
 parse_topics(<<>>, _, Topics) ->
     {ok, Topics};
 parse_topics(
-    <<L:16/big, Topic:L/binary, 0:2, RetainHandling:2, Rap:1, NL:1, QoS:2, Rest/binary>>,
+    <<L:16/big, Topic:L/binary, NonRetry:1, NonPersistence:1, RetainHandling:2, Rap:1, NL:1, QoS:2,
+        Rest/binary>>,
     ?SUBSCRIBE = Sub,
     Acc
 ) when
@@ -434,7 +435,9 @@ parse_topics(
                         qos = QoS,
                         no_local = to_bool(NL),
                         rap = to_bool(Rap),
-                        retain_handling = sub_retain_handling(RetainHandling)
+                        retain_handling = sub_retain_handling(RetainHandling),
+                        non_retry = to_bool(NonRetry),
+                        non_persistence = to_bool(NonPersistence)
                     },
                     parse_topics(Rest, Sub, [T | Acc]);
                 E ->
@@ -636,7 +639,9 @@ serialise_topics(
             qos = QoS,
             no_local = NL,
             rap = Rap,
-            retain_handling = RetainFlags
+            retain_handling = RetainFlags,
+            non_retry = NonRetry,
+            non_persistence = NonPersistence
         }
         | Rest
     ],
@@ -647,7 +652,14 @@ serialise_topics(
         Rest,
         [
             utf8(vmq_topic:unword(Topic)),
-            <<0:2, (sub_retain_handling(RetainFlags)):2, (flag(Rap)):1, (flag(NL)):1, QoS:2>>
+            <<
+                (flag(NonRetry)):1,
+                (flag(NonPersistence)):1,
+                (sub_retain_handling(RetainFlags)):2,
+                (flag(Rap)):1,
+                (flag(NL)):1,
+                QoS:2
+            >>
             | Acc
         ]
     );

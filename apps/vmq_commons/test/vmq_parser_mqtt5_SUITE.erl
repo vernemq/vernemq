@@ -136,7 +136,15 @@ parse_unparse_subscribe_test(_Config) ->
                  qos = 2,
                  no_local = false,
                  rap = false,
-                 retain_handling = dont_send}],
+                 retain_handling = dont_send},
+              #mqtt5_subscribe_topic{
+                 topic = <<"topic/3">>,
+                 qos = 1,
+                 no_local = false,
+                 rap = false,
+                 retain_handling = send_retain,
+                 non_retry = true,
+                 non_persistence = true}],
     parse_unparse("subscribe with properties",
                   vmq_parser_mqtt5:gen_subscribe(6, Topics, Properties)).
 

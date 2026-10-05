@@ -1943,6 +1943,12 @@ handle_waiting_acks_and_msgs(State) ->
                 ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                     %% unacked PUBREL Frame
                     [{deliver_pubrel, {MsgId, Frame}} | Acc];
+                ({_, #vmq_msg{non_persistence = true}}, Acc) ->
+                    _ = vmq_metrics:incr_qos1_non_persistence_message_dropped(),
+                    Acc;
+                ({_, #vmq_msg{non_retry = true}}, Acc) ->
+                    _ = vmq_metrics:incr_qos1_non_retry_message_dropped(),
+                    Acc;
                 ({MsgId, #vmq_msg{qos = QoS} = Msg}, Acc) ->
                     [#deliver{qos = QoS, msg_id = MsgId, msg = Msg#vmq_msg{dup = true}} | Acc]
             end,

@@ -118,10 +118,22 @@ to_vmq_subtopics(Topics, SubId) ->
                 {T, {QoS, SubOpts}};
             (
                 #mqtt5_subscribe_topic{
-                    topic = T, qos = QoS, rap = Rap, retain_handling = RH, no_local = NL
+                    topic = T,
+                    qos = QoS,
+                    rap = Rap,
+                    retain_handling = RH,
+                    no_local = NL,
+                    non_retry = NonRetry,
+                    non_persistence = NonPersistence
                 }
             ) ->
-                SubOpts = #{rap => Rap, retain_handling => RH, no_local => NL},
+                SubOpts = #{
+                    rap => Rap,
+                    retain_handling => RH,
+                    no_local => NL,
+                    non_retry => NonRetry,
+                    non_persistence => NonPersistence
+                },
                 case SubId of
                     undefined ->
                         {T, {QoS, SubOpts}};
