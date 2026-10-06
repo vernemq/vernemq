@@ -1969,7 +1969,8 @@
 %% @doc If 'listener.*.forward_connection_opts' is enabled, VerneMQ will
 %% forward listener metadata to the authentication plugin (in the
 %% auth_on_register hooks). SSL and WSS listeners also forward the full client
-%% certificate.
+%% certificate. SSL listeners additionally forward the TLS SNI (server name
+%% indication) sent by the client, if any.
 %% Configure on protocol level (for all listeners):
 %%
 %%     - listener.tcp.forward_connection_opts

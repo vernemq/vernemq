@@ -23,7 +23,8 @@
          connect_psk_test/1,
          connect_psk_wrong_identity/1,
          connect_no_auth_test_passwd/1,
-         connect_forward_conn_opts_test/1]).
+         connect_forward_conn_opts_test/1,
+         connect_forward_conn_opts_no_sni_test/1]).
 
 -export([hook_preauth_success/5, hook_conn_opts_handler/5, hook_conn_opts_handler/6]).
 
@@ -255,7 +256,8 @@ all_no_auth_encrypted_keyfile() ->
     [connect_no_auth_test_passwd].
 
 all_forward_conn_opts() ->
-    [connect_forward_conn_opts_test].
+    [connect_forward_conn_opts_test,
+     connect_forward_conn_opts_no_sni_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -480,6 +482,20 @@ connect_forward_conn_opts_test(_) ->
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
 
+connect_forward_conn_opts_no_sni_test(_) ->
+    Connect = packet:gen_connect("connect-no-sni-test", [{keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    {ok, SSock} = ssl:connect("localhost", 1888,
+                              [binary, {active, false}, {packet, raw},
+                               {verify, verify_peer},
+                               {server_name_indication, disable},
+                               {cacerts, load_cacerts()},
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]),
+    ok = ssl:send(SSock, Connect),
+    ok = packet:expect_packet(ssl, SSock, "connack", Connack),
+    ok = ssl:close(SSock).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -488,13 +504,19 @@ hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, und
 hook_conn_opts_handler(_, {"", <<"connect-success-test">>}, <<"test client">>, _, _,
                         #{listener_addr := {127,0,0,1},
                           listener_port := 1888,
-                          listener_type := mqtts} = ConnOpts) when is_map(ConnOpts) ->
+                          listener_type := mqtts,
+                          tls_sni := <<"localhost">>} = ConnOpts) when is_map(ConnOpts) ->
     ClientCert = maps:get(client_cert, ConnOpts, undefined),
     % just check whether the client cert is a binary (Pem)
     case ClientCert of
         C when is_binary(C) -> ok;
         _ -> next
     end;
+hook_conn_opts_handler(_, {"", <<"connect-no-sni-test">>}, <<"test client">>, _, _,
+                        #{listener_addr := {127,0,0,1},
+                          listener_port := 1888,
+                          listener_type := mqtts,
+                          tls_sni := undefined}) -> ok;
 hook_conn_opts_handler(_,_,_,_,_,_) ->
     next.
 hook_conn_opts_handler(_,_,_,_,_) -> next.

@@ -24,6 +24,7 @@
 
 -export([
     init/2,
+    add_conn_opts/2,
     data_in/2,
     msg_in/2,
     subscriber/1
@@ -51,6 +52,15 @@ init(Peer, Opts) ->
         close_after = TRef
     },
     State.
+
+add_conn_opts(ConnOpts, #state{opts = Opts} = State) ->
+    case lists:keytake(conn_opts, 1, Opts) of
+        {value, {conn_opts, ExistingConnOpts}, Opts1} when is_map(ExistingConnOpts) ->
+            State#state{opts = [{conn_opts, maps:merge(ExistingConnOpts, ConnOpts)} | Opts1]};
+        false ->
+            State
+    end.
+
 -spec data_in(binary(), state()) ->
     {'error', 'packet_exceeds_max_size'}
     | {'error', _, []}

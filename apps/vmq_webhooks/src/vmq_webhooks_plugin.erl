@@ -276,11 +276,17 @@ nullify(Val) ->
     Val.
 
 connection_args(Opts) ->
-    maps:to_list(Opts#{
+    Opts1 = Opts#{
         listener_addr => listener_addr(maps:get(listener_addr, Opts, undefined)),
         listener_port => nullify(maps:get(listener_port, Opts, undefined)),
         listener_type => listener_type(maps:get(listener_type, Opts, undefined))
-    }).
+    },
+    Opts2 =
+        case maps:is_key(tls_sni, Opts1) of
+            true -> Opts1#{tls_sni := nullify(maps:get(tls_sni, Opts1))};
+            false -> Opts1
+        end,
+    maps:to_list(Opts2).
 
 listener_addr(undefined) ->
     null;
@@ -1585,6 +1591,7 @@ maybe_b64decode(V, #{base64 := false}) -> V;
 maybe_b64decode(V, _) -> base64:decode(V).
 
 -spec b64encode(_, map()) -> any().
+b64encode(undefined, _) -> null;
 b64encode(V, #{base64_payload := false}) -> V;
 b64encode(V, _) -> base64:encode(V).
 

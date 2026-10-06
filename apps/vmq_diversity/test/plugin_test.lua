@@ -40,6 +40,14 @@ function auth_on_register(reg)
         assert(reg.listener_addr == "127.0.0.1")
         assert(reg.listener_port == 1883)
         assert(reg.listener_type == "mqtt")
+        assert(reg.tls_sni == "mqtt.example.com")
+        return true
+    end
+    if reg.client_id == "listener-info-nulls" then
+        assert(reg.listener_addr == "127.0.0.1")
+        assert(reg.listener_port == 8883)
+        assert(reg.listener_type == "mqtts")
+        assert(reg.tls_sni == nil)
         return true
     end
     if reg.client_id == "change-modifiers-id" then
@@ -226,6 +234,7 @@ function auth_on_register_m5(reg)
        assert(reg.listener_addr == "127.0.0.1")
        assert(reg.listener_port == 1883)
        assert(reg.listener_type == "mqtt")
+       assert(reg.tls_sni == "mqtt.example.com")
        return true
     end
     if reg.client_id == "changed-subscriber-id" then
