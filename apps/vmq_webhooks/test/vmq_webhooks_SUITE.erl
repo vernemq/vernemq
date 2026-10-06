@@ -114,6 +114,7 @@ http() ->
      cache_auth_on_subscribe,
      cache_auth_on_subscribe_m5,
      cache_expired_entry,
+     pool_show_test,
      cli_allow_query_parameters_test,
      metrics_test,
      auth_register_cancel_metrics_test,
@@ -682,6 +683,13 @@ cli_allow_query_parameters_test(_) ->
     ok = register_hook(auth_on_register, EndpointWithParams),
     [] = deregister_hook(auth_on_register, EndpointWithParams).
 
+pool_show_test(_) ->
+    register_hook(on_session_expired, ?ENDPOINT),
+    {ok, PoolMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
+    [#{endpoint := ?ENDPOINT, in_use := 0, free := 0, max := PoolMaxConn}] =
+        execute(["vmq-admin", "webhooks", "pool", "show"]),
+    deregister_hook(on_session_expired, ?ENDPOINT).
+
 metrics_test(_) ->
     register_hook(on_session_expired, ?ENDPOINT),
     StartReqCntr = find_metric_value(webhooks_on_session_expired_requests),
@@ -862,6 +870,14 @@ deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",
                      "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint]),
     [] = vmq_webhooks_plugin:all_hooks().
+
+execute(Cmd) ->
+    M0 = clique_command:match(Cmd),
+    M1 = clique_parser:parse(M0),
+    M2 = clique_parser:extract_global_flags(M1),
+    M3 = clique_parser:validate(M2),
+    {[{table, Res}], _, _} = clique_command:run(M3),
+    [maps:from_list(Res1) || Res1 <- Res].
 
 pid_to_bin(Pid) ->
     list_to_binary(lists:flatten(io_lib:format("~p", [Pid]))).
