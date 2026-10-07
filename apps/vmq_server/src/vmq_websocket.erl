@@ -294,6 +294,15 @@ select_protocol([Want | Rest], Have) ->
             select_protocol(Rest, Have)
     end.
 
+add_socket(
+    Socket, #state{type = mqttwss, fsm_mod = vmq_mqtt_pre_init, fsm_state = FsmState} = State
+) ->
+    State#state{
+        socket = Socket,
+        fsm_state = vmq_mqtt_pre_init:add_conn_opts(
+            #{tls_sni => vmq_ssl:socket_to_tls_sni(Socket)}, FsmState
+        )
+    };
 add_socket(Socket, State) ->
     State#state{socket = Socket}.
 

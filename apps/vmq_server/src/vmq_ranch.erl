@@ -144,7 +144,13 @@ peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
     Opts1 =
         case {Transport, ForwardConnOpts} of
             {ranch_ssl, true} ->
-                [{conn_opts, #{client_cert => vmq_ssl:client_cert(Socket)}} | Opts];
+                [
+                    {conn_opts, #{
+                        client_cert => vmq_ssl:client_cert(Socket),
+                        tls_sni => vmq_ssl:socket_to_tls_sni(Socket)
+                    }}
+                    | Opts
+                ];
             _ ->
                 Opts
         end,

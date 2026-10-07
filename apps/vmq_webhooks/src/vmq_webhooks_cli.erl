@@ -24,6 +24,7 @@ register_cli() ->
     register_cli_usage(),
     status_cmd(),
     register_cmd(),
+    pool_stats_cmd(),
     cache_stats_cmd(),
     cache_clear_cmd(),
     deregister_cmd().
@@ -117,6 +118,36 @@ status_cmd() ->
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, [], [], Callback).
+
+pool_stats_cmd() ->
+    Cmd = ["vmq-admin", "webhooks", "pool", "show"],
+    Callback =
+        fun
+            (_, [], []) ->
+                Table =
+                    [
+                        [
+                            {endpoint, binary_to_list(Endpoint)},
+                            {in_use, proplists:get_value(in_use_count, Stats)},
+                            {free, proplists:get_value(free_count, Stats)},
+                            {max, proplists:get_value(max, Stats)}
+                        ]
+                     || Endpoint <- registered_endpoints(),
+                        Stats <- [hackney_pool:get_stats(Endpoint)]
+                    ],
+                [clique_status:table(Table)];
+            (_, _, _) ->
+                Text = clique_status:text(pool_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, [], [], Callback).
+
+registered_endpoints() ->
+    lists:usort([
+        Endpoint
+     || {_Hook, Endpoints} <- vmq_webhooks_plugin:all_hooks(),
+        {Endpoint, _Opts} <- Endpoints
+    ]).
 
 b64opt(#{base64_payload := Val}) ->
     Val;
@@ -273,6 +304,8 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "webhooks", "register"], register_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "deregister"], deregister_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "show"], show_usage()),
+    clique:register_usage(["vmq-admin", "webhooks", "pool"], pool_usage()),
+    clique:register_usage(["vmq-admin", "webhooks", "pool", "show"], pool_show_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "cache"], cache_usage()).
 
 webhooks_usage() ->
@@ -283,6 +316,7 @@ webhooks_usage() ->
         "    show        Show all registered webhooks\n",
         "    register    Register a webhook\n",
         "    deregister  Deregister a webhook\n",
+        "    pool        Show webhooks pool statistics\n",
         "    cache       Manage the webhooks cache\n\n",
         "  Use --help after a sub-command for more details.\n"
     ].
@@ -315,6 +349,23 @@ show_usage() ->
     [
         "vmq-admin webhooks show\n\n",
         "  Shows the information of the registered webhooks.",
+        "\n\n"
+    ].
+
+pool_usage() ->
+    [
+        "vmq-admin webhooks pool\n\n",
+        "  Manage the webhooks pool."
+        "\n\n",
+        "  Sub-commands:\n",
+        "    show       Show statistics about the webhooks pool",
+        "\n\n"
+    ].
+
+pool_show_usage() ->
+    [
+        "vmq-admin webhooks pool show\n\n",
+        "  Shows in-use, free, and max connections for each registered webhook endpoint pool.",
         "\n\n"
     ].
 
