@@ -2450,7 +2450,11 @@ replace_subscribe_qos_({T, _OldQoS}, QoS) ->
 disconnect_rc2rcn(0) ->
     ?NORMAL_DISCONNECT;
 disconnect_rc2rcn(RC) ->
-    rc2rcn(RC).
+    try rc2rcn(RC) of
+        RCN -> RCN
+    catch
+        error:function_clause -> ?PROTOCOL_ERROR
+    end.
 
 -spec rcn2rc(reason_code_name()) -> reason_code().
 rcn2rc(RCN) ->

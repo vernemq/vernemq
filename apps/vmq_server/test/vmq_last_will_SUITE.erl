@@ -66,7 +66,8 @@ groups() ->
     [
      {mqttv4, [shuffle], Tests ++ []},
      {mqttv5, [shuffle], Tests ++ [will_delay_v5_test,
-                                   disconnect_with_will_msg_test]}
+                                   disconnect_with_will_msg_test,
+                                   invalid_disconnect_rc_delivers_will_test]}
     ].
 
 
@@ -298,6 +299,37 @@ disconnect_with_will_msg_test(Config) ->
     disable_on_subscribe(),
     disable_on_publish().
 
+invalid_disconnect_rc_delivers_will_test(Config) ->
+    enable_on_subscribe(),
+    enable_on_publish(),
+
+    Topic = "disconnect/invalid/reason/will",
+    Msg = <<"invalid-disconnect-reason-will-msg">>,
+    ClientIdLWTSub = vmq_cth:ustr(Config) ++ "subscriber",
+
+    ConnectSub = gen_connect(ClientIdLWTSub, [{keepalive,60}], Config),
+    Connack = gen_connack(success, Config),
+    Subscribe = gen_subscribe(53, Topic, 0, Config),
+    Suback = gen_suback(53, 0, Config),
+    {ok, Socket} = do_client_connect(ConnectSub, Connack, [], Config),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = expect_packet(Socket, "suback", Suback, Config),
+
+    ExpLWTPublish = gen_publish(Topic, 0, Msg, [], Config),
+    ClientId = vmq_cth:ustr(Config),
+    Connect = gen_connect(ClientId,
+                          [{keepalive,60}, {will_topic, Topic}, {will_msg, Msg}],
+                          Config),
+
+    {ok, LWTSocket} = do_client_connect(Connect, Connack, [], Config),
+    ok = gen_tcp:send(LWTSocket, <<16#E0, 1, 16#FF>>),
+
+    ok = expect_packet(Socket, "publish", ExpLWTPublish, Config),
+    ok = gen_tcp:close(Socket),
+
+    disable_on_subscribe(),
+    disable_on_publish().
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -349,4 +381,3 @@ will_qos0_helper(Config) ->
     Connack = gen_connack(success, Config),
     {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     gen_tcp:close(Socket).
-
