@@ -114,6 +114,9 @@ http() ->
      cache_auth_on_subscribe,
      cache_auth_on_subscribe_m5,
      cache_expired_entry,
+     cache_no_store_response,
+     cache_no_cache_response,
+     cache_zero_max_age_response,
      pool_show_test,
      cli_allow_query_parameters_test,
      metrics_test,
@@ -158,6 +161,30 @@ cache_expired_entry(_) ->
        auth_on_register} := 1,
       {misses,<<"http://localhost:34567/cache1s">>,
        auth_on_register} := 2} = vmq_webhooks_cache:stats(),
+    deregister_hook(auth_on_register, Endpoint).
+
+cache_no_store_response(_) ->
+    cache_non_cacheable_response(?ENDPOINT ++ "/cache_no_store").
+
+cache_no_cache_response(_) ->
+    cache_non_cacheable_response(?ENDPOINT ++ "/cache_no_cache").
+
+cache_zero_max_age_response(_) ->
+    cache_non_cacheable_response(?ENDPOINT ++ "/cache_zero").
+
+cache_non_cacheable_response(Endpoint) ->
+    Self = pid_to_bin(self()),
+    register_hook(auth_on_register, Endpoint),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    ok = exp_response(cache_auth_on_register_ok),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    ok = exp_response(cache_auth_on_register_ok),
+    Stats = vmq_webhooks_cache:stats(),
+    EndpointBin = list_to_binary(Endpoint),
+    false = maps:is_key({entries, EndpointBin, auth_on_register}, Stats),
+    #{{misses, EndpointBin, auth_on_register} := 2} = Stats,
     deregister_hook(auth_on_register, Endpoint).
 
 cache_auth_on_register(_) ->

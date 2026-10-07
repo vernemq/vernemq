@@ -1,3 +1,4 @@
+- Enhancement: Fix vmq_webhooks caching to honor Cache-Control: no-store/no-cache and avoid storing responses with non-positive max-age, preventing stale cache entries from accumulating.
 - Enhancement: Forward the TLS SNI (server name indication) as `tls_sni` to the extended
   `auth_on_register` and `auth_on_register_m5` hooks for SSL and WSS listeners with
   `forward_connection_opts` enabled. Supported in `vmq_webhooks` and `vmq_diversity`.
