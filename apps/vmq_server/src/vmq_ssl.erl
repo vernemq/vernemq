@@ -19,6 +19,7 @@
 
 -export([
     socket_to_common_name/1,
+    socket_to_tls_sni/1,
     cert_to_common_name/1,
     client_cert/1,
     opts/1
@@ -44,6 +45,14 @@ socket_to_common_name(Socket) ->
             TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
             Subject = TBSCert#'OTPTBSCertificate'.subject,
             extract_cn(Subject)
+    end.
+
+socket_to_tls_sni(Socket) ->
+    case ssl:connection_information(Socket, [sni_hostname]) of
+        {ok, [{sni_hostname, SNI}]} when is_list(SNI) ->
+            list_to_binary(SNI);
+        _ ->
+            undefined
     end.
 
 cert_to_common_name(Cert) ->

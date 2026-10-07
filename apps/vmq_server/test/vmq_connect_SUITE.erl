@@ -318,15 +318,26 @@ auth_on_register_listener_info_ws_test(Config) ->
 
 auth_on_register_listener_info_wss_test(Config) ->
     Connect = packet:gen_connect("listener-info-wss-test", [{keepalive, 10}]),
+    ConnectNoSNI = packet:gen_connect("wss-no-sni-test", [{keepalive, 10}]),
     Connack = packet:gen_connack(0),
     ok = vmq_plugin_mgr:enable_module_plugin(
         auth_on_register, ?MODULE, hook_listener_info_wss, 6
     ),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    {ok, Socket} = packet:do_client_connect(
+        Connect,
+        Connack,
+        add_socket_conn_opt({server_name_indication, "localhost"}, conn_opts(Config))
+    ),
+    ok = close(Socket, Config),
+    {ok, SocketNoSNI} = packet:do_client_connect(
+        ConnectNoSNI,
+        Connack,
+        add_socket_conn_opt({server_name_indication, disable}, conn_opts(Config))
+    ),
     ok = vmq_plugin_mgr:disable_module_plugin(
         auth_on_register, ?MODULE, hook_listener_info_wss, 6
     ),
-    ok = close(Socket, Config).
+    ok = close(SocketNoSNI, Config).
 
 ws_protocols_list_test(Config) ->
     Connect = packet:gen_connect("ws_protocols_list_test", [{keepalive,10}]),
@@ -478,7 +489,22 @@ hook_listener_info_ws(
 
 hook_listener_info_wss(
     _, {"", <<"listener-info-wss-test">>}, _, _, _,
-    #{listener_addr := {127, 0, 0, 1}, listener_port := 1895, listener_type := mqttwss}
+    #{
+        listener_addr := {127, 0, 0, 1},
+        listener_port := 1895,
+        listener_type := mqttwss,
+        tls_sni := <<"localhost">>
+    }
+) ->
+    ok;
+hook_listener_info_wss(
+    _, {"", <<"wss-no-sni-test">>}, _, _, _,
+    #{
+        listener_addr := {127, 0, 0, 1},
+        listener_port := 1895,
+        listener_type := mqttwss,
+        tls_sni := undefined
+    }
 ) ->
     ok.
 
@@ -510,6 +536,10 @@ stop_listener(Config) ->
 
 close(Socket, Config) ->
     (transport(Config)):close(Socket).
+
+add_socket_conn_opt(SocketOpt, ConnOpts) ->
+    {value, {conn_opts, SocketOpts}, ConnOpts1} = lists:keytake(conn_opts, 1, ConnOpts),
+    [{conn_opts, [SocketOpt | SocketOpts]} | ConnOpts1].
 
 transport(Config) ->
     case lists:keyfind(type, 1, Config) of

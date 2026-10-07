@@ -27,8 +27,11 @@ start_endpoint_clear(HTTPPort) ->
 route() -> cowboy_router:compile(
                  [{'_', [{"/", ?MODULE, []},
                           {"/cache", ?MODULE, []},
-                          {"/cache1s", ?MODULE, []},
-                          {"/slow_chunks", ?MODULE, []}]}]).
+                           {"/cache1s", ?MODULE, []},
+                           {"/cache_no_store", ?MODULE, []},
+                           {"/cache_no_cache", ?MODULE, []},
+                           {"/cache_zero", ?MODULE, []},
+                           {"/slow_chunks", ?MODULE, []}]}]).
 
 stop_endpoint_tls() ->
     cowboy:stop_listener(https).
@@ -62,6 +65,30 @@ init(Req, State) ->
                 cowboy_req:reply(Code,
                                   #{<<"content-type">> => <<"text/json">>,
                                     <<"Cache-control">> => <<"max-age=1">>},
+                                  encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/cache_no_store">> ->
+            {Code, Resp} = process_cache_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
+            Req2 =
+                cowboy_req:reply(Code,
+                                  #{<<"content-type">> => <<"text/json">>,
+                                    <<"Cache-control">> => <<"no-store, max-age=86400">>},
+                                  encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/cache_no_cache">> ->
+            {Code, Resp} = process_cache_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
+            Req2 =
+                cowboy_req:reply(Code,
+                                  #{<<"content-type">> => <<"text/json">>,
+                                    <<"Cache-control">> => <<"no-cache, max-age=86400">>},
+                                  encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/cache_zero">> ->
+            {Code, Resp} = process_cache_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
+            Req2 =
+                cowboy_req:reply(Code,
+                                  #{<<"content-type">> => <<"text/json">>,
+                                    <<"Cache-control">> => <<"max-age=0">>},
                                   encode(Resp), Req1),
             {ok, Req2, State};
         <<"/slow_chunks">> ->
@@ -123,7 +150,8 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
                    client_cert := <<"client cert">>,
                    listener_addr := ?PEER_BIN,
                    listener_port := 1883,
-                   listener_type := <<"mqtt">>
+                   listener_type := <<"mqtt">>,
+                   tls_sni := <<"mqtt.example.com">>
                  }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
@@ -136,6 +164,20 @@ auth_on_register(#{peer_addr := ?PEER_BIN,
                    listener_addr := <<"local">>,
                    listener_port := 0,
                    listener_type := <<"mqtt">>
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
+                   client_id := ?LISTENER_INFO_NULLS_CLIENT_ID,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := ?USERNAME,
+                   password := ?PASSWORD,
+                   clean_session := true,
+                   client_cert := null,
+                   listener_addr := ?PEER_BIN,
+                   listener_port := 8883,
+                   listener_type := <<"mqtts">>,
+                   tls_sni := null
                  }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register(#{peer_addr := ?PEER_BIN,
@@ -175,7 +217,8 @@ auth_on_register_m5(#{peer_addr := ?PEER_BIN,
                       client_cert := <<"client cert">>,
                       listener_addr := ?PEER_BIN,
                       listener_port := 1883,
-                      listener_type := <<"mqtt">>
+                      listener_type := <<"mqtt">>,
+                      tls_sni := <<"mqtt.example.com">>
                      }) ->
     {200, #{result => <<"ok">>}};
 auth_on_register_m5(#{peer_addr := ?PEER_BIN,

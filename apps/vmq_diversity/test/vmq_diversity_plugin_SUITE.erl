@@ -39,6 +39,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [auth_on_register_test,
       auth_on_register_opts_test,
+      auth_on_register_null_opts_test,
      auth_on_register_obf_test,
      auth_on_publish_test,
      auth_on_subscribe_test,
@@ -93,7 +94,19 @@ auth_on_register_opts_test(_) ->
         username(),
         password(),
         true,
-        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt}
+        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt,
+          tls_sni => <<"mqtt.example.com">>}
+    ]).
+
+auth_on_register_null_opts_test(_) ->
+    ok = vmq_plugin:all_till_ok(auth_on_register, [
+        peer(),
+        {"", <<"listener-info-nulls">>},
+        username(),
+        password(),
+        true,
+        #{listener_addr => {127, 0, 0, 1}, listener_port => 8883, listener_type => mqtts,
+          tls_sni => undefined}
     ]).
 
 auth_on_register_obf_test(_) ->
@@ -248,7 +261,8 @@ auth_on_register_m5_opts_test(_) ->
         password(),
         true,
         #{},
-        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt}
+        #{listener_addr => {127, 0, 0, 1}, listener_port => 1883, listener_type => mqtt,
+          tls_sni => <<"mqtt.example.com">>}
     ]).
 
 auth_on_register_m5_modify_props_test(_) ->
