@@ -809,7 +809,8 @@ conn_opts(Opts) ->
     maps:to_list(Opts#{
         listener_addr => listener_addr(maps:get(listener_addr, Opts, undefined)),
         listener_port => nilify(maps:get(listener_port, Opts, undefined)),
-        listener_type => listener_type(maps:get(listener_type, Opts, undefined))
+        listener_type => listener_type(maps:get(listener_type, Opts, undefined)),
+        tls_sni => nilify(maps:get(tls_sni, Opts, undefined))
     }).
 
 listener_addr(undefined) ->

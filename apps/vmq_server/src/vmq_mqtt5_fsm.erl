@@ -910,15 +910,8 @@ connected({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid = QPid} = Sta
 connected({info_req, {Ref, CallerPid}, InfoItems}, State) ->
     CallerPid ! {Ref, {ok, get_info_items(InfoItems, State)}},
     {State, []};
-connected({Ref, ok}, State) when is_reference(Ref) ->
-    %% Late arrival of ack after enqueueing to a remote
-    %% queue.
-    %%
-    %% TODO: this should be cleaned up for 2.0 as changing this is
-    %% likely backwards incompatible.
-    {State, []};
-connected({Ref, {error, cant_remote_enqueue}}, State) when is_reference(Ref) ->
-    %% Late arrival of negative ack after enqueueing to a remote
+connected({Ref, _Reply}, State) when is_reference(Ref) ->
+    %% Late arrival of a reply after enqueueing to a remote
     %% queue.
     %%
     %% TODO: this should be cleaned up for 2.0 as changing this is
@@ -2481,7 +2474,11 @@ replace_subscribe_qos_({T, _OldQoS}, QoS) ->
 disconnect_rc2rcn(0) ->
     ?NORMAL_DISCONNECT;
 disconnect_rc2rcn(RC) ->
-    rc2rcn(RC).
+    try rc2rcn(RC) of
+        RCN -> RCN
+    catch
+        error:function_clause -> ?PROTOCOL_ERROR
+    end.
 
 -spec rcn2rc(reason_code_name()) -> reason_code().
 rcn2rc(RCN) ->
