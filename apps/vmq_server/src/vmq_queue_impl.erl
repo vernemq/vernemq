@@ -26,6 +26,8 @@
 -callback notify_recv(Queue :: pid()) -> ok.
 -callback set_last_waiting_acks(Queue :: pid(), WAcks :: map(), NextMsgId :: msg_id()) ->
     ok.
+-callback extract_inbound_qos2_waiting_acks(Queue :: pid()) -> {ok, map()} | term().
+-callback add_inbound_qos2_waiting_acks(Queue :: pid(), WAcks :: map()) -> ok | term().
 
 % vmq_reg, vmq_cluster_com, vmq_shared_subscriptions
 -callback enqueue(Queue :: pid(), Msg :: msg()) -> ok.

@@ -56,6 +56,8 @@
     get_opts/1,
     default_opts/0,
     set_last_waiting_acks/3,
+    extract_inbound_qos2_waiting_acks/1,
+    add_inbound_qos2_waiting_acks/2,
     enqueue_many/2,
     enqueue_many/3,
     migrate/2,
@@ -189,6 +191,12 @@ set_delayed_will(Queue, Fun, Delay) when is_pid(Queue) ->
 set_last_waiting_acks(Queue, WAcks, NextMsgId) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks, NextMsgId}, infinity).
 
+extract_inbound_qos2_waiting_acks(Queue) ->
+    gen_fsm:sync_send_event(Queue, extract_inbound_qos2_waiting_acks, infinity).
+
+add_inbound_qos2_waiting_acks(Queue, WAcks) when is_map(WAcks) ->
+    save_sync_send_event(Queue, {add_inbound_qos2_waiting_acks, WAcks}).
+
 migrate(Queue, Queue) ->
     %% this scenario can happen, due to the eventual migration kickoff
     ok;
@@ -305,6 +313,11 @@ online({migrate, OtherQueue}, From, State) when
     }};
 online({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
     {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
+online(extract_inbound_qos2_waiting_acks, _From, State) ->
+    {Extracted, NewState} = extract_inbound_qos2_waiting_acks_(State),
+    {reply, {ok, Extracted}, online, NewState};
+online({add_inbound_qos2_waiting_acks, WAcks}, _From, State) ->
+    {reply, ok, online, add_inbound_qos2_waiting_acks_(WAcks, State)};
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
@@ -349,6 +362,11 @@ wait_for_offline(Event, State) ->
 
 wait_for_offline({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
+wait_for_offline(extract_inbound_qos2_waiting_acks, _From, State) ->
+    {Extracted, NewState} = extract_inbound_qos2_waiting_acks_(State),
+    {reply, {ok, Extracted}, wait_for_offline, NewState};
+wait_for_offline({add_inbound_qos2_waiting_acks, WAcks}, _From, State) ->
+    {reply, ok, wait_for_offline, add_inbound_qos2_waiting_acks_(WAcks, State)};
 wait_for_offline(
     {add_session, SessionPid, Opts},
     From,
@@ -502,6 +520,11 @@ drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer = TRef} = State
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
+drain(extract_inbound_qos2_waiting_acks, _From, State) ->
+    {Extracted, NewState} = extract_inbound_qos2_waiting_acks_(State),
+    {reply, {ok, Extracted}, drain, NewState};
+drain({add_inbound_qos2_waiting_acks, WAcks}, _From, State) ->
+    {reply, ok, drain, add_inbound_qos2_waiting_acks_(WAcks, State)};
 drain({add_session, NewSessionPid, NewOpts}, From, State) ->
     ?LOG_INFO("got add_session event from ~p for PID ~p with options ~p in drain state", [
         From, NewSessionPid, NewOpts
@@ -565,6 +588,11 @@ offline(Event, State) ->
 offline({add_session, SessionPid, Opts}, _From, State) ->
     {State1, ReturnOpts} = add_session_with_opts(SessionPid, Opts, State, true),
     {reply, {ok, ReturnOpts}, state_change(add_session, offline, online), State1};
+offline(extract_inbound_qos2_waiting_acks, _From, State) ->
+    {Extracted, NewState} = extract_inbound_qos2_waiting_acks_(State),
+    {reply, {ok, Extracted}, offline, NewState};
+offline({add_inbound_qos2_waiting_acks, WAcks}, _From, State) ->
+    {reply, ok, offline, add_inbound_qos2_waiting_acks_(WAcks, State)};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, state_change(migrate, offline, drain), State#state{
@@ -1019,6 +1047,24 @@ handle_waiting_acks_and_msgs(
             State
     end.
 
+extract_inbound_qos2_waiting_acks_(#state{offline = Offline} = State) ->
+    {Extracted, NewOffline} = extract_inbound_qos2_waiting_acks_from_queue(Offline),
+    {Extracted, State#state{offline = NewOffline}}.
+
+add_inbound_qos2_waiting_acks_(WAcks, State) ->
+    maps:fold(
+        fun(Key, Frame, AccState) ->
+            add_inbound_qos2_waiting_ack_({Key, Frame}, AccState)
+        end,
+        State,
+        WAcks
+    ).
+
+add_inbound_qos2_waiting_ack_(
+    Marker, #state{id = SId, offline = Offline, insert_fun = QFun} = State
+) ->
+    State#state{offline = queue_insert(true, QFun, Marker, Offline, SId)}.
+
 disconnect_sessions(Reason, #state{sessions = Sessions}) ->
     maps:fold(
         fun(SessionPid, #session{}, _) ->
@@ -1121,8 +1167,12 @@ insert_from_queue(_F, {empty, _}, #state{sessions = Sessions} = State) ->
     reset_ignore_max(maps:keys(Sessions), State).
 
 insert_from_queue_collect(F, {{value, Msg}, Q}, State, InitialWaitingAcks) when is_tuple(Msg) ->
-    NewInitialWaitingAcks = maybe_collect_waiting_ack(Msg, InitialWaitingAcks),
-    insert_from_queue_collect(F, F(Q), insert(Msg, State), NewInitialWaitingAcks);
+    case maybe_take_waiting_ack(Msg, InitialWaitingAcks) of
+        {true, NewInitialWaitingAcks} ->
+            insert_from_queue_collect(F, F(Q), State, NewInitialWaitingAcks);
+        false ->
+            insert_from_queue_collect(F, F(Q), insert(Msg, State), InitialWaitingAcks)
+    end;
 insert_from_queue_collect(F, {{value, MsgRef}, Q}, State, InitialWaitingAcks) when
     is_binary(MsgRef)
 ->
@@ -1150,10 +1200,34 @@ reset_ignore_max([], State) ->
 session_return_opts(#state{initial_msg_id = InitialMsgId}, InitialWaitingAcks) ->
     #{initial_msg_id => InitialMsgId, waiting_acks => InitialWaitingAcks}.
 
-maybe_collect_waiting_ack({{qos2, MsgId}, Frame}, Acc) ->
-    maps:put({qos2, MsgId}, Frame, Acc);
-maybe_collect_waiting_ack(_, Acc) ->
-    Acc.
+maybe_take_waiting_ack({{qos2, MsgId}, Frame}, Acc) ->
+    {true, maps:put({qos2, MsgId}, Frame, Acc)};
+maybe_take_waiting_ack(_, _Acc) ->
+    false.
+
+extract_inbound_qos2_waiting_acks_from_queue(#queue{queue = Q, backup = BQ, size = Size} = Queue) ->
+    {ExtractedQ, NewQ, RemovedQ} = extract_inbound_qos2_waiting_acks_from_queue_(Q),
+    {ExtractedBQ, NewBQ, _RemovedBQ} = extract_inbound_qos2_waiting_acks_from_queue_(BQ),
+    {
+        maps:merge(ExtractedQ, ExtractedBQ),
+        Queue#queue{queue = NewQ, backup = NewBQ, size = Size - RemovedQ}
+    }.
+
+extract_inbound_qos2_waiting_acks_from_queue_(Q) ->
+    {Extracted, Kept, Removed} =
+        lists:foldl(
+            fun
+                ({{qos2, MsgId}, Frame}, {AccExtracted, AccKept, AccRemoved}) when
+                    is_record(Frame, mqtt_pubrec); is_record(Frame, mqtt5_pubrec)
+                ->
+                    {maps:put({qos2, MsgId}, Frame, AccExtracted), AccKept, AccRemoved + 1};
+                (Msg, {AccExtracted, AccKept, AccRemoved}) ->
+                    {AccExtracted, queue:in(Msg, AccKept), AccRemoved}
+            end,
+            {#{}, queue:new(), 0},
+            queue:to_list(Q)
+        ),
+    {Extracted, Kept, Removed}.
 
 insert_many(MsgsOrRefs, State) ->
     lists:foldl(
