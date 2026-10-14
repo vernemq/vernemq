@@ -92,6 +92,7 @@ all() ->
      shared_subs_prefer_local_ignores_stale_local_subscribers,
      shared_subs_local_only_policy_test,
      cross_node_publish_subscribe,
+     qos2_resume_after_cross_node_queue_migration,
      late_join_node_syncs_subscriptions,
      late_join_node_syncs_retained_messages,
      restarted_node_has_no_stale_sessions,
@@ -917,6 +918,58 @@ cross_node_publish_subscribe(Config) ->
     receive_msgs(Payloads ++ Payloads ++ Payloads ++ Payloads ++ Payloads),
     receive_nothing(200).
 
+qos2_resume_after_cross_node_queue_migration(Config) ->
+    ok = ensure_cluster(Config),
+    {_, Nodes = [{_, NodeA, PortA}, {_, NodeB, PortB} | _]} = lists:keyfind(nodes, 1, Config),
+    ok = set_config(Nodes, max_offline_messages, 2000),
+    ok = set_config(Nodes, max_online_messages, 2000),
+    ok = set_config(Nodes, max_inflight_messages, 2000),
+    Suffix = integer_to_list(erlang:unique_integer([positive])),
+    ClientId = "qos2-migrate-" ++ Suffix,
+    WatcherId = "qos2-migrate-watcher-" ++ Suffix,
+    OfflinePublisherId = "qos2-migrate-offline-pub-" ++ Suffix,
+    PubTopic = "qos2/migrate/pub/" ++ Suffix,
+    OfflineTopic = "qos2/migrate/offline/" ++ Suffix,
+    PublishPayload = <<"qos2-payload">>,
+    OfflinePayloads = [list_to_binary(["offline-", integer_to_list(N)]) || N <- lists:seq(1, 1000)],
+    SubscriberId = {"", list_to_binary(ClientId)},
+
+    WatcherConnect = packet:gen_connect(WatcherId, [{clean_session, true}, {keepalive, 600}]),
+    {ok, WatcherSocket} = packet:do_client_connect(
+        WatcherConnect, packet:gen_connack(0), [{port, PortA}]
+    ),
+    ok = subscribe(WatcherSocket, PubTopic, 0),
+
+    Connect = packet:gen_connect(ClientId, [{clean_session, false}, {keepalive, 600}]),
+    {ok, SocketA} = packet:do_client_connect(Connect, packet:gen_connack(0), [{port, PortA}]),
+    ok = subscribe(SocketA, OfflineTopic, 1),
+    ok = wait_until_subscription_count(NodeA, SubscriberId, 1),
+
+    Publish = packet:gen_publish(PubTopic, 2, PublishPayload, [{mid, 1}]),
+    ok = gen_tcp:send(SocketA, Publish),
+    ok = packet:expect_packet(SocketA, "pubrec", packet:gen_pubrec(1)),
+    ok = expect_publish_payload(WatcherSocket, PublishPayload, no_ack),
+    {error, timeout} = gen_tcp:recv(WatcherSocket, 0, 1000),
+
+    ok = gen_tcp:close(SocketA),
+    ok = wait_until_stored(NodeA, SubscriberId, 1),
+
+    ok = publish_qos1_many(PortA, OfflinePublisherId, OfflineTopic, OfflinePayloads),
+    ok = wait_until_stored(NodeA, SubscriberId, 1001),
+
+    {ok, SocketB} = packet:do_client_connect(
+        Connect, packet:gen_connack(true, 0), [{port, PortB}]
+    ),
+    ok = gen_tcp:send(SocketB, packet:gen_pubrel(1)),
+    ok = packet:expect_packet(SocketB, "pubcomp", packet:gen_pubcomp(1)),
+    ok = expect_publish_payloads(SocketB, OfflinePayloads),
+    {error, timeout} = gen_tcp:recv(WatcherSocket, 0, 1000),
+
+    ok = gen_tcp:close(SocketB),
+    ok = gen_tcp:close(WatcherSocket),
+    true = (NodeA =/= NodeB),
+    Config.
+
 late_join_node_syncs_subscriptions(Config) ->
     ok = ensure_cluster(Config),
     [{LatePeer, LateNode, LatePort}, {_, _Node1, Port1} | _] = Nodes = nodes_(Config),
@@ -1244,6 +1297,8 @@ parse_all(Data) ->
 
 parse_all(Data, Frames) ->
     case vmq_parser:parse(Data) of
+        {error, cant_parse_variable_header} ->
+            {ok, lists:reverse(Frames), Data};
         more ->
             {ok, lists:reverse(Frames), Data};
         {error, _Rest} ->
@@ -1278,6 +1333,90 @@ subscribe_many(Socket, Topics, QoS, MsgId) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     subscribe_many(Socket, Rest, QoS, MsgId + 1).
+
+publish_qos1(Port, ClientId, Topic, Payload, MsgId) ->
+    Connect = packet:gen_connect(ClientId, [{clean_session, true}, {keepalive, 60}]),
+    {ok, Socket} = packet:do_client_connect(Connect, packet:gen_connack(0), [{port, Port}]),
+    Publish = packet:gen_publish(Topic, 1, Payload, [{mid, MsgId}]),
+    ok = gen_tcp:send(Socket, Publish),
+    ok = packet:expect_packet(Socket, "puback", packet:gen_puback(MsgId)),
+    ok = gen_tcp:close(Socket).
+
+publish_qos1_many(Port, ClientIdPrefix, Topic, Payloads) ->
+    Connect = packet:gen_connect(ClientIdPrefix, [{clean_session, true}, {keepalive, 60}]),
+    {ok, Socket} = packet:do_client_connect(Connect, packet:gen_connack(0), [{port, Port}]),
+    lists:foreach(
+        fun({Payload, N}) ->
+            Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
+            ok = gen_tcp:send(Socket, Publish),
+            ok = packet:expect_packet(Socket, "puback", packet:gen_puback(N))
+        end,
+        lists:zip(Payloads, lists:seq(1, length(Payloads)))
+    ),
+    ok = gen_tcp:close(Socket).
+
+expect_publish_payload(Socket, Payload, AckMode) ->
+    case recv(Socket, <<>>) of
+        {ok, #mqtt_publish{message_id = MsgId, payload = Payload}} when AckMode =:= puback ->
+            ok = gen_tcp:send(Socket, packet:gen_puback(MsgId));
+        {ok, #mqtt_publish{payload = Payload}} when AckMode =:= no_ack ->
+            ok;
+        Other ->
+            {error, {unexpected_publish, Other, Payload, AckMode}}
+    end.
+
+expect_publish_payloads(Socket, Payloads) ->
+    expect_publish_payloads(Socket, Payloads, sets:from_list(Payloads, [{version, 2}]), <<>>).
+
+expect_publish_payloads(_Socket, _Payloads, Remaining, _Buf) ->
+    case sets:size(Remaining) of
+        0 ->
+            ok;
+        _ ->
+            expect_publish_payloads_(_Socket, _Payloads, Remaining, _Buf)
+    end.
+
+expect_publish_payloads_(Socket, Payloads, Remaining, Buf) ->
+    case recv_all(Socket, Buf) of
+        {ok, [], Rest} ->
+            expect_publish_payloads_(Socket, Payloads, Remaining, Rest);
+        {ok, Frames, Rest} ->
+            case ack_publish_frames(Socket, Frames, Payloads, Remaining) of
+                {ok, NewRemaining} ->
+                    expect_publish_payloads(Socket, Payloads, NewRemaining, Rest);
+                Error ->
+                    Error
+            end;
+        Other ->
+            {error, {unexpected_publish, Other, Payloads}}
+    end.
+
+ack_publish_frames(_Socket, [], _Payloads, Remaining) ->
+    {ok, Remaining};
+ack_publish_frames(Socket, [#mqtt_publish{message_id = MsgId, payload = Payload} | Rest], Payloads, Remaining) ->
+    ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
+    case sets:is_element(Payload, Remaining) of
+        true ->
+            ack_publish_frames(Socket, Rest, Payloads, sets:del_element(Payload, Remaining));
+        false ->
+            {error, {unexpected_payload, Payload, Payloads}}
+    end;
+ack_publish_frames(_Socket, [Frame | _], Payloads, _Remaining) ->
+    {error, {unexpected_publish, Frame, Payloads}}.
+
+wait_until_subscription_count(Node, SubscriberId, Expected) ->
+    vmq_cluster_test_utils:wait_until(
+        fun() -> subscription_count(Node, SubscriberId) =:= Expected end,
+        120,
+        500
+    ).
+
+wait_until_stored(Node, SubscriberId, Expected) ->
+    vmq_cluster_test_utils:wait_until(
+        fun() -> rpc:call(Node, vmq_reg, stored, [SubscriberId]) >= Expected end,
+        120,
+        500
+    ).
 
 ensure_cluster(Config) ->
     vmq_cluster_test_utils:ensure_cluster(Config).

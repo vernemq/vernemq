@@ -1,3 +1,4 @@
+- Spec compliance: Fix QoS 2 duplicate PUBLISH handling after session resume to avoid duplicate onward delivery when a client retransmits with DUP=1.
 - Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
 - Enhancement: Fix vmq_webhooks caching to honor Cache-Control: no-store/no-cache and avoid storing responses with non-positive max-age, preventing stale cache entries from accumulating.
 - Enhancement: Forward the TLS SNI (server name indication) as `tls_sni` to the extended

@@ -303,8 +303,9 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
             %% remap subscriber... enabling that new messages will
             %% eventually reach the new queue.  Remapping triggers
             %% remote nodes to initiate queue migration
-            {SubscriptionsPresent, UpdatedSubs, ChangedNodes} =
+            {SubscriptionsPresent, UpdatedSubs, ChangedNodes, MigratedWaitingAcks} =
                 maybe_remap_subscriber(SubscriberId, StartClean),
+            ok = maybe_add_inbound_qos2_waiting_acks(QPid, MigratedWaitingAcks),
             SessionPresent1 = SubscriptionsPresent or QueuePresent,
             SessionPresent2 =
                 case StartClean of
@@ -1314,7 +1315,7 @@ sync_reg_view_delta(SubscriberId, ToRemove, ToAdd) ->
 %% if a session was already present for the given
 %% subscriber id.
 -spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
-    {boolean(), undefined | vmq_subscriber:subs(), [node()]}.
+    {boolean(), undefined | vmq_subscriber:subs(), [node()], map()}.
 maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
@@ -1322,7 +1323,7 @@ maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
     vmq_subscriber_db:store(SubscriberId, Subs),
     sync_reg_view_update(SubscriberId, OldSubs, Subs),
-    {false, Subs, []};
+    {false, Subs, [], #{}};
 maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
         undefined ->
@@ -1330,17 +1331,44 @@ maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
             Subs = vmq_subscriber:new(false),
             vmq_subscriber_db:store(SubscriberId, Subs),
             sync_reg_view_update(SubscriberId, [], Subs),
-            {false, Subs, []};
+            {false, Subs, [], #{}};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
+                    MigratedWaitingAcks = extract_inbound_qos2_waiting_acks(
+                        SubscriberId, ChangedNodes
+                    ),
                     vmq_subscriber_db:store(SubscriberId, NewSubs),
                     sync_reg_view_update(SubscriberId, Subs, NewSubs),
-                    {true, NewSubs, ChangedNodes};
+                    {true, NewSubs, ChangedNodes, MigratedWaitingAcks};
                 _ ->
-                    {true, Subs, []}
+                    {true, Subs, [], #{}}
             end
     end.
+
+extract_inbound_qos2_waiting_acks(SubscriberId, Nodes) when is_list(Nodes) ->
+    lists:foldl(
+        fun(Node, Acc) ->
+            maps:merge(Acc, extract_inbound_qos2_waiting_acks(SubscriberId, Node))
+        end,
+        #{},
+        Nodes
+    );
+extract_inbound_qos2_waiting_acks(SubscriberId, Node) when is_atom(Node) ->
+    case rpc:call(Node, ?MODULE, get_queue_pid, [SubscriberId]) of
+        QPid when is_pid(QPid) ->
+            case catch vmq_queue:extract_inbound_qos2_waiting_acks(QPid) of
+                {ok, WAcks} when is_map(WAcks) -> WAcks;
+                _ -> #{}
+            end;
+        _ ->
+            #{}
+    end.
+
+maybe_add_inbound_qos2_waiting_acks(_QPid, WAcks) when map_size(WAcks) =:= 0 ->
+    ok;
+maybe_add_inbound_qos2_waiting_acks(QPid, WAcks) ->
+    vmq_queue:add_inbound_qos2_waiting_acks(QPid, WAcks).
 
 -spec get_session_pids(subscriber_id()) ->
     {'error', 'not_found'} | {'ok', pid(), [pid()]}.

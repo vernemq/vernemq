@@ -26,6 +26,8 @@
 -callback notify_recv(Queue :: pid()) -> ok.
 -callback set_last_waiting_acks(Queue :: pid(), WAcks :: map(), NextMsgId :: msg_id()) ->
     ok.
+-callback extract_inbound_qos2_waiting_acks(Queue :: pid()) -> {ok, map()} | term().
+-callback add_inbound_qos2_waiting_acks(Queue :: pid(), WAcks :: map()) -> ok | term().
 
 % vmq_reg, vmq_cluster_com, vmq_shared_subscriptions
 -callback enqueue(Queue :: pid(), Msg :: msg()) -> ok.
@@ -34,7 +36,7 @@
 
 % vmq_reg, session FSMs (& misc)
 -callback add_session(Queue :: pid(), Session :: pid(), Opts :: map()) ->
-    {ok, #{initial_msg_id := msg_id()}}
+    {ok, #{initial_msg_id := msg_id(), waiting_acks => map()}}
     | {error, any()}.
 -callback get_sessions(Queue :: pid()) -> [pid()].
 -callback set_opts(Queue :: pid(), Opts :: list()) -> ok.
