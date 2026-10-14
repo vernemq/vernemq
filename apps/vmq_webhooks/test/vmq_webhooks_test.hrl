@@ -24,11 +24,20 @@
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
+-define(LISTENER_INFO_NULLS_CLIENT_ID, <<"listener-info-nulls">>).
 -define(OPTS, #{
     client_cert => <<"client cert">>,
     listener_addr => {127, 0, 0, 1},
     listener_port => 1883,
-    listener_type => mqtt
+    listener_type => mqtt,
+    tls_sni => <<"mqtt.example.com">>
+}).
+-define(OPTS_NULLS, #{
+    client_cert => undefined,
+    listener_addr => {127, 0, 0, 1},
+    listener_port => 8883,
+    listener_type => mqtts,
+    tls_sni => undefined
 }).
 -define(OPTS_UNIX_SOCKET, #{
     listener_addr => {local, "/tmp/vmq_test.sock"},
