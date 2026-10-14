@@ -1,3 +1,4 @@
+- Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
 - Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
 - Enhancement: Fix vmq_webhooks caching to honor Cache-Control: no-store/no-cache and avoid storing responses with non-positive max-age, preventing stale cache entries from accumulating.
 - Enhancement: Forward the TLS SNI (server name indication) as `tls_sni` to the extended

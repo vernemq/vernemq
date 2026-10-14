@@ -55,7 +55,7 @@
     refs = ets:new(?MODULE, [])
 }).
 
--define(P_IDX_PRE, 0).
+-define(P_IDX_PRE, 1).
 -define(P_MSG_PRE, 0).
 
 %% Subsequent formats should always extend by adding new elements to
@@ -64,7 +64,8 @@
 -record(p_idx_val, {
     ts :: erlang:timestamp(),
     dup :: flag(),
-    qos :: qos()
+    qos :: qos(),
+    retain = false :: flag()
 }).
 -type p_idx_val_pre() :: #p_idx_val{}.
 
@@ -306,6 +307,7 @@ handle_req(
         mountpoint = MP,
         dup = Dup,
         qos = QoS,
+        retain = Retain,
         routing_key = RoutingKey,
         properties = Properties,
         payload = Payload
@@ -314,7 +316,9 @@ handle_req(
 ) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    IdxVal = serialize_p_idx_val_pre(#p_idx_val{ts = os:timestamp(), dup = Dup, qos = QoS}),
+    IdxVal = serialize_p_idx_val_pre(#p_idx_val{
+        ts = os:timestamp(), dup = Dup, qos = QoS, retain = Retain
+    }),
     case incr_ref(Refs, MsgRef) of
         1 ->
             %% new message
@@ -350,12 +354,13 @@ handle_req(
 
             case apply(EngineModule, read, [EngineState, IdxKey]) of
                 {ok, IdxVal} ->
-                    #p_idx_val{dup = Dup, qos = QoS} = parse_p_idx_val_pre(IdxVal),
+                    #p_idx_val{dup = Dup, qos = QoS, retain = Retain} = parse_p_idx_val_pre(IdxVal),
                     Msg = #vmq_msg{
                         msg_ref = MsgRef,
                         mountpoint = MP,
                         dup = Dup,
                         qos = QoS,
+                        retain = Retain,
                         routing_key = RoutingKey,
                         properties = Properties,
                         payload = Payload,
@@ -465,7 +470,7 @@ select_table(SubscriberId) ->
 %% pre version idx:
 %% {p_idx_val, ts, dup, qos}
 %% future version:
-%% {p_idx_val, version, ts, dup, qos, ...}
+%% {p_idx_val, version, ts, dup, qos, retain, ...}
 
 %% current version of the index value
 -spec parse_p_idx_val_pre(binary()) -> p_idx_val_pre().
@@ -474,6 +479,8 @@ parse_p_idx_val_pre(BinTerm) ->
 
 parse_p_idx_val_pre_({TS, Dup, QoS}) ->
     #p_idx_val{ts = TS, dup = Dup, qos = QoS};
+parse_p_idx_val_pre_({p_idx_val, ?P_IDX_PRE, TS, Dup, QoS, Retain}) ->
+    #p_idx_val{ts = TS, dup = Dup, qos = QoS, retain = Retain};
 %% newer versions of the store -> downgrade
 parse_p_idx_val_pre_(T) when
     element(1, T) =:= p_idx_val,
@@ -483,19 +490,22 @@ parse_p_idx_val_pre_(T) when
     TS = element(3, T),
     Dup = element(4, T),
     QoS = element(5, T),
-    #p_idx_val{ts = TS, dup = Dup, qos = QoS}.
+    Retain = element(6, T),
+    #p_idx_val{ts = TS, dup = Dup, qos = QoS, retain = Retain}.
 
 %% current version of the index value
 -spec serialize_p_idx_val_pre(p_idx_val_pre()) -> binary().
-serialize_p_idx_val_pre(#p_idx_val{ts = TS, dup = Dup, qos = QoS}) ->
+serialize_p_idx_val_pre(#p_idx_val{ts = TS, dup = Dup, qos = QoS, retain = Retain}) ->
+    term_to_binary({p_idx_val, ?P_IDX_PRE, TS, Dup, QoS, Retain});
+serialize_p_idx_val_pre({p_idx_val, TS, Dup, QoS}) ->
     term_to_binary({TS, Dup, QoS});
 serialize_p_idx_val_pre(T) when
     element(1, T) =:= p_idx_val,
     is_integer(element(2, T)),
-    element(2, T) > ?P_MSG_PRE
+    element(2, T) > ?P_IDX_PRE
 ->
     term_to_binary(
-        {element(3, T), element(4, T), element(5, T)}
+        {p_idx_val, ?P_IDX_PRE, element(3, T), element(4, T), element(5, T), element(6, T)}
     ).
 
 %% pre msg version:
