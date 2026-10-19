@@ -9,6 +9,9 @@
   enabled but without `require_certificate`.
 - Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
 - Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
+- Bugfix: Fix `vmq_web_ui` routes not being registered (HTTP 404 on `/webui`) when the
+  plugin is enabled on more than one HTTP listener, caused by `routes/0` creating the
+  `webuitoken` ETS table on every call.
 
 ## VerneMQ 2.2.1
 
