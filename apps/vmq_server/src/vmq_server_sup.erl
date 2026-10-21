@@ -71,6 +71,7 @@ init([]) ->
             ?CHILD(vmq_fanout_shard_sup, supervisor, []),
             ?CHILD(vmq_reg_sup, supervisor, []),
             ?CHILD(vmq_cluster_node_sup, supervisor, []),
+            ?CHILD(vmq_lwt_watch, worker, []),
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_ranch_sup, supervisor, [])
         ]}}.

@@ -1262,6 +1262,7 @@ check_will(
         )
     of
         {ok, Msg, _, NewState} ->
+            ok = vmq_lwt_db:store(SubscriberId, User, filter_outgoing_pub_props(Msg)),
             OutProps0 = maybe_add_topic_alias_max(OutProps, State),
             _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
             {NewState#state{will_msg = Msg}, [

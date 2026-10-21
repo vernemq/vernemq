@@ -834,6 +834,7 @@ check_will(
         )
     of
         {ok, Msg, SessCtrl} ->
+            ok = vmq_lwt_db:store(SubscriberId, User, Msg),
             _ = vmq_metrics:incr({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT}),
             {
                 State#state{will_msg = Msg},

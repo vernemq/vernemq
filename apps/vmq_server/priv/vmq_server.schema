@@ -2314,6 +2314,30 @@
                                                  hidden
                                                 ]}.
 
+%% @doc Store every accepted Last Will and Testament in the replicated
+%% cluster metadata, so that it can still be published when the node holding
+%% the session dies without shutting down. The wills of a dead node are
+%% published by `vmq-admin cluster leave node=<dead node>`, and a node that is
+%% restarted under the same name publishes the wills of its previous
+%% incarnation itself (see lwt_fire_delay). Costs one metadata write per
+%% connect with a will and one delete per disconnect.
+{mapping, "replicate_lwt", "vmq_server.replicate_lwt", [
+                                                         {default, off},
+                                                         {datatype, flag},
+                                                         hidden
+                                                        ]}.
+
+%% @doc Seconds after this node started before it publishes the replicated
+%% wills (replicate_lwt) of its previous incarnation, if it was restarted
+%% under the same name. Clients that reconnected by then get none. The
+%% default is the time an MQTT client with a 30 s keepalive gets before its
+%% will is published.
+{mapping, "lwt_fire_delay", "vmq_server.lwt_fire_delay", [
+                                                           {default, 45},
+                                                           {datatype, integer},
+                                                           hidden
+                                                          ]}.
+
 %% @doc plugins.<plugin> enables/disables a plugin.
 %%
 %% Plugin specific settings are set via the plugin itself, i.e., to

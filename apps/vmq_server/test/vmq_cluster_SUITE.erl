@@ -88,6 +88,9 @@ all() ->
      cluster_leave_myself_test,
      cluster_leave_dead_node_test,
      register_after_old_node_died_test,
+     replicated_lwt_dead_node_test,
+     replicated_lwt_cluster_leave_test,
+     replicated_lwt_restart_test,
      shared_subs_random_policy_test,
      shared_subs_prefer_local_policy_test,
      shared_subs_prefer_local_ignores_stale_local_subscribers,
@@ -611,6 +614,130 @@ register_after_old_node_died_test(Config) ->
     ok = vmq_cluster_test_utils:wait_until_offline(DeadNode),
     Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, OtherPort}]).
+
+%% A node halts without running any code (like a lost VM): its clients' wills
+%% survive in the metadata, and a surviving node publishes them, except for a
+%% client that reconnected elsewhere or one that had disconnected normally.
+replicated_lwt_dead_node_test(Config) ->
+    {Sub, DeadNode, SubNode} = replicated_lwt_setup(Config),
+    {1, 1} = rpc:call(SubNode, vmq_lwt_db, fire, [DeadNode]),
+    replicated_lwt_expect(Sub, SubNode).
+
+%% The same through `vmq-admin cluster leave node=<dead node>`.
+replicated_lwt_cluster_leave_test(Config) ->
+    {Sub, DeadNode, SubNode} = replicated_lwt_setup(Config),
+    {ok, _} = rpc:call(SubNode, vmq_server_cmd, node_leave, [DeadNode]),
+    replicated_lwt_expect(Sub, SubNode).
+
+replicated_lwt_setup(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, DeadNode, DeadPort}, {_, SubNode, SubPort}, {_, _, OtherPort}] = Nodes} =
+        lists:keyfind(nodes, 1, Config),
+    allow_metadata_writes_during_netsplit(Nodes),
+    set_config(Nodes, replicate_lwt, true),
+    set_config(Nodes, suppress_lwt_on_session_takeover, true),
+    Sub = connect(SubPort, "lwt-sub", [{clean_session, true}]),
+    subscribe(Sub, <<"lwt/#">>, 0),
+    Will = fun(T) -> [{clean_session, false}, {will_topic, T}, {will_msg, <<"dead">>}] end,
+    %% Taken over on the same node: the old session's cleanup must not delete
+    %% the new session's will.
+    _ = connect(DeadPort, "lwt-gone", Will("lwt/gone")),
+    _ = packet:do_client_connect(
+        packet:gen_connect("lwt-gone", Will("lwt/gone")),
+        packet:gen_connack(1, 0),
+        [{port, DeadPort}]
+    ),
+    _ = connect(DeadPort, "lwt-back", Will("lwt/back")),
+    Clean = connect(DeadPort, "lwt-clean", Will("lwt/clean")),
+    ok = gen_tcp:send(Clean, packet:gen_disconnect()),
+    ok = wait_until_converged(Nodes, fun lwt_entries/1, 2),
+    rpc:cast(DeadNode, erlang, halt, []),
+    ok = vmq_cluster_test_utils:wait_until_offline(DeadNode),
+    %% Reconnect (without a will) on another node, retrying like a client
+    %% would, until the remap has reached SubNode.
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() ->
+            Connect = packet:gen_connect("lwt-back", [{clean_session, false}]),
+            _ = packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, OtherPort}]),
+            not lwt_registered_on(SubNode, DeadNode, <<"lwt-back">>)
+        end,
+        20,
+        500
+    ),
+    {Sub, DeadNode, SubNode}.
+
+replicated_lwt_expect(Sub, SubNode) ->
+    ok = packet:expect_packet(Sub, "publish", packet:gen_publish(<<"lwt/gone">>, 0, <<"dead">>, [])),
+    {error, timeout} = gen_tcp:recv(Sub, 0, 500),
+    0 = lwt_entries(SubNode).
+
+%% A node that crashes and comes back under the same name publishes its
+%% previous incarnation's wills itself, but keeps the will of a client that
+%% has already reconnected to it.
+replicated_lwt_restart_test(Config) ->
+    {Sub, [{_, Node, Port} | RestNodes] = Nodes} = lwt_setup(Config),
+    _ = lwt_connect(Port, "lwt-back", lwt_will("lwt/back")),
+    ok = wait_until_converged(Nodes, fun lwt_entries/1, 2),
+    rpc:cast(Node, erlang, halt, []),
+    ok = vmq_cluster_test_utils:wait_until_offline(Node),
+    {ok, Peer, Node} = vmq_cluster_test_utils:start_node(Node, Config, ?FUNCTION_NAME),
+    Restarted = [{Peer, Node, Port}],
+    {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start, [Port, []]),
+    ok = rpc:call(Node, vmq_auth, register_hooks, []),
+    ok = vmq_cluster_test_utils:refresh_plugin_hooks(Restarted),
+    lwt_config(Restarted),
+    %% enough time for lwt-back to reconnect first
+    set_config(Restarted, lwt_fire_delay, 10),
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() -> ok == lwt_connect(Port, "lwt-back", lwt_will("lwt/back")) end, 20, 200
+    ),
+    ok = packet:expect_packet(Sub, "publish", packet:gen_publish(<<"lwt/gone">>, 0, <<"dead">>, [])),
+    {error, timeout} = gen_tcp:recv(Sub, 0, 3000),
+    ok = wait_until_converged(RestNodes, fun lwt_entries/1, 1).
+
+%% One client with a will on the first node, one that disconnected normally.
+lwt_setup(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, _, FirstPort}, {_, _, SubPort} | _] = Nodes} = lists:keyfind(nodes, 1, Config),
+    allow_metadata_writes_during_netsplit(Nodes),
+    lwt_config(Nodes),
+    Sub = connect(SubPort, "lwt-sub", [{clean_session, true}]),
+    subscribe(Sub, <<"lwt/#">>, 0),
+    _ = connect(FirstPort, "lwt-gone", lwt_will("lwt/gone")),
+    Clean = connect(FirstPort, "lwt-clean", lwt_will("lwt/clean")),
+    ok = gen_tcp:send(Clean, packet:gen_disconnect()),
+    ok = wait_until_converged(Nodes, fun lwt_entries/1, 1),
+    {Sub, Nodes}.
+
+lwt_config(Nodes) ->
+    set_config(Nodes, replicate_lwt, true),
+    set_config(Nodes, lwt_fire_delay, 5).
+
+lwt_will(Topic) ->
+    [{clean_session, false}, {will_topic, Topic}, {will_msg, <<"dead">>}].
+
+%% Connects and accepts any CONNACK that grants the connection, whatever its
+%% session present flag. The socket stays open.
+lwt_connect(Port, ClientId, Opts) ->
+    {ok, Socket} = gen_tcp:connect("localhost", Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, packet:gen_connect(ClientId, Opts)),
+    case gen_tcp:recv(Socket, 4, 5000) of
+        {ok, <<32, 2, _SessionPresent, 0>>} -> ok;
+        Other -> Other
+    end.
+
+lwt_entries(Node) ->
+    rpc:call(Node, vmq_metadata, fold, [{vmq, lwt}, fun ?MODULE:lwt_count_entry/2, 0]).
+
+%% A named fun: the peers reject an anonymous one when the suite is cover-compiled.
+lwt_count_entry({_, {_, _, _}}, N) -> N + 1;
+lwt_count_entry(_, N) -> N.
+
+lwt_registered_on(Node, DeadNode, ClientId) ->
+    case rpc:call(Node, vmq_subscriber_db, read, [{"", ClientId}]) of
+        undefined -> false;
+        Subs -> lists:member(DeadNode, vmq_subscriber:get_nodes(Subs))
+    end.
 
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),

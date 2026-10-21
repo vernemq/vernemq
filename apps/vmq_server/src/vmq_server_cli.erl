@@ -381,6 +381,9 @@ vmq_cluster_leave_cmd() ->
                     pang ->
                         %% node is offline, we've to ensure sessions are
                         %% remapped and all necessary queues exist.
+                        %% Its clients' replicated wills go first, while the
+                        %% subscriber metadata still names the dead node.
+                        _ = vmq_lwt_db:fire(Node),
                         leave_cluster(Node),
                         case check_cluster_consistency(TargetNodes, Timeout div 1000) of
                             true ->

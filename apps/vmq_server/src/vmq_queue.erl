@@ -908,6 +908,7 @@ handle_session_down(
     StateName,
     #state{id = SId, waiting_call = WaitingCall} = State
 ) ->
+    ok = vmq_lwt_db:session_down(SId, SessionPid),
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
         {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->

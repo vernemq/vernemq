@@ -63,6 +63,8 @@ register_config_() ->
             "receive_max_client",
             "receive_max_broker",
             "suppress_lwt_on_session_takeover",
+            "replicate_lwt",
+            "lwt_fire_delay",
             "coordinate_registrations",
             "mqtt_connect_timeout",
             "cluster_ready_rpc_timeout",
