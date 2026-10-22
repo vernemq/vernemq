@@ -324,7 +324,7 @@ forward_request(Req, State) ->
 %%% Cowboy Config
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 routes() ->
-    ets:new(webuitoken, [named_table, public, set]),
+    ensure_token_table(),
     [
         {"/webui", cowboy_static, {priv_file, vmq_web_ui, "www/index.html"}},
         {"/webui/[...]", cowboy_static, {priv_dir, vmq_web_ui, "www"}},
@@ -333,3 +333,12 @@ routes() ->
         {"/webuiapi/logout", ?MODULE, []},
         {"/webuiapi/v1/[...]", ?MODULE, []}
     ].
+
+ensure_token_table() ->
+    case ets:whereis(webuitoken) of
+        undefined ->
+            ets:new(webuitoken, [named_table, public, set]),
+            ok;
+        _ ->
+            ok
+    end.
