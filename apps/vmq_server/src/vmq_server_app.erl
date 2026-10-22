@@ -19,7 +19,7 @@
 -include_lib("kernel/include/logger.hrl").
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, prep_stop/1, stop/1]).
 
 %% ===================================================================
 %% Application callbacks
@@ -69,6 +69,16 @@ start_user_plugin(
         {error, Reason} ->
             ?LOG_WARNING("could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
+
+%% OTP calls prep_stop/1 before the application's supervisor tree is
+%% terminated. Stopping the listeners here lets every connection that is
+%% still open run its FSM terminate/3 (which publishes a scheduled Will)
+%% while the queues, registry and message store are still alive. The old
+%% stop/1 below runs too late, after the tree is gone.
+-spec prep_stop(_) -> any().
+prep_stop(State) ->
+    _ = vmq_ranch_config:stop_all_mqtt_listeners(true),
+    State.
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
