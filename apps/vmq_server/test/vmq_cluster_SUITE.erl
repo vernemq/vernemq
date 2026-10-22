@@ -88,6 +88,7 @@ all() ->
      cluster_leave_myself_test,
      cluster_leave_dead_node_test,
      register_after_old_node_died_test,
+     register_while_old_node_hangs_test,
      shared_subs_random_policy_test,
      shared_subs_prefer_local_policy_test,
      shared_subs_prefer_local_ignores_stale_local_subscribers,
@@ -611,6 +612,51 @@ register_after_old_node_died_test(Config) ->
     ok = vmq_cluster_test_utils:wait_until_offline(DeadNode),
     Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, OtherPort}]).
+
+%% The node holding a persistent session still looks connected but no longer
+%% answers (a host that died without closing its connections). The client is
+%% refused quickly instead of waiting until the node is declared down, and its
+%% retry on another node registers. The refused registration must not complete
+%% later and take over the retry's session.
+register_while_old_node_hangs_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, HungNode, HungPort}, {_, Node2, Port2}, {_, Node3, Port3}] = Nodes} =
+        lists:keyfind(nodes, 1, Config),
+    allow_metadata_writes_during_netsplit(Nodes),
+    set_config(Nodes, cluster_ready_rpc_timeout, 1000),
+    ClientId = "hung-node-client",
+    _ = connect(HungPort, ClientId, [{clean_session, false}]),
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() -> registered_on(Node2, ClientId) == [HungNode] end, 20, 200
+    ),
+    OsPid = rpc:call(HungNode, os, getpid, []),
+    _ = os:cmd("kill -STOP " ++ OsPid),
+    try
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                not rpc:call(Node2, vmq_cluster, is_ready, []) andalso
+                    not rpc:call(Node3, vmq_cluster, is_ready, [])
+            end,
+            30,
+            500
+        ),
+        Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
+        %% Server unavailable, within the rpc timeout
+        {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3), [{port, Port2}]),
+        {ok, Socket} = gen_tcp:connect("localhost", Port3, [binary, {active, false}, {packet, raw}]),
+        ok = gen_tcp:send(Socket, Connect),
+        {ok, <<32, 2, _SessionPresent, 0>>} = gen_tcp:recv(Socket, 4, 10000),
+        {error, timeout} = gen_tcp:recv(Socket, 0, 3000),
+        [Node3] = registered_on(Node3, ClientId)
+    after
+        os:cmd("kill -CONT " ++ OsPid)
+    end.
+
+registered_on(Node, ClientId) ->
+    case rpc:call(Node, vmq_subscriber_db, read, [{"", list_to_binary(ClientId)}]) of
+        undefined -> [];
+        Subs -> vmq_subscriber:get_nodes(Subs)
+    end.
 
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),
