@@ -335,7 +335,11 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                                             done;
                                         _ ->
                                             block
-                                    end
+                                    end;
+                                {badrpc, _} ->
+                                    %% The old node is down: its queue can't be
+                                    %% migrated, so there is nothing to wait for.
+                                    done
                             end
                         end,
                         block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),

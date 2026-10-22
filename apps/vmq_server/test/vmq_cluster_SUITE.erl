@@ -87,6 +87,7 @@ all() ->
      cluster_leave_test,
      cluster_leave_myself_test,
      cluster_leave_dead_node_test,
+     register_after_old_node_died_test,
      shared_subs_random_policy_test,
      shared_subs_prefer_local_policy_test,
      shared_subs_prefer_local_ignores_stale_local_subscribers,
@@ -587,6 +588,29 @@ cluster_leave_dead_node_test(Config) ->
         wait_until_converged(RestNodes,
                              fun(N) -> rpc:call(N, vmq_queue_sup_sup, summary, []) end,
                              {0, 0, 0, 5, 0}).
+
+%% A client with a persistent session on a node that died can register on
+%% another node at its first attempt (the old node can't be asked about its
+%% queue any more).
+register_after_old_node_died_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, DeadNode, DeadPort}, {_, OtherNode, OtherPort} | _] = Nodes} =
+        lists:keyfind(nodes, 1, Config),
+    allow_metadata_writes_during_netsplit(Nodes),
+    ClientId = "dead-node-client",
+    _ = connect(DeadPort, ClientId, [{clean_session, false}]),
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() ->
+            rpc:call(OtherNode, vmq_subscriber_db, read, [{"", list_to_binary(ClientId)}]) =/=
+                undefined
+        end,
+        20,
+        200
+    ),
+    rpc:cast(DeadNode, erlang, halt, []),
+    ok = vmq_cluster_test_utils:wait_until_offline(DeadNode),
+    Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
+    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, OtherPort}]).
 
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),
