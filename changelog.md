@@ -1,3 +1,4 @@
+- Feature: Optional replication of last wills (`replicate_lwt`). The wills of a node that dies without shutting down are published by `vmq-admin cluster leave` of that node, or by the node itself when it is restarted under the same name (after `lwt_fire_delay`).
 - Bugfix: Don't drop the first CONNECT of a client with a persistent session that reconnects to another node after the node holding its session went down.
 - Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
 - Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
