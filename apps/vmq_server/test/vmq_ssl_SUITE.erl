@@ -384,22 +384,13 @@ connect_cert_auth_expired_test(_) ->
                                {keyfile, ssl_path("client.key")}])).
 
 connect_cert_auth_revoked_test(_) ->
-    assert_error_or_closed([{error,{tls_alert,"certificate revoked"}}, % pre OTP 18
-                            {error,{tls_alert,"handshake failure"}}, % Erlang 18
-                            {error, %% OTP 21.3+
-                             {tls_alert,
-                              {handshake_failure,
-                               "received SERVER ALERT: Fatal - Handshake Failure"}}},
-                            {error,
-                             {tls_alert,
-                              {handshake_failure,
-                               "received CLIENT ALERT: Fatal - Handshake Failure"}}}],
-                  ssl:connect("localhost", 1888,
-                              [binary, {active, false}, {packet, raw},
-                               {verify, verify_peer},
-                               {cacerts, load_cacerts()},
-                               {certfile, ssl_path("client-revoked.crt")},
-                               {keyfile, ssl_path("client.key")}])).
+    {error, {tls_alert, {certificate_revoked, _}}} =
+        ssl:connect("localhost", 1888,
+                    [binary, {active, false}, {packet, raw},
+                     {verify, verify_peer},
+                     {cacerts, load_cacerts()},
+                     {certfile, ssl_path("client-revoked.crt")},
+                     {keyfile, ssl_path("client.key")}]).
 
 connect_cert_auth_crl_test(_) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
