@@ -11,6 +11,9 @@
   enabled but without `require_certificate`.
 - Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
 - Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
+- Dependency: Update Hackney to 4.9.1. New pooled connections are opened by the requesting
+  process instead of the pool, so one slow connect no longer stalls every request to the same
+  webhook endpoint. A configured `vmq_webhooks.cafile` now limits trust to that CA.
 
 ## VerneMQ 2.2.1
 
