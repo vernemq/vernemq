@@ -14,6 +14,9 @@
 - Dependency: Update Hackney to 4.9.1. New pooled connections are opened by the requesting
   process instead of the pool, so one slow connect no longer stalls every request to the same
   webhook endpoint. A configured `vmq_webhooks.cafile` now limits trust to that CA.
+- Bugfix: `vmq_webhooks.pool_max_connections` caps concurrent webhook requests again. Since
+  the update to Hackney 4, concurrency was capped at Hackney's default of 50 per host:port
+  regardless of this setting, and requests beyond it failed with `checkout_timeout`.
 
 ## VerneMQ 2.2.1
 

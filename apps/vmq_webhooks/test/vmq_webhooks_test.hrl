@@ -19,6 +19,11 @@
 -define(CANCEL_CLIENT_ID, <<"cancel-auth-register">>).
 -define(CANCEL_CLIENT_ID_M5, <<"cancel-auth-register-m5">>).
 -define(TIMEOUT_CLIENT_ID, <<"timeout-auth-register">>).
+%% persistent_term key holding {Counters, ExpectedConcurrency} for the
+%% /concurrency endpoint; Counters is an atomics array indexed below.
+-define(CONCURRENCY_PROBE, {webhooks_handler, concurrency_probe}).
+-define(CONCURRENCY_IN_FLIGHT, 1).
+-define(CONCURRENCY_REACHED, 2).
 -define(USERNAME, <<"test-user">>).
 -define(CHANGED_USERNAME, <<"changed-user">>).
 -define(PASSWORD, <<"test-password">>).

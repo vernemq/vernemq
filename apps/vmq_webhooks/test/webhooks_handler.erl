@@ -31,7 +31,8 @@ route() -> cowboy_router:compile(
                            {"/cache_no_store", ?MODULE, []},
                            {"/cache_no_cache", ?MODULE, []},
                            {"/cache_zero", ?MODULE, []},
-                           {"/slow_chunks", ?MODULE, []}]}]).
+                           {"/slow_chunks", ?MODULE, []},
+                           {"/concurrency", ?MODULE, []}]}]).
 
 stop_endpoint_tls() ->
     cowboy:stop_listener(https).
@@ -97,7 +98,31 @@ init(Req, State) ->
             ok = cowboy_req:stream_body(<<"{\"result\"">>, nofin, Req2),
             timer:sleep(60),
             ok = cowboy_req:stream_body(<<":\"ok\"}">>, fin, Req2),
+            {ok, Req2, State};
+        <<"/concurrency">> ->
+            %% Hold every request until the expected number is in flight at
+            %% once, so the test observes whether the client really runs them
+            %% concurrently. Bounded so a capped client still gets answers.
+            {Counters, Expected} = persistent_term:get(?CONCURRENCY_PROBE),
+            case atomics:add_get(Counters, ?CONCURRENCY_IN_FLIGHT, 1) >= Expected of
+                true -> atomics:put(Counters, ?CONCURRENCY_REACHED, 1);
+                false -> await_concurrency(Counters, 100)
+            end,
+            atomics:sub(Counters, ?CONCURRENCY_IN_FLIGHT, 1),
+            Req2 = cowboy_req:reply(200,
+                                    #{<<"content-type">> => <<"text/json">>},
+                                    encode(#{result => <<"ok">>}), Req1),
             {ok, Req2, State}
+    end.
+
+await_concurrency(_Counters, 0) ->
+    ok;
+await_concurrency(Counters, PollsLeft) ->
+    case atomics:get(Counters, ?CONCURRENCY_REACHED) of
+        1 -> ok;
+        0 ->
+            timer:sleep(10),
+            await_concurrency(Counters, PollsLeft - 1)
     end.
 
 encode(Term) ->

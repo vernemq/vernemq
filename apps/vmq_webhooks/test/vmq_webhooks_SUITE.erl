@@ -118,6 +118,7 @@ http() ->
      cache_no_cache_response,
      cache_zero_max_age_response,
      pool_show_test,
+     pool_max_connections_concurrency_test,
      cli_allow_query_parameters_test,
      metrics_test,
      auth_register_cancel_metrics_test,
@@ -716,6 +717,32 @@ pool_show_test(_) ->
     [#{endpoint := ?ENDPOINT, in_use := 0, free := 0, max := PoolMaxConn}] =
         execute(["vmq-admin", "webhooks", "pool", "show"]),
     deregister_hook(on_session_expired, ?ENDPOINT).
+
+%% pool_max_connections must cap concurrent requests, not just the idle
+%% pool: Hackney otherwise limits a host:port to 50 concurrent requests.
+pool_max_connections_concurrency_test(_) ->
+    Concurrency = 60,
+    {ok, OrigMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
+    Counters = atomics:new(2, []),
+    persistent_term:put(?CONCURRENCY_PROBE, {Counters, Concurrency}),
+    ok = application:set_env(vmq_webhooks, pool_max_connections, Concurrency),
+    Endpoint = ?ENDPOINT ++ "/concurrency",
+    register_hook(auth_on_publish, Endpoint),
+    try
+        Self = self(),
+        Args = [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false],
+        Callers = [spawn_link(fun() ->
+                                      Self ! {self(), vmq_plugin:all_till_ok(auth_on_publish, Args)}
+                              end)
+                   || _ <- lists:seq(1, Concurrency)],
+        [ok = receive {Caller, Res} -> Res after 10000 -> ct:fail({no_reply, Caller}) end
+         || Caller <- Callers],
+        1 = atomics:get(Counters, ?CONCURRENCY_REACHED)
+    after
+        deregister_hook(auth_on_publish, Endpoint),
+        ok = application:set_env(vmq_webhooks, pool_max_connections, OrigMaxConn),
+        persistent_term:erase(?CONCURRENCY_PROBE)
+    end.
 
 metrics_test(_) ->
     register_hook(on_session_expired, ?ENDPOINT),
