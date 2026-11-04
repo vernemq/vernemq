@@ -118,7 +118,10 @@
   hidden,
   {default, "    webhooks    Manage webhooks\n"}]}.
 
-%% @doc Configure the maximum number of HTTP connections maintained in the webhooks pool.
+%% @doc Configure the maximum number of concurrent HTTP connections to a
+%% webhook host, which is also the number of idle connections kept for
+%% reuse per endpoint. The limit applies per host:port: endpoints that
+%% share a host and port share it.
 {mapping, "vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_max_connections",
  [{datatype, integer},
   hidden,
