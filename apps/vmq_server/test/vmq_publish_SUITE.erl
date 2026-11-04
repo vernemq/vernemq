@@ -74,6 +74,8 @@ groups() ->
          publish_c2b_disconnect_qos2_test,
          publish_b2c_ensure_valid_msg_ids_test,
          pattern_matching_test,
+         prefix_filter_removal_keeps_longer_filter_routable_test,
+         prefix_filter_removal_keeps_longer_filter_routable_ordered_trie_test,
          drop_dollar_topic_publish,
          message_size_exceeded_close,
          shared_subscription_offline,
@@ -609,6 +611,78 @@ pattern_test(SubTopic, PubTopic, Config) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket).
+
+%% Removing a wildcard filter that is a strict prefix of another live
+%% filter (here "prefix/+" vs "prefix/+/+") must not break routing for the
+%% longer filter, regardless of the order in which they were added.
+prefix_filter_removal_keeps_longer_filter_routable_test(Config) ->
+    prefix_filter_removal(Config).
+
+%% Same scenario, routed through the vmq_reg_ordered_trie reg view.
+prefix_filter_removal_keeps_longer_filter_routable_ordered_trie_test(Config) ->
+    case vmq_reg_sup:start_reg_view(vmq_reg_ordered_trie) of
+        {ok, _} -> ok;
+        {error, {already_started, _}} -> ok
+    end,
+    ok = wait_until_reg_view_ready(vmq_reg_ordered_trie, 50),
+    vmq_config:set_env(default_reg_view, vmq_reg_ordered_trie, false),
+    try
+        prefix_filter_removal(Config)
+    after
+        vmq_config:set_env(default_reg_view, vmq_reg_trie, false),
+        vmq_reg_sup:stop_reg_view(vmq_reg_ordered_trie)
+    end.
+
+wait_until_reg_view_ready(RegView, 0) ->
+    {error, {not_ready, RegView}};
+wait_until_reg_view_ready(RegView, N) ->
+    case persistent_term:get({subscribe_trie_ready, RegView}, 0) of
+        1 ->
+            ok;
+        _ ->
+            timer:sleep(100),
+            wait_until_reg_view_ready(RegView, N - 1)
+    end.
+
+prefix_filter_removal(Config) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    vmq_test_utils:reset_tables(),
+    LongFilter = "prefix/+/+",
+    ShortFilter = "prefix/+",
+    PubTopic = "prefix/a/b",
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    ConnectLong = mqtt5_v4compat:gen_connect("prefix-long", [{keepalive, 60}], Config),
+    {ok, LongSocket} = mqtt5_v4compat:do_client_connect(ConnectLong, Connack, [], Config),
+    ok = gen_tcp:send(LongSocket, mqtt5_v4compat:gen_subscribe(1, LongFilter, 0, Config)),
+    ok = mqtt5_v4compat:expect_packet(LongSocket, "suback", mqtt5_v4compat:gen_suback(1, 0, Config), Config),
+    %% A second client adds the shorter filter, then removes it, once by
+    %% unsubscribing and once by disconnecting.
+    ConnectShort = mqtt5_v4compat:gen_connect("prefix-short", [{keepalive, 60}], Config),
+    {ok, ShortSocket} = mqtt5_v4compat:do_client_connect(ConnectShort, Connack, [], Config),
+    ok = gen_tcp:send(ShortSocket, mqtt5_v4compat:gen_subscribe(2, ShortFilter, 0, Config)),
+    ok = mqtt5_v4compat:expect_packet(ShortSocket, "suback", mqtt5_v4compat:gen_suback(2, 0, Config), Config),
+    ok = gen_tcp:send(ShortSocket, mqtt5_v4compat:gen_unsubscribe(3, ShortFilter, Config)),
+    ok = mqtt5_v4compat:expect_packet(ShortSocket, "unsuback", mqtt5_v4compat:gen_unsuback(3, Config), Config),
+    ok = publish_and_expect(LongSocket, PubTopic, Config),
+    ok = gen_tcp:send(ShortSocket, mqtt5_v4compat:gen_subscribe(4, ShortFilter, 0, Config)),
+    ok = mqtt5_v4compat:expect_packet(ShortSocket, "suback", mqtt5_v4compat:gen_suback(4, 0, Config), Config),
+    ok = gen_tcp:send(ShortSocket, mqtt5_v4compat:gen_disconnect(Config)),
+    ok = gen_tcp:close(ShortSocket),
+    ok = publish_and_expect(LongSocket, PubTopic, Config),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = gen_tcp:close(LongSocket).
+
+publish_and_expect(SubSocket, PubTopic, Config) ->
+    Publish = mqtt5_v4compat:gen_publish(PubTopic, 0, <<"message">>, [], Config),
+    Connect = mqtt5_v4compat:gen_connect("prefix-pub", [{keepalive, 60}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = gen_tcp:send(PubSocket, mqtt5_v4compat:gen_disconnect(Config)),
+    ok = gen_tcp:close(PubSocket),
+    mqtt5_v4compat:expect_packet(SubSocket, "publish", Publish, Config).
 
 not_allowed_publish_close_qos0_mqtt_3_1(_) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
