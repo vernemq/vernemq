@@ -660,9 +660,17 @@ on_session_expired(SubscriberId) ->
 -spec maybe_start_pool(_) -> 'ok'.
 maybe_start_pool(Endpoint) ->
     {ok, PoolTimeout} = application:get_env(vmq_webhooks, pool_timeout),
-    {ok, PoolMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
-    Opts = [{timeout, PoolTimeout}, {max_connections, PoolMaxConn}],
+    Opts = [{timeout, PoolTimeout}, {max_connections, pool_max_connections()}],
     ok = hackney_pool:start_pool(Endpoint, Opts).
+
+%% Hackney 2+ caps concurrent requests per host:port with the max_per_host
+%% request option (default 50); the pool's max_connections only sizes the
+%% idle pool. Setting both from pool_max_connections keeps it the
+%% concurrency cap it was with Hackney 1.x.
+-spec pool_max_connections() -> pos_integer().
+pool_max_connections() ->
+    {ok, PoolMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
+    PoolMaxConn.
 
 -spec maybe_stop_pool(_) -> 'ok' | {'error', 'not_found' | 'simple_one_for_one'}.
 maybe_stop_pool(Endpoint) ->
@@ -953,6 +961,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Opts =
         [
             {pool, Endpoint},
+            {max_per_host, pool_max_connections()},
             {connect_options, connect_options()},
             {recv_timeout, maps:get(response_timeout, EOpts)}
         ] ++ maybe_ssl_opts(Endpoint),

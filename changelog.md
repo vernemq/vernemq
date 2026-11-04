@@ -11,6 +11,9 @@
   enabled but without `require_certificate`.
 - Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
 - Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
+- Bugfix: `vmq_webhooks.pool_max_connections` caps concurrent webhook requests again. Since
+  the update to Hackney 4, concurrency was capped at Hackney's default of 50 per host:port
+  regardless of this setting, and requests beyond it failed with `checkout_timeout`.
 
 ## VerneMQ 2.2.1
 
