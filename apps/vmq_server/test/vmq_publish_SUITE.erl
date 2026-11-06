@@ -630,7 +630,10 @@ prefix_filter_removal_keeps_longer_filter_routable_ordered_trie_test(Config) ->
         prefix_filter_removal(Config)
     after
         vmq_config:set_env(default_reg_view, vmq_reg_trie, false),
-        vmq_reg_sup:stop_reg_view(vmq_reg_ordered_trie)
+        vmq_reg_sup:stop_reg_view(vmq_reg_ordered_trie),
+        %% Reset the readiness flag as vmq_server_sup does at boot, so a
+        %% later test does not see a stopped ordered trie as ready.
+        persistent_term:put({subscribe_trie_ready, vmq_reg_ordered_trie}, 0)
     end.
 
 wait_until_reg_view_ready(RegView, 0) ->
