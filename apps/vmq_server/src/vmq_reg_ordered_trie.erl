@@ -447,7 +447,14 @@ add_complex_topic(MP, Topic, Node, true) ->
     case ets:lookup(vmq_ordered_trie_node, MPTopic) of
         [#trie_node{topic = Topic}] ->
             ignore;
-        _ ->
+        [#trie_node{} = TrieNode] ->
+            %% The node already exists as an intermediate node of a longer
+            %% topic filter: its path is in place and its edge_count counts
+            %% the children it already has. Only mark it as a topic node;
+            %% resetting edge_count would let trie_delete/2 prune a node
+            %% that longer filters still route through.
+            ets:insert(vmq_ordered_trie_node, TrieNode#trie_node{topic = Topic});
+        [] ->
             %% add trie path
             _ = [trie_add_path(MP, Triple) || Triple <- vmq_topic:triples(Topic)],
             %% add last node
@@ -547,7 +554,12 @@ trie_delete(MP, Topic) ->
         [#trie_node{edge_count = 0}] ->
             ets:delete(vmq_ordered_trie_node, NodeId),
             trie_delete_path(MP, lists:reverse(vmq_topic:triples(Topic)));
-        _ ->
+        [#trie_node{} = TrieNode] ->
+            %% Still an intermediate node of longer filters: keep it, but it
+            %% no longer names a subscribed topic, so trie_delete_path/2 can
+            %% prune it once its last child goes.
+            ets:insert(vmq_ordered_trie_node, TrieNode#trie_node{topic = undefined});
+        [] ->
             ignore
     end.
 

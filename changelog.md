@@ -1,3 +1,4 @@
+- Bugfix: Removing a wildcard subscription that is a prefix of another wildcard subscription (e.g. `a/+` while `a/+/+` is subscribed) no longer stops messages from being routed to the longer subscription (`vmq_reg_trie` and `vmq_reg_ordered_trie`).
 - Bugfix: TLS listeners with a `crlfile` now reject revoked client certificates with a `certificate_revoked` alert instead of a generic `handshake_failure`.
 - Bugfix: Don't drop the first CONNECT of a client with a persistent session that reconnects to another node after the node holding its session went down.
 - Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
