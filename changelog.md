@@ -18,6 +18,9 @@
 - Bugfix: `vmq_webhooks.pool_max_connections` caps concurrent webhook requests again. Since
   the update to Hackney 4, concurrency was capped at Hackney's default of 50 per host:port
   regardless of this setting, and requests beyond it failed with `checkout_timeout`.
+- Bugfix: Fix `vmq_web_ui` routes not being registered (HTTP 404 on `/webui`) when the
+  plugin is enabled on more than one HTTP listener, caused by `routes/0` creating the
+  `webuitoken` ETS table on every call.
 
 ## VerneMQ 2.2.1
 
