@@ -1,3 +1,6 @@
+- Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)
+  now work; pooled requests to them always failed with `nxdomain`. Socket paths with capital
+  letters also work now.
 - Bugfix: Removing a wildcard subscription that is a prefix of another wildcard subscription (e.g. `a/+` while `a/+/+` is subscribed) no longer stops messages from being routed to the longer subscription (`vmq_reg_trie` and `vmq_reg_ordered_trie`).
 - Bugfix: TLS listeners with a `crlfile` now reject revoked client certificates with a `certificate_revoked` alert instead of a generic `handshake_failure`.
 - Bugfix: Don't drop the first CONNECT of a client with a persistent session that reconnects to another node after the node holding its session went down.
