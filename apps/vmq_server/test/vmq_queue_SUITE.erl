@@ -30,6 +30,7 @@
          queue_persistent_client_expiration_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1,
+         queue_info_timeout_test/1,
          queue_wait_for_offline_change_state_test/1]).
 
 -export([hook_auth_on_publish/6,
@@ -74,12 +75,23 @@ all() ->
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test,
+     queue_info_timeout_test,
      queue_wait_for_offline_change_state_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+queue_info_timeout_test(_) ->
+    SubscriberId = {"", <<"queue-info-timeout">>},
+    {ok, false, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
+    ok = sys:suspend(QPid),
+    try
+        {error, {timeout, _}} = vmq_queue:info(QPid, 50)
+    after
+        ok = sys:resume(QPid)
+    end.
+
 queue_crash_test(_) ->
     Parent = self(),
     {_, ClientId} = SubscriberId = {"", <<"mock-client">>},

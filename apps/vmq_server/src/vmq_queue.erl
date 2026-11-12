@@ -50,6 +50,7 @@
     front/2,
     status/1,
     info/1,
+    info/2,
     add_session/3,
     get_sessions/1,
     set_opts/2,
@@ -205,6 +206,18 @@ status(Queue) ->
 
 info(Queue) ->
     save_sync_send_all_state_event(Queue, info).
+
+info(Queue, Timeout) ->
+    case catch gen_fsm:sync_send_all_state_event(Queue, info, Timeout) of
+        {'EXIT', {normal, _}} ->
+            {error, noproc};
+        {'EXIT', {noproc, _}} ->
+            {error, noproc};
+        {'EXIT', Reason} ->
+            {error, Reason};
+        Ret ->
+            Ret
+    end.
 
 save_sync_send_event(Queue, Event) ->
     case catch gen_fsm:sync_send_event(Queue, Event, infinity) of

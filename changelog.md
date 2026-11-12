@@ -1,4 +1,4 @@
-- Bugfix: Refuse the CONNECT of a client whose old node is still connected but no longer answers, instead of completing the registration once that node is declared down, which took over the client's newer session.
+- Bugfix: Bound migration from a client session's unresponsive old node with `subscriber_migration_timeout`. Registrations are refused without changing ownership in consistency mode, proceed as explicit failover when `allow_register_during_netsplit` is enabled, and no longer reassert stale ownership when superseded.
 - Bugfix: Don't drop the first CONNECT of a client with a persistent session that reconnects to another node after the node holding its session went down.
 - Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
 - Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
