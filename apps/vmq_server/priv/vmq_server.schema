@@ -369,10 +369,18 @@
 %% during cluster readiness checks. This is a total timeout for all nodes,
 %% not per-node. The previous sequential approach had no timeout (infinity).
 {mapping, "cluster_ready_rpc_timeout", "vmq_server.cluster_ready_rpc_timeout", [
-                                                                                 {default, 5000},
-                                                                                 {datatype, integer},
-                                                                                 hidden
-                                                                                ]}.
+                                                                                  {default, 5000},
+                                                                                  {datatype, integer},
+                                                                                  hidden
+                                                                                 ]}.
+
+%% @doc specifies the total timeout in milliseconds for moving a subscriber
+%% queue from its old node while registering the subscriber on another node.
+{mapping, "subscriber_migration_timeout", "vmq_server.subscriber_migration_timeout", [
+                                                                                         {default, 5000},
+                                                                                         {datatype, integer},
+                                                                                         hidden
+                                                                                        ]}.
 
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [

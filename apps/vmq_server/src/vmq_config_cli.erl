@@ -66,6 +66,7 @@ register_config_() ->
             "coordinate_registrations",
             "mqtt_connect_timeout",
             "cluster_ready_rpc_timeout",
+            "subscriber_migration_timeout",
             "disconnect_on_unauthorized_publish_v3",
             "subscriber_retain_mode"
         ],

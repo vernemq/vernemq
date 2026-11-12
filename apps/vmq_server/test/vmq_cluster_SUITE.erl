@@ -88,6 +88,8 @@ all() ->
      cluster_leave_myself_test,
      cluster_leave_dead_node_test,
      register_after_old_node_died_test,
+     register_while_old_node_hangs_test,
+     refuse_register_while_old_node_hangs_test,
      shared_subs_random_policy_test,
      shared_subs_prefer_local_policy_test,
      shared_subs_prefer_local_ignores_stale_local_subscribers,
@@ -611,6 +613,133 @@ register_after_old_node_died_test(Config) ->
     ok = vmq_cluster_test_utils:wait_until_offline(DeadNode),
     Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, OtherPort}]).
+
+%% When registrations are allowed during a netsplit, a node that remains
+%% connected but does not answer is treated as unavailable after the bounded
+%% preflight. The same CONNECT succeeds, and SWC reconciles the old queue when
+%% its node recovers.
+register_while_old_node_hangs_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, HungNode, HungPort}, {_, Node2, Port2}, {_, Node3, _Port3}] = Nodes} =
+        lists:keyfind(nodes, 1, Config),
+    allow_metadata_writes_during_netsplit(Nodes),
+    set_config(Nodes, cluster_ready_rpc_timeout, 1000),
+    set_config(Nodes, subscriber_migration_timeout, 1000),
+    ClientId = "hung-node-client",
+    _HungSocket = connect(HungPort, ClientId, [{clean_session, false}, {keepalive, 60}]),
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() -> registered_on(Node2, ClientId) == [HungNode] end, 20, 200
+    ),
+    OsPid = rpc:call(HungNode, os, getpid, []),
+    _ = os:cmd("kill -STOP " ++ OsPid),
+    try
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                not rpc:call(Node2, vmq_cluster, is_ready, []) andalso
+                    not rpc:call(Node3, vmq_cluster, is_ready, [])
+            end,
+            30,
+            500
+        ),
+        Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
+        %% Availability mode proceeds once the bounded preflight times out.
+        {ok, NewSocket} =
+            packet:do_client_connect(Connect, packet:gen_connack(1, 0), [{port, Port2}]),
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                registered_on(Node2, ClientId) == [Node2] andalso
+                    registered_on(Node3, ClientId) == [Node2]
+            end,
+            20,
+            200
+        ),
+        _ = os:cmd("kill -CONT " ++ OsPid),
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                rpc:call(Node2, vmq_cluster, is_ready, []) andalso
+                    rpc:call(Node3, vmq_cluster, is_ready, [])
+            end,
+            30,
+            500
+        ),
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                registered_on(HungNode, ClientId) == [Node2] andalso
+                    registered_on(Node2, ClientId) == [Node2] andalso
+                    registered_on(Node3, ClientId) == [Node2]
+            end,
+            50,
+            200
+        ),
+        PingReq = packet:gen_pingreq(),
+        ok = gen_tcp:send(NewSocket, PingReq),
+        ok = packet:expect_packet(NewSocket, "pingresp", packet:gen_pingresp())
+    after
+        os:cmd("kill -CONT " ++ OsPid)
+    end.
+
+%% With registrations disabled during a netsplit, the same failure is refused
+%% without changing ownership. The original session remains connected after
+%% the old node recovers.
+refuse_register_while_old_node_hangs_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{_, HungNode, HungPort}, {_, Node2, Port2}, {_, Node3, _Port3}] = Nodes} =
+        lists:keyfind(nodes, 1, Config),
+    set_config(Nodes, allow_register_during_netsplit, false),
+    set_local_config(Nodes, allow_register_during_netsplit, false),
+    set_config(Nodes, cluster_ready_rpc_timeout, 1000),
+    set_config(Nodes, subscriber_migration_timeout, 1000),
+    ClientId = "strict-hung-node-client",
+    HungSocket = connect(HungPort, ClientId, [{clean_session, false}, {keepalive, 60}]),
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() -> registered_on(Node2, ClientId) == [HungNode] end, 20, 200
+    ),
+    OsPid = rpc:call(HungNode, os, getpid, []),
+    _ = os:cmd("kill -STOP " ++ OsPid),
+    try
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                not rpc:call(Node2, vmq_cluster, is_ready, []) andalso
+                    not rpc:call(Node3, vmq_cluster, is_ready, [])
+            end,
+            30,
+            500
+        ),
+        Connect = packet:gen_connect(ClientId, [{clean_session, false}]),
+        {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3), [{port, Port2}]),
+        [HungNode] = registered_on(Node2, ClientId),
+        [HungNode] = registered_on(Node3, ClientId),
+        not_found =
+            rpc:call(Node2, vmq_reg, get_queue_pid, [{"", list_to_binary(ClientId)}]),
+        _ = os:cmd("kill -CONT " ++ OsPid),
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                rpc:call(Node2, vmq_cluster, is_ready, []) andalso
+                    rpc:call(Node3, vmq_cluster, is_ready, [])
+            end,
+            30,
+            500
+        ),
+        ok = vmq_cluster_test_utils:wait_until(
+            fun() ->
+                registered_on(Node2, ClientId) == [HungNode] andalso
+                    registered_on(Node3, ClientId) == [HungNode]
+            end,
+            20,
+            200
+        ),
+        PingReq = packet:gen_pingreq(),
+        ok = gen_tcp:send(HungSocket, PingReq),
+        ok = packet:expect_packet(HungSocket, "pingresp", packet:gen_pingresp())
+    after
+        os:cmd("kill -CONT " ++ OsPid)
+    end.
+
+registered_on(Node, ClientId) ->
+    case rpc:call(Node, vmq_subscriber_db, read, [{"", list_to_binary(ClientId)}]) of
+        undefined -> [];
+        Subs -> vmq_subscriber:get_nodes(Subs)
+    end.
 
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),

@@ -1,3 +1,4 @@
+- Bugfix: Bound migration from a client session's unresponsive old node with `subscriber_migration_timeout`. Registrations are refused without changing ownership in consistency mode, proceed as explicit failover when `allow_register_during_netsplit` is enabled, and no longer reassert stale ownership when superseded.
 - Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)
   now work; pooled requests to them always failed with `nxdomain`. Socket paths with capital
   letters also work now.

@@ -229,7 +229,8 @@ register_subscriber(
                         SubscriberId,
                         StartClean,
                         QueueOpts,
-                        ?NR_OF_REG_RETRIES
+                        ?NR_OF_REG_RETRIES,
+                        AllowRegister
                     )
                 end,
                 60000
@@ -244,7 +245,8 @@ register_subscriber(
                 SubscriberId,
                 StartClean,
                 QueueOpts,
-                ?NR_OF_REG_RETRIES
+                ?NR_OF_REG_RETRIES,
+                AllowRegister
             )
     end;
 register_subscriber(
@@ -262,17 +264,38 @@ register_subscriber(
     end.
 
 register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
+    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, false).
+
+register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, AllowRegister) ->
+    Timeout = vmq_config:get_env(subscriber_migration_timeout, 5000),
+    Deadline = erlang:monotonic_time(millisecond) + Timeout,
     register_subscriber_(
-        SessionPid, SubscriberId, StartClean, QueueOpts, N, register_subscriber_retry_exhausted
+        SessionPid,
+        SubscriberId,
+        StartClean,
+        QueueOpts,
+        N,
+        register_subscriber_retry_exhausted,
+        Deadline,
+        AllowRegister
     ).
 
 -spec register_subscriber_(
-    pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer(), any()
+    pid() | undefined,
+    subscriber_id(),
+    boolean(),
+    map(),
+    non_neg_integer(),
+    any(),
+    integer(),
+    boolean()
 ) ->
     {'ok', map()} | {error, any()}.
-register_subscriber_(_, _, _, _, 0, Reason) ->
+register_subscriber_(_, _, _, _, 0, Reason, _, _) ->
     {error, Reason};
-register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason) ->
+register_subscriber_(
+    SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason, Deadline, AllowRegister
+) ->
     % won't create new queue in case it already exists
     {ok, QueuePresent, QPid} =
         case vmq_queue_sup_sup:start_queue(SubscriberId) of
@@ -297,111 +320,259 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                 StartClean,
                 QueueOpts,
                 N - 1,
-                {register_subscriber_retry_exhausted, draining}
+                {register_subscriber_retry_exhausted, draining},
+                Deadline,
+                AllowRegister
             );
         _ ->
-            %% remap subscriber... enabling that new messages will
-            %% eventually reach the new queue.  Remapping triggers
-            %% remote nodes to initiate queue migration
-            {SubscriptionsPresent, UpdatedSubs, ChangedNodes} =
-                maybe_remap_subscriber(SubscriberId, StartClean),
-            SessionPresent1 = SubscriptionsPresent or QueuePresent,
-            SessionPresent2 =
-                case StartClean of
-                    true ->
-                        %% SessionPresent is always false in case CleanupSession=true
-                        false;
-                    false when QueuePresent ->
-                        %% no migration expected to happen, as queue is already local.
-                        SessionPresent1;
-                    false ->
-                        Fun = fun(Sid, OldNode) ->
-                            case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
-                                not_found ->
-                                    case get_queue_pid(Sid) of
-                                        not_found ->
-                                            block;
-                                        LocalPid when is_pid(LocalPid) ->
-                                            done
-                                    end;
-                                OldPid when is_pid(OldPid) ->
-                                    case vmq_queue:info(OldPid) of
-                                        #{statename := drain} ->
-                                            %% Queue is in draining state, we're done here and
-                                            %% can return to the caller.
-                                            %% TODO: We can improve this by only having a single
-                                            %% rpc call. But this would break backward upgrade
-                                            %% compatibility.
-                                            done;
-                                        _ ->
-                                            block
-                                    end;
-                                {badrpc, _} ->
-                                    %% The old node is down: its queue can't be
-                                    %% migrated, so there is nothing to wait for.
-                                    done
-                            end
+            case
+                maybe_remap_subscriber(
+                    SubscriberId, StartClean, QueuePresent, Deadline, AllowRegister
+                )
+            of
+                {error, _} = RemapError ->
+                    maybe_cleanup_candidate_queue(QueuePresent, QPid),
+                    RemapError;
+                {SubscriptionsPresent, UpdatedSubs, ChangedNodes, OldQueues} ->
+                    SessionPresent1 = SubscriptionsPresent or QueuePresent,
+                    SessionPresent2 =
+                        case StartClean of
+                            true ->
+                                %% SessionPresent is always false in case CleanupSession=true
+                                false;
+                            false when QueuePresent ->
+                                %% no migration expected to happen, as queue is already local.
+                                SessionPresent1;
+                            false ->
+                                Fun = fun(Sid, OldNode) ->
+                                    old_queue_state(
+                                        Sid,
+                                        OldNode,
+                                        maps:get(OldNode, OldQueues, unknown),
+                                        Deadline,
+                                        AllowRegister
+                                    )
+                                end,
+                                case
+                                    block_until(
+                                        SubscriberId,
+                                        UpdatedSubs,
+                                        ChangedNodes,
+                                        Fun,
+                                        Deadline
+                                    )
+                                of
+                                    ok -> SessionPresent1;
+                                    {error, _} = Error -> Error
+                                end
                         end,
-                        block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
-                        SessionPresent1
-                end,
-            case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
-                {'EXIT', {normal, _}} ->
-                    %% queue went down in the meantime, retry
-                    register_subscriber_(
-                        SessionPid,
-                        SubscriberId,
-                        StartClean,
-                        QueueOpts,
-                        N - 1,
-                        register_subscriber_retry_exhausted
-                    );
-                {'EXIT', {noproc, _}} ->
-                    timer:sleep(100),
-                    %% queue was stopped in the meantime, retry
-                    register_subscriber_(
-                        SessionPid,
-                        SubscriberId,
-                        StartClean,
-                        QueueOpts,
-                        N - 1,
-                        register_subscriber_retry_exhausted
-                    );
-                {'EXIT', Reason} ->
-                    {error, Reason};
-                {error, draining} ->
-                    %% queue is still draining it's offline queue to a different
-                    %% remote queue. This can happen if a client hops around
-                    %% different nodes very frequently... adjust load balancing!!
-                    timer:sleep(100),
-                    register_subscriber_(
-                        SessionPid,
-                        SubscriberId,
-                        StartClean,
-                        QueueOpts,
-                        N - 1,
-                        {register_subscriber_retry_exhausted, draining}
-                    );
-                {error, {cleanup, _Reason}} ->
-                    %% queue is still cleaning up.
-                    timer:sleep(100),
-                    register_subscriber_(
-                        SessionPid,
-                        SubscriberId,
-                        StartClean,
-                        QueueOpts,
-                        N - 1,
-                        register_subscriber_retry_exhausted
-                    );
-                {ok, Opts} ->
-                    {ok, Opts#{
-                        session_present => SessionPresent2,
-                        queue_pid => QPid
-                    }}
+                    case SessionPresent2 of
+                        {error, _} = BlockError ->
+                            BlockError;
+                        _ ->
+                            add_session(
+                                SessionPid,
+                                SubscriberId,
+                                StartClean,
+                                QueueOpts,
+                                N,
+                                Reason,
+                                QPid,
+                                SessionPresent2,
+                                Deadline,
+                                AllowRegister
+                            )
+                    end
             end
     end.
 
-%% block_until/4 has three cases to consider, the logic for
+%% Whether the queue of SubscriberId on OldNode is out of the way.
+old_queue_state(Sid, OldNode, OldQueue, Deadline, AllowRegister) ->
+    case lists:member(OldNode, nodes()) of
+        false ->
+            %% The old node is down: its queue can't be migrated, so there is
+            %% nothing to wait for.
+            done;
+        true ->
+            old_queue_state_(Sid, OldNode, OldQueue, Deadline, AllowRegister)
+    end.
+
+old_queue_state_(Sid, OldNode, unknown, Deadline, AllowRegister) ->
+    case remaining_time(Deadline) of
+        timeout ->
+            migration_timeout(OldNode, AllowRegister);
+        Timeout ->
+            case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid], Timeout) of
+                not_found ->
+                    case get_queue_pid(Sid) of
+                        not_found ->
+                            block;
+                        LocalPid when is_pid(LocalPid) ->
+                            done
+                    end;
+                OldPid when is_pid(OldPid) ->
+                    old_queue_state_(Sid, OldNode, OldPid, Deadline, AllowRegister);
+                {badrpc, Reason} ->
+                    old_node_rpc_error(OldNode, Reason, AllowRegister)
+            end
+    end;
+old_queue_state_(Sid, OldNode, disconnected, Deadline, AllowRegister) ->
+    %% The node reconnected after preflight. Query its queue before deciding
+    %% that there is nothing to migrate.
+    old_queue_state_(Sid, OldNode, unknown, Deadline, AllowRegister);
+old_queue_state_(_Sid, _OldNode, unavailable, _Deadline, _AllowRegister) ->
+    %% Availability mode proceeds without waiting for an owner that remained
+    %% connected but did not answer the bounded preflight.
+    done;
+old_queue_state_(_Sid, _OldNode, not_found, _Deadline, _AllowRegister) ->
+    done;
+old_queue_state_(Sid, OldNode, OldPid, Deadline, AllowRegister) when is_pid(OldPid) ->
+    case remaining_time(Deadline) of
+        timeout ->
+            migration_timeout(OldNode, AllowRegister);
+        Timeout ->
+            case vmq_queue:info(OldPid, Timeout) of
+                #{statename := drain} ->
+                    done;
+                #{statename := _} ->
+                    block;
+                {error, noproc} ->
+                    old_queue_state_(Sid, OldNode, unknown, Deadline, AllowRegister);
+                {error, Reason} ->
+                    old_node_rpc_error(OldNode, Reason, AllowRegister)
+            end
+    end.
+
+old_node_rpc_error(OldNode, Reason, AllowRegister) ->
+    case lists:member(OldNode, nodes()) of
+        false ->
+            done;
+        true when AllowRegister ->
+            done;
+        true ->
+            %% Still connected but not answering, e.g. a host that died
+            %% without closing its connections. Refuse rather than leave this
+            %% registration pending while the client reconnects elsewhere.
+            {error, {old_node_unreachable, OldNode, Reason}}
+    end.
+
+migration_timeout(_OldNode, true) ->
+    done;
+migration_timeout(OldNode, false) ->
+    {error, {subscriber_migration_timeout, OldNode}}.
+
+maybe_cleanup_candidate_queue(false, QPid) ->
+    _ = vmq_queue:cleanup(QPid, ?SESSION_TAKEN_OVER),
+    ok;
+maybe_cleanup_candidate_queue(true, _QPid) ->
+    ok.
+
+add_session(
+    SessionPid,
+    SubscriberId,
+    StartClean,
+    QueueOpts,
+    N,
+    RetryReason,
+    QPid,
+    SessionPresent2,
+    Deadline,
+    AllowRegister
+) ->
+    case subscriber_still_local(SubscriberId) of
+        false ->
+            {error, registration_superseded};
+        true ->
+            add_session_(
+                SessionPid,
+                SubscriberId,
+                StartClean,
+                QueueOpts,
+                N,
+                RetryReason,
+                QPid,
+                SessionPresent2,
+                Deadline,
+                AllowRegister
+            )
+    end.
+
+add_session_(
+    SessionPid,
+    SubscriberId,
+    StartClean,
+    QueueOpts,
+    N,
+    _RetryReason,
+    QPid,
+    SessionPresent2,
+    Deadline,
+    AllowRegister
+) ->
+    case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
+        {'EXIT', {normal, _}} ->
+            %% queue went down in the meantime, retry
+            register_subscriber_(
+                SessionPid,
+                SubscriberId,
+                StartClean,
+                QueueOpts,
+                N - 1,
+                register_subscriber_retry_exhausted,
+                Deadline,
+                AllowRegister
+            );
+        {'EXIT', {noproc, _}} ->
+            timer:sleep(100),
+            %% queue was stopped in the meantime, retry
+            register_subscriber_(
+                SessionPid,
+                SubscriberId,
+                StartClean,
+                QueueOpts,
+                N - 1,
+                register_subscriber_retry_exhausted,
+                Deadline,
+                AllowRegister
+            );
+        {'EXIT', ExitReason} ->
+            {error, ExitReason};
+        {error, draining} ->
+            %% queue is still draining it's offline queue to a different
+            %% remote queue. This can happen if a client hops around
+            %% different nodes very frequently... adjust load balancing!!
+            timer:sleep(100),
+            register_subscriber_(
+                SessionPid,
+                SubscriberId,
+                StartClean,
+                QueueOpts,
+                N - 1,
+                {register_subscriber_retry_exhausted, draining},
+                Deadline,
+                AllowRegister
+            );
+        {error, {cleanup, _Reason}} ->
+            %% queue is still cleaning up.
+            timer:sleep(100),
+            register_subscriber_(
+                SessionPid,
+                SubscriberId,
+                StartClean,
+                QueueOpts,
+                N - 1,
+                register_subscriber_retry_exhausted,
+                Deadline,
+                AllowRegister
+            );
+        {ok, Opts} ->
+            {ok, Opts#{
+                session_present => SessionPresent2,
+                queue_pid => QPid
+            }}
+    end.
+
+%% block_until/5 has three cases to consider, the logic for
 %% these cases are handled by the BlockCond function
 %%
 %% migrate queue to local node (register_subscriber):
@@ -416,29 +587,42 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
 %% migrate dead queue (node down) to another node in cluster (including this one):
 %%
 %%    we have no local queue, but wait until the (offline) queue exists on target node.
-block_until(_, _, [], _) ->
-    ok;
-block_until(SubscriberId, UpdatedSubs, [Node | Rest] = ChangedNodes, BlockCond) ->
+block_until(SubscriberId, UpdatedSubs, [], _, _) ->
+    case same_owners(subscriptions_for_subscriber_id(SubscriberId), UpdatedSubs) of
+        true -> ok;
+        false -> {error, registration_superseded}
+    end;
+block_until(SubscriberId, UpdatedSubs, [Node | Rest] = ChangedNodes, BlockCond, Deadline) ->
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
     CurrentSubs = subscriptions_for_subscriber_id(SubscriberId),
-    case CurrentSubs of
-        UpdatedSubs ->
-            ok;
-        _ ->
-            %% in case the subscriptions were resolved elsewhere in the meantime
-            %% we'll write 'our' version of the remapped subscriptions
-            vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
-            sync_reg_view_update(SubscriberId, CurrentSubs, UpdatedSubs)
-    end,
-
-    case BlockCond(SubscriberId, Node) of
-        block ->
-            timer:sleep(100),
-            block_until(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
-        done ->
-            block_until(SubscriberId, UpdatedSubs, Rest, BlockCond)
+    case same_owners(CurrentSubs, UpdatedSubs) of
+        false ->
+            %% A newer registration or SWC conflict resolution moved this
+            %% subscriber elsewhere. Never reassert stale ownership.
+            {error, registration_superseded};
+        true ->
+            case BlockCond(SubscriberId, Node) of
+                {error, _} = Error ->
+                    Error;
+                block ->
+                    case remaining_time(Deadline) of
+                        timeout ->
+                            {error, subscriber_migration_timeout};
+                        Remaining ->
+                            timer:sleep(min(100, Remaining)),
+                            block_until(
+                                SubscriberId,
+                                UpdatedSubs,
+                                ChangedNodes,
+                                BlockCond,
+                                Deadline
+                            )
+                    end;
+                done ->
+                    block_until(SubscriberId, UpdatedSubs, Rest, BlockCond, Deadline)
+            end
     end.
 
 -spec register_session(subscriber_id(), map()) ->
@@ -1314,36 +1498,137 @@ sync_reg_view_delta(SubscriberId, ToRemove, ToAdd) ->
         exit:{normal, _} -> ok
     end.
 
-%% the return value is used to inform the caller
-%% if a session was already present for the given
-%% subscriber id.
--spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
-    {boolean(), undefined | vmq_subscriber:subs(), [node()]}.
-maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
+%% The return value is used to inform the caller if a session was already
+%% present for the subscriber id. For a remote persistent session, check that
+%% all old owners answer before publishing the new owner. A refused CONNECT
+%% must not trigger a queue migration when the old node recovers.
+-spec maybe_remap_subscriber(subscriber_id(), boolean(), boolean(), integer(), boolean()) ->
+    {boolean(), vmq_subscriber:subs(), [node()], map()} | {error, any()}.
+maybe_remap_subscriber(
+    SubscriberId, _StartClean = true, _QueuePresent, _Deadline, _AllowRegister
+) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Subs = vmq_subscriber:new(true),
     vmq_subscriber_db:store(SubscriberId, Subs),
     sync_reg_view_update(SubscriberId, OldSubs, Subs),
-    {false, Subs, []};
-maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
+    {false, Subs, [], #{}};
+maybe_remap_subscriber(
+    SubscriberId, _StartClean = false, QueuePresent, Deadline, AllowRegister
+) ->
     case vmq_subscriber_db:read(SubscriberId) of
         undefined ->
             %% Store empty Subscriber Data
             Subs = vmq_subscriber:new(false),
             vmq_subscriber_db:store(SubscriberId, Subs),
             sync_reg_view_update(SubscriberId, [], Subs),
-            {false, Subs, []};
+            {false, Subs, [], #{}};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
-                    vmq_subscriber_db:store(SubscriberId, NewSubs),
-                    sync_reg_view_update(SubscriberId, Subs, NewSubs),
-                    {true, NewSubs, ChangedNodes};
+                    case
+                        preflight_old_queues(
+                            SubscriberId,
+                            ChangedNodes,
+                            QueuePresent,
+                            Deadline,
+                            AllowRegister
+                        )
+                    of
+                        {ok, OldQueues} ->
+                            vmq_subscriber_db:store(SubscriberId, NewSubs),
+                            sync_reg_view_update(SubscriberId, Subs, NewSubs),
+                            {true, NewSubs, ChangedNodes, OldQueues};
+                        {error, _} = Error ->
+                            Error
+                    end;
                 _ ->
-                    {true, Subs, []}
+                    {true, Subs, [], #{}}
             end
+    end.
+
+preflight_old_queues(_SubscriberId, _ChangedNodes, true, _Deadline, _AllowRegister) ->
+    %% An existing local queue means no remote migration is expected.
+    {ok, #{}};
+preflight_old_queues(SubscriberId, ChangedNodes, false, Deadline, AllowRegister) ->
+    lists:foldl(
+        fun
+            (_OldNode, {error, _} = Error) ->
+                Error;
+            (OldNode, {ok, Acc}) ->
+                case preflight_old_queue(SubscriberId, OldNode, Deadline, AllowRegister) of
+                    {ok, OldQueue} -> {ok, Acc#{OldNode => OldQueue}};
+                    {error, _} = Error -> Error
+                end
+        end,
+        {ok, #{}},
+        ChangedNodes
+    ).
+
+preflight_old_queue(SubscriberId, OldNode, Deadline, AllowRegister) ->
+    case lists:member(OldNode, nodes()) of
+        false ->
+            {ok, disconnected};
+        true ->
+            case remaining_time(Deadline) of
+                timeout ->
+                    unavailable_old_queue(OldNode, timeout, AllowRegister);
+                Timeout ->
+                    case rpc:call(OldNode, ?MODULE, get_queue_pid, [SubscriberId], Timeout) of
+                        not_found ->
+                            {ok, not_found};
+                        OldPid when is_pid(OldPid) ->
+                            preflight_old_queue_pid(
+                                OldNode, OldPid, Deadline, AllowRegister
+                            );
+                        {badrpc, Reason} ->
+                            unavailable_old_queue(OldNode, Reason, AllowRegister)
+                    end
+            end
+    end.
+
+preflight_old_queue_pid(OldNode, OldPid, Deadline, AllowRegister) ->
+    case remaining_time(Deadline) of
+        timeout ->
+            unavailable_old_queue(OldNode, timeout, AllowRegister);
+        Timeout ->
+            case vmq_queue:info(OldPid, Timeout) of
+                #{statename := _} ->
+                    {ok, OldPid};
+                {error, noproc} ->
+                    {ok, not_found};
+                {error, Reason} ->
+                    unavailable_old_queue(OldNode, Reason, AllowRegister)
+            end
+    end.
+
+unavailable_old_queue(OldNode, Reason, AllowRegister) ->
+    case lists:member(OldNode, nodes()) of
+        false ->
+            {ok, disconnected};
+        true when AllowRegister ->
+            %% Availability mode explicitly accepts a temporary split-brain
+            %% session. SWC chooses the surviving owner when the split heals.
+            {ok, unavailable};
+        true ->
+            {error, {old_node_unreachable, OldNode, Reason}}
+    end.
+
+subscriber_still_local(SubscriberId) ->
+    case vmq_subscriber_db:read(SubscriberId) of
+        undefined -> false;
+        Subs -> lists:usort(vmq_subscriber:get_nodes(Subs)) =:= [node()]
+    end.
+
+same_owners(Subs1, Subs2) ->
+    lists:usort(vmq_subscriber:get_nodes(Subs1)) =:=
+        lists:usort(vmq_subscriber:get_nodes(Subs2)).
+
+remaining_time(Deadline) ->
+    case Deadline - erlang:monotonic_time(millisecond) of
+        Remaining when Remaining > 0 -> Remaining;
+        _ -> timeout
     end.
 
 -spec get_session_pids(subscriber_id()) ->
