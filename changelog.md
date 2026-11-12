@@ -1,4 +1,9 @@
 - Bugfix: Bound migration from a client session's unresponsive old node with `subscriber_migration_timeout`. Registrations are refused without changing ownership in consistency mode, proceed as explicit failover when `allow_register_during_netsplit` is enabled, and no longer reassert stale ownership when superseded.
+- Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)
+  now work; pooled requests to them always failed with `nxdomain`. Socket paths with capital
+  letters also work now.
+- Bugfix: Removing a wildcard subscription that is a prefix of another wildcard subscription (e.g. `a/+` while `a/+/+` is subscribed) no longer stops messages from being routed to the longer subscription (`vmq_reg_trie` and `vmq_reg_ordered_trie`).
+- Bugfix: TLS listeners with a `crlfile` now reject revoked client certificates with a `certificate_revoked` alert instead of a generic `handshake_failure`.
 - Bugfix: Don't drop the first CONNECT of a client with a persistent session that reconnects to another node after the node holding its session went down.
 - Spec compliance: preserve the retain-as-published flag for persisted offline messages delivered after MQTT 5 session reconnects.
 - Spec compliance: deliver MQTT 5 last will messages when clients send DISCONNECT packets with invalid reason codes.
@@ -11,6 +16,12 @@
   enabled but without `require_certificate`.
 - Feature: Add `vmq-admin webhooks pool show` command to display in-use, idle, and maximum connection counts for registered webhook connection pools.
 - Bugfix: Fix MQTT session termination caused by late internal cluster enqueue replies.
+- Dependency: Update Hackney to 4.9.1. New pooled connections are opened by the requesting
+  process instead of the pool, so one slow connect no longer stalls every request to the same
+  webhook endpoint. A configured `vmq_webhooks.cafile` now limits trust to that CA.
+- Bugfix: `vmq_webhooks.pool_max_connections` caps concurrent webhook requests again. Since
+  the update to Hackney 4, concurrency was capped at Hackney's default of 50 per host:port
+  regardless of this setting, and requests beyond it failed with `checkout_timeout`.
 
 ## VerneMQ 2.2.1
 

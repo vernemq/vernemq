@@ -202,7 +202,7 @@ check_user_state(UserState, Cert) ->
                 true ->
                     {valid, UserState};
                 false ->
-                    {fail, {bad_cert, cert_revoked}}
+                    {fail, {bad_cert, {revoked, unspecified}}}
             end
     end.
 
