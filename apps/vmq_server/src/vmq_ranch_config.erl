@@ -137,7 +137,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(nr_of_acceptors)
     ),
-    case validate_plugin_chains(Opts) of
+    case validate_opts(Type, Opts) of
         ok ->
             ListenerOpts = [
                 {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
@@ -504,6 +504,15 @@ default_session_opts(Opts) ->
         false ->
             PreviousDefaultOpts
     end.
+
+validate_opts(Type, Opts) ->
+    case validate_plugin_chains(Opts) of
+        ok -> validate_transport_opts(transport_for_type(Type), Opts);
+        {error, _} = Error -> Error
+    end.
+
+validate_transport_opts(ranch_tcp, _) -> ok;
+validate_transport_opts(ranch_ssl, Opts) -> vmq_ssl:validate_opts(Opts).
 
 validate_plugin_chains(Opts) ->
     {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
