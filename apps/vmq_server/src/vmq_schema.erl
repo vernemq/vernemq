@@ -359,6 +359,9 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLForwardClientCerts} = lists:unzip(
         extract("listener.ssl", "forward_connection_opts", BoolVal, Conf)
     ),
+    {SSLIPs, SSLPartialChain} = lists:unzip(
+        extract("listener.ssl", "partial_chain", BoolVal, Conf)
+    ),
     {SSLIPs, SSLPSKSupport} = lists:unzip(
         extract("listener.ssl", "psk_support", BoolVal, Conf)
     ),
@@ -391,6 +394,9 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLForwardClientCerts} = lists:unzip(
         extract("listener.wss", "forward_connection_opts", BoolVal, Conf)
     ),
+    {WS_SSLIPs, WS_SSLPartialChain} = lists:unzip(
+        extract("listener.wss", "partial_chain", BoolVal, Conf)
+    ),
 
     % VMQS
     {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(extract("listener.vmqs", "cafile", StrVal, Conf)),
@@ -410,6 +416,9 @@ translate_listeners(Conf) ->
     ),
     {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(
         extract("listener.vmqs", "tls_version", AtomVal, Conf)
+    ),
+    {VMQ_SSLIPs, VMQ_SSLPartialChain} = lists:unzip(
+        extract("listener.vmqs", "partial_chain", BoolVal, Conf)
     ),
     {VMQ_SSLIPs, VMQ_SSLBufferSizes} = lists:unzip(
         extract("listener.vmqs", "buffer_sizes", StringIntegerListVal, Conf)
@@ -439,6 +448,9 @@ translate_listeners(Conf) ->
     ),
     {HTTP_SSLIPs, HTTP_SSLVersions} = lists:unzip(
         extract("listener.https", "tls_version", SSLVersionsListVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLPartialChain} = lists:unzip(
+        extract("listener.https", "partial_chain", BoolVal, Conf)
     ),
 
     TCP = lists:zip(
@@ -527,6 +539,7 @@ translate_listeners(Conf) ->
             SSLVersions,
             SSLUseIdents,
             SSLForwardClientCerts,
+            SSLPartialChain,
             SSLPSKSupport,
             SSLPSKFile,
             SSLPSKFileSeparator,
@@ -559,6 +572,7 @@ translate_listeners(Conf) ->
             WS_SSLVersions,
             WS_SSLUseIdents,
             WS_SSLForwardClientCerts,
+            WS_SSLPartialChain,
             WS_SSLMaxLengths,
             WS_SSLHeaderLengths,
             WS_SSLAllowedProto,
@@ -584,6 +598,7 @@ translate_listeners(Conf) ->
             VMQ_SSLKeyPasswd,
             VMQ_SSLRequireCerts,
             VMQ_SSLVersions,
+            VMQ_SSLPartialChain,
             VMQ_SSLBufferSizes
         ])
     ),
@@ -603,6 +618,7 @@ translate_listeners(Conf) ->
             HTTP_SSLKeyPasswd,
             HTTP_SSLRequireCerts,
             HTTP_SSLVersions,
+            HTTP_SSLPartialChain,
             HTTP_SSLConfigMod,
             HTTP_SSLConfigFun,
             HTTP_SSLMaxLengths,
@@ -618,6 +634,10 @@ translate_listeners(Conf) ->
     validate_listener_plugin_chains(mqtts, SSL, EnabledPlugins),
     validate_listener_plugin_chains(mqttws, WS, EnabledPlugins),
     validate_listener_plugin_chains(mqttwss, WSS, EnabledPlugins),
+    validate_listener_partial_chain(mqtts, SSL),
+    validate_listener_partial_chain(mqttwss, WSS),
+    validate_listener_partial_chain(vmqs, VMQS),
+    validate_listener_partial_chain(https, HTTPS),
     [
         {mqtt, DropUndef(TCP)},
         {mqtts, DropUndef(SSL)},
@@ -664,6 +684,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "tls_version",
             "use_identity_as_username",
             "forward_connection_opts",
+            "partial_chain",
             "psk_support",
             "pskfile",
             "pskfile_separator",
@@ -814,6 +835,24 @@ validate_listener_plugin_chain(ListenerType, Opts, Key, EnabledPlugins) ->
                 Plugins
             )
     end.
+
+validate_listener_partial_chain(_ListenerType, []) ->
+    ok;
+validate_listener_partial_chain(ListenerType, [{_AddrPort, Opts} | Rest]) ->
+    case vmq_ssl:validate_opts(Opts) of
+        ok ->
+            ok;
+        {error, partial_chain_requires_cafile} ->
+            cuttlefish:invalid(
+                lists:flatten(
+                    io_lib:format(
+                        "listener ~p enables partial_chain but has no cafile",
+                        [ListenerType]
+                    )
+                )
+            )
+    end,
+    validate_listener_partial_chain(ListenerType, Rest).
 
 parse_addr(StrA) ->
     case string:split(StrA, ":") of

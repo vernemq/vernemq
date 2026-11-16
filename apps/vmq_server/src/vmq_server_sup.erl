@@ -66,6 +66,7 @@ init([]) ->
         {{one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
+            ?CHILD(vmq_ssl_ca_cache, worker, []),
             ?CHILD(vmq_metrics_sup, supervisor, []),
             ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, 5, 10]),
             ?CHILD(vmq_fanout_shard_sup, supervisor, []),

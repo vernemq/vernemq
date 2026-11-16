@@ -193,6 +193,13 @@ vmq_listener_start_cmd() ->
                 ("false") -> false
             end}
         ]},
+        {partial_chain, [
+            {longname, "partial_chain"},
+            {typecast, fun
+                ("true") -> true;
+                ("false") -> false
+            end}
+        ]},
         {tls_version, [
             {longname, "tls_version"},
             {typecast, fun(A) ->
@@ -564,7 +571,11 @@ vmq_listener_start_usage() ->
         "      Use client certificates to authenticate your clients\n",
         "  --use_identity_as_username\n",
         "      If --require-certificate is set, the CN value from the client\n",
-        "      certificate is used as the username for authentication\n\n"
+        "      certificate is used as the username for authentication\n",
+        "  --partial_chain\n",
+        "      Accept any CA certificate of the client chain that is contained\n",
+        "      in --cafile as trust anchor (e.g. trust only an intermediate CA).\n",
+        "      Requires --cafile\n\n"
     ].
 
 vmq_listener_stop_usage() ->

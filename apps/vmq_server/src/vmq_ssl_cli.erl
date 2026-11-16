@@ -172,6 +172,7 @@ vmq_mgmt_tls_clear_pem_cache_cmd() ->
     KeySpecs = [],
     FlagSpecs = [],
     Callback = fun(_, _, _) ->
+        ok = vmq_ssl_ca_cache:refresh(),
         ok = ssl:clear_pem_cache()
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).

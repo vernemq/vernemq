@@ -37,6 +37,8 @@ groups() ->
         [proxy_protocol_inheritance_test,
          proxy_protocol_override_test,
          forward_connection_opts_inheritance_test,
+         partial_chain_inheritance_override_test,
+         partial_chain_requires_cafile_test,
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
           allow_anonymous_override_test,
@@ -249,6 +251,39 @@ forward_connection_opts_inheritance_test(_Config) ->
            ],
     true = expect(Conf, [vmq_server, listeners, mqtt,   {{127,0,0,1}, 1884}, forward_connection_opts]),
     true = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800},  forward_connection_opts]).
+
+partial_chain_inheritance_override_test(Config) ->
+    DummyCert = dummy_file(Config, "dummy.crt"),
+    lists:foreach(
+      fun({LType, IntName}) ->
+              Conf = [
+                      {["listener",LType,"cafile"], DummyCert},
+                      {["listener",LType,"partial_chain"], "on"},
+                      {["listener",LType,"default"],"127.0.0.1:8883"},
+                      {["listener",LType,"internal","partial_chain"], "off"},
+                      {["listener",LType,"internal"],"127.0.0.1:8884"}
+                      | global_substitutions()
+                     ],
+              true = expect(Conf, [vmq_server, listeners, IntName, {{127,0,0,1}, 8883}, partial_chain]),
+              false = expect(Conf, [vmq_server, listeners, IntName, {{127,0,0,1}, 8884}, partial_chain])
+      end,
+      [
+       {"ssl", mqtts},
+       {"wss", mqttwss},
+       {"vmqs", vmqs},
+       {"https", https}
+      ]).
+
+partial_chain_requires_cafile_test(_Config) ->
+    Conf = [
+            {["listener","ssl","default"],"127.0.0.1:8883"},
+            {["listener","ssl","default","partial_chain"], "on"}
+            | global_substitutions()
+           ],
+    case catch expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8883}, partial_chain]) of
+        {{error,apply_translations,{errorlist,[{error,{translation_invalid_configuration,{"vmq_server.listeners","listener mqtts enables partial_chain but has no cafile"}}}]}},_} -> ok;
+        _ -> ct:fail("Expected translation failure for partial_chain without cafile")
+    end.
 
 allow_anonymous_override_test(_Config) ->
     Conf = [

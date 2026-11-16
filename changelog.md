@@ -1,3 +1,4 @@
+- New feature: TLS listeners can trust an intermediate CA from the `cafile` as trust anchor (new `partial_chain` setting for `ssl`, `wss`, `vmqs` and `https` listeners).
 - Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)
   now work; pooled requests to them always failed with `nxdomain`. Socket paths with capital
   letters also work now.

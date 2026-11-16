@@ -33,7 +33,7 @@ openssl genrsa -out test-signing-ca.key 2048
 openssl req -out test-signing-ca.csr -key test-signing-ca.key -new -config openssl.cnf -subj "${BASESUBJ}/CN=Signing CA/"
 openssl ca -batch -config openssl.cnf -name CA_root -extensions v3_ca -out test-signing-ca.crt -infiles test-signing-ca.csr
 
-# An alternative intermediate CA, signed by the root CA, not used to sign anything.
+# An alternative intermediate CA, signed by the root CA, only used to sign the client-alt certificate.
 openssl genrsa -out test-alt-ca.key 2048
 openssl req -out test-alt-ca.csr -key test-alt-ca.key -new -config openssl.cnf -subj "${BASESUBJ}/CN=Alternative Signing CA/"
 openssl ca -batch -config openssl.cnf -name CA_root -extensions v3_ca -out test-alt-ca.crt -infiles test-alt-ca.csr
@@ -69,6 +69,13 @@ openssl ca -batch -config openssl.cnf -name CA_signing -out client-revoked.crt -
 openssl ca -batch -config openssl.cnf -name CA_signing -revoke client-revoked.crt
 openssl ca -batch -config openssl.cnf -name CA_signing -gencrl -out crl.pem
 
+# Valid client key and certificate signed by the alternative intermediate CA.
+openssl genrsa -out client-alt.key 2048
+openssl req -new -key client-alt.key -out client-alt.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=test client alt/"
+openssl x509 -req -days 3650 -in client-alt.csr -CA test-alt-ca.crt -CAkey test-alt-ca.key -CAcreateserial -CAserial test-ca.srl -extfile openssl.cnf -extensions usr_cert -out client-alt.crt
+
+cat client.crt test-signing-ca.crt > client-chain.crt
+cat client-alt.crt test-alt-ca.crt > client-alt-chain.crt
 cat test-signing-ca.crt test-root-ca.crt > all-ca.crt
 mkdir certs
 #cp test-signing-ca.crt certs/test-signing-ca.pem
