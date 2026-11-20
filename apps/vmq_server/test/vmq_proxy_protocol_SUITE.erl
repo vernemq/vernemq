@@ -19,7 +19,9 @@
           proxy_trust_all_escape_hatch_test/1,
           proxy_untrusted_proxy_test/1,
           tls_proxy_protocol_v2_client_cert_metadata_test/1,
+          tls_proxy_protocol_v2_fragmented_client_cert_test/1,
           tls_proxy_protocol_v2_untrusted_proxy_test/1,
+          proxy_protocol_v2_malformed_tlv_test/1,
           ws_proxy_protocol_v2_use_cn_as_username_on_test/1,
           ws_proxy_protocol_v2_use_cn_as_username_off_test/1]).
 
@@ -120,7 +122,9 @@ all() ->
      proxy_trust_all_escape_hatch_test,
      proxy_untrusted_proxy_test,
      tls_proxy_protocol_v2_client_cert_metadata_test,
+     tls_proxy_protocol_v2_fragmented_client_cert_test,
      tls_proxy_protocol_v2_untrusted_proxy_test,
+     proxy_protocol_v2_malformed_tlv_test,
      ws_proxy_protocol_v2_use_cn_as_username_on_test,
      ws_proxy_protocol_v2_use_cn_as_username_off_test].
 
@@ -397,6 +401,35 @@ tls_proxy_protocol_v2_client_cert_metadata_test(_) ->
         auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
     ok = ssl:close(SSock).
 
+tls_proxy_protocol_v2_fragmented_client_cert_test(_) ->
+    ClientCert = load_cert("client.crt"),
+    Connect = packet:gen_connect("connect-tls-proxy-metadata-test", [
+        {keepalive, 10},
+        {username, <<"username">>},
+        {password, <<"password">>}
+    ]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1894,
+    vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ProxyHeader = iolist_to_binary(proxy_v2_ssl_header(ClientCert)),
+    <<First:16/binary, Rest/binary>> = ProxyHeader,
+    ok = gen_tcp:send(Socket, First),
+    timer:sleep(100),
+    ok = gen_tcp:send(Socket, Rest),
+    {ok, SSock} = ssl:connect(
+        Socket,
+        [binary, {active, false}, {packet, raw}, {verify, verify_none}, {versions, ['tlsv1.2']}],
+        6000
+    ),
+    ok = ssl:send(SSock, Connect),
+    ok = packet:expect_packet(ssl, SSock, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    ok = ssl:close(SSock).
+
 tls_proxy_protocol_v2_untrusted_proxy_test(_) ->
     ClientCert = load_cert("client.crt"),
     Host = {127,0,0,1},
@@ -408,6 +441,21 @@ tls_proxy_protocol_v2_untrusted_proxy_test(_) ->
         [binary, {active, false}, {packet, raw}, {verify, verify_none}, {versions, ['tlsv1.2']}],
         6000
     ).
+
+proxy_protocol_v2_malformed_tlv_test(_) ->
+    Signature = <<"\r\n\r\n\0\r\nQUIT\n">>,
+    Addresses = <<3,4,5,6, 7,8,9,10, 7777:16, 1893:16>>,
+    TruncatedTLV = <<16#1, 1:16>>,
+    Len = byte_size(Addresses) + byte_size(TruncatedTLV),
+    Header = <<Signature/binary, 2:4, 1:4, 1:4, 1:4, Len:16, Addresses/binary,
+        TruncatedTLV/binary>>,
+    {error, 'Invalid TLV length in the PROXY protocol binary header. (PP 2.2)'} =
+        ranch_proxy_header:parse(Header),
+    Host = {127,0,0,1},
+    Port = 1893,
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, Header),
+    {error, closed} = gen_tcp:recv(Socket, 0, 6000).
 
 ws_proxy_protocol_v2_use_cn_as_username_on_test(_) ->
   Connect = packet:gen_connect("connect-proxy-test", [{keepalive,60},{username, <<"username">>},
@@ -525,8 +573,7 @@ hook_proxy_register_with_extended_metadata(
                 cn := <<"proxy client">>,
                 client_cert := ClientCert,
                 group := <<"secp256r1">>,
-                sig_scheme := <<"rsa_pss_rsae_sha256">>,
-                raw_tlvs := [{16#29, <<"future-ssl-tlv">>}]
+                sig_scheme := <<"rsa_pss_rsae_sha256">>
             }
         }
     }
@@ -550,8 +597,7 @@ hook_tls_proxy_register_with_metadata(
                 cn := <<"proxy client">>,
                 client_cert := ClientCert,
                 group := <<"secp256r1">>,
-                sig_scheme := <<"rsa_pss_rsae_sha256">>,
-                raw_tlvs := [{16#29, <<"future-ssl-tlv">>}]
+                sig_scheme := <<"rsa_pss_rsae_sha256">>
             }
         }
     }
@@ -569,29 +615,27 @@ proxy_v2_ssl_header(ClientCert) ->
     proxy_v2_ssl_header(ClientCert, 1894).
 
 proxy_v2_ssl_header(ClientCert, DestPort) ->
-    CN = <<"proxy client">>,
-    Version = <<"TLSv1.2">>,
-    Cipher = <<"ECDHE-RSA-AES256-GCM-SHA384">>,
-    Group = <<"secp256r1">>,
-    SigScheme = <<"rsa_pss_rsae_sha256">>,
-    SSLSubTLVs = [
-        tlv(16#21, Version),
-        tlv(16#22, CN),
-        tlv(16#23, Cipher),
-        tlv(16#26, Group),
-        tlv(16#27, SigScheme),
-        tlv(16#28, ClientCert),
-        tlv(16#29, <<"future-ssl-tlv">>)
-    ],
-    SSLSubTLVsLen = iolist_size(SSLSubTLVs),
-    SSLTLV = [<<16#20, (SSLSubTLVsLen + 5):16, 3, 0:32>>, SSLSubTLVs],
-    TopLevelCustomTLV = tlv(16#ea, <<1, "test-id">>),
-    Addresses = <<3,4,5,6, 7,8,9,10, 7777:16, DestPort:16>>,
-    Len = byte_size(Addresses) + iolist_size(SSLTLV) + iolist_size(TopLevelCustomTLV),
-    [<<"\r\n\r\n\0\r\nQUIT\n", 2:4, 1:4, 1:4, 1:4, Len:16>>, Addresses, SSLTLV, TopLevelCustomTLV].
-
-tlv(Type, Value) ->
-    <<Type, (byte_size(Value)):16, Value/binary>>.
+    ranch_proxy_header:header(#{
+        version => 2,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream,
+        src_address => {3,4,5,6},
+        src_port => 7777,
+        dest_address => {7,8,9,10},
+        dest_port => DestPort,
+        ssl => #{
+            client => [ssl, cert_conn],
+            verified => true,
+            version => <<"TLSv1.2">>,
+            cn => <<"proxy client">>,
+            cipher => <<"ECDHE-RSA-AES256-GCM-SHA384">>,
+            group => <<"secp256r1">>,
+            sig_scheme => <<"rsa_pss_rsae_sha256">>,
+            client_cert => ClientCert
+        },
+        raw_tlvs => [{16#ea, <<1, "test-id">>}]
+    }).
 
 load_cert(File) ->
     {ok, Bin} = file:read_file(ssl_path(File)),
