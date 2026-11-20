@@ -303,6 +303,11 @@ proxy_trusted_proxy_config_test(_) ->
         vmq_proxy_protocol:parse_trusted_proxies(" 127.0.0.1 ; 0:0:0:0:0:0:0:1 "),
     true = lists:member({127,0,0,1}, TrustedProxies),
     true = lists:member({0,0,0,0,0,0,0,1}, TrustedProxies),
+    RanchTrustedProxies = vmq_proxy_protocol:ranch_trusted_proxies(TrustedProxies),
+    true = lists:member({{127,0,0,1}, 32}, RanchTrustedProxies),
+    true = lists:member({{0,0,0,0,0,0,0,1}, 128}, RanchTrustedProxies),
+    [{{0,0,0,0}, 0}, {{0,0,0,0,0,0,0,0}, 0}] =
+        vmq_proxy_protocol:ranch_trusted_proxies(all),
     {error, {invalid_proxy_protocol_trusted_proxy, "not-an-ip"}} =
         vmq_proxy_protocol:parse_trusted_proxies("127.0.0.1;not-an-ip"),
     {error, {invalid_proxy_protocol_trusted_proxy, ""}} =

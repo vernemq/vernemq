@@ -152,7 +152,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
                             {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
                             {num_acceptors, NrOfAcceptors},
                             {max_connections, MaxConns}
-                            | transport_opts_for_type(Type, Opts)
+                            | transport_opts_for_type(Type, ListenerOpts)
                         ]
                     ),
                     case protocol_for_type(Type) of
@@ -384,7 +384,17 @@ socket_opts(ranch_tcp, _) -> [];
 socket_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 transport_opts_for_type(Type, Opts) ->
-    transport_opts(transport_for_type(Type), Opts).
+    TransportOpts = transport_opts(transport_for_type(Type), Opts),
+    case {protocol_for_type(Type), proplists:get_value(proxy_protocol, Opts, false)} of
+        {vmq_ranch, true} ->
+            TrustedProxies = proplists:get_value(proxy_protocol_trusted_proxy, Opts),
+            [
+                {trusted_proxies, vmq_proxy_protocol:ranch_trusted_proxies(TrustedProxies)}
+                | TransportOpts
+            ];
+        _ ->
+            TransportOpts
+    end.
 transport_opts(ranch_tcp, _) ->
     [];
 transport_opts(ranch_ssl, Opts) ->

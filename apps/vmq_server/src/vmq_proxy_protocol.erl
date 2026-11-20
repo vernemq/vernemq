@@ -15,31 +15,11 @@
 -module(vmq_proxy_protocol).
 
 -export([
-    recv_proxy_header/2,
-    recv_proxy_header/3,
-    check_trusted_proxy/2,
-    parse_trusted_proxies/1
+    parse_trusted_proxies/1,
+    ranch_trusted_proxies/1
 ]).
 
 -type trusted_proxies() :: all | [inet:ip_address()].
-
--spec recv_proxy_header(any(), timeout()) ->
-    {ok, map()} | {error, closed | atom()} | {error, protocol_error, atom()}.
-recv_proxy_header(Socket, Timeout) ->
-    ranch_tcp:recv_proxy_header(Socket, Timeout).
-
--spec recv_proxy_header(ranch:ref(), timeout(), trusted_proxies()) ->
-    {ok, map()} | {error, closed | atom()} | {error, protocol_error, atom()}.
-recv_proxy_header(Ref, Timeout, TrustedProxy) ->
-    receive
-        HandshakeState = {handshake, Ref, ranch_ssl, SSLSocket, _} ->
-            self() ! HandshakeState,
-            TCPSocket = tcp_socket(SSLSocket),
-            case check_trusted_proxy(TCPSocket, TrustedProxy) of
-                ok -> ranch_tcp:recv_proxy_header(TCPSocket, Timeout);
-                Error -> Error
-            end
-    end.
 
 -spec parse_trusted_proxies(undefined | string() | binary() | trusted_proxies()) ->
     {ok, trusted_proxies()} | {error, any()}.
@@ -87,30 +67,14 @@ is_ip_address(IP) when is_tuple(IP), tuple_size(IP) =:= 8 ->
 is_ip_address(_) ->
     false.
 
--spec check_trusted_proxy(any(), trusted_proxies()) -> ok | {error, any()}.
-check_trusted_proxy(_, all) ->
-    ok;
-check_trusted_proxy(Socket, TrustedProxies) when is_list(TrustedProxies) ->
-    case inet:peername(Socket) of
-        {ok, {IP, _Port}} when
-            is_tuple(IP) andalso (tuple_size(IP) =:= 4 orelse tuple_size(IP) =:= 8)
-        ->
-            case lists:member(IP, TrustedProxies) of
-                true -> ok;
-                false -> {error, proxy_protocol_trusted_proxy_not_accepted}
-            end;
-        {ok, {local, _Path}} ->
-            {error, proxy_protocol_local_socket_not_supported};
-        {ok, Peer} ->
-            {error, {invalid_proxy_protocol_peer, Peer}};
-        {error, _} = Error ->
-            Error
-    end;
-check_trusted_proxy(_, _) ->
-    {error, proxy_protocol_trusted_proxy_required}.
-
-tcp_socket(SSLSocket) ->
-    case element(2, SSLSocket) of
-        {gen_tcp, TCPSocket, _, _} -> TCPSocket;
-        TCPSocket -> TCPSocket
-    end.
+-spec ranch_trusted_proxies(trusted_proxies()) -> [ranch:trusted_proxy()].
+ranch_trusted_proxies(all) ->
+    [{{0, 0, 0, 0}, 0}, {{0, 0, 0, 0, 0, 0, 0, 0}, 0}];
+ranch_trusted_proxies(TrustedProxies) ->
+    [
+        case tuple_size(IP) of
+            4 -> {IP, 32};
+            8 -> {IP, 128}
+        end
+     || IP <- TrustedProxies
+    ].
