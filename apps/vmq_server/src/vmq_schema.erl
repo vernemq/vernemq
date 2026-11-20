@@ -194,6 +194,22 @@ translate_listeners(Conf) ->
     ),
 
     {TCPIPs, TCPProxyProto} = lists:unzip(extract("listener.tcp", "proxy_protocol", BoolVal, Conf)),
+    {TCPIPs, TCPProxyTrustedProxy} = lists:unzip(
+        extract("listener.tcp", "proxy_protocol_trusted_proxy", StrVal, Conf)
+    ),
+    {TCPIPs, TCPProxyTimeout} = lists:unzip(
+        extract("listener.tcp", "proxy_protocol_timeout", IntVal, Conf)
+    ),
+    {SSLIPs, SSLProxyProto} = lists:unzip(extract("listener.ssl", "proxy_protocol", BoolVal, Conf)),
+    {SSLIPs, SSLProxyUseCN} = lists:unzip(
+        extract("listener.ssl", "proxy_protocol_use_cn_as_username", BoolVal, Conf)
+    ),
+    {SSLIPs, SSLProxyTrustedProxy} = lists:unzip(
+        extract("listener.ssl", "proxy_protocol_trusted_proxy", StrVal, Conf)
+    ),
+    {SSLIPs, SSLProxyTimeout} = lists:unzip(
+        extract("listener.ssl", "proxy_protocol_timeout", IntVal, Conf)
+    ),
     {WSIPs, WSProxyProto} = lists:unzip(extract("listener.ws", "proxy_protocol", BoolVal, Conf)),
     {WSIPs, WSProxyXFF} = lists:unzip(extract("listener.ws", "proxy_xff_support", BoolVal, Conf)),
     {WSIPs, WSProxyXFFTrusted} = lists:unzip(
@@ -449,6 +465,8 @@ translate_listeners(Conf) ->
             TCPNrOfAcceptors,
             TCPMountPoint,
             TCPProxyProto,
+            TCPProxyTrustedProxy,
+            TCPProxyTimeout,
             TCPAllowedProto,
             TCPBufferSizes,
             TCPActiveN,
@@ -527,6 +545,10 @@ translate_listeners(Conf) ->
             SSLVersions,
             SSLUseIdents,
             SSLForwardClientCerts,
+            SSLProxyProto,
+            SSLProxyUseCN,
+            SSLProxyTrustedProxy,
+            SSLProxyTimeout,
             SSLPSKSupport,
             SSLPSKFile,
             SSLPSKFileSeparator,
@@ -685,6 +707,8 @@ extract(Prefix, Suffix, Val, Conf) ->
             "allowed_protocol_versions",
             %% other
             "proxy_protocol",
+            "proxy_protocol_trusted_proxy",
+            "proxy_protocol_timeout",
             "proxy_xff_support",
             "proxy_xff_trusted_intermediate",
             "proxy_xff_use_cn_as_username",

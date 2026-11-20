@@ -139,35 +139,41 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     ),
     case validate_plugin_chains(Opts) of
         ok ->
-            ListenerOpts = [
+            ListenerOpts0 = [
                 {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
             ],
-            ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
-            TransportMod = transport_for_type(Type),
-            TransportOptions = maps:from_list(
-                [
-                    {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
-                    {num_acceptors, NrOfAcceptors},
-                    {max_connections, MaxConns}
-                    | transport_opts_for_type(Type, Opts)
-                ]
-            ),
-            case protocol_for_type(Type) of
-                cowboy_clear ->
-                    start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
-                _ ->
-                    case
-                        ranch:start_listener(
-                            Ref,
-                            TransportMod,
-                            TransportOptions,
-                            protocol_for_type(Type),
-                            ProtocolOpts
-                        )
-                    of
-                        {ok, _} -> ok;
-                        Error -> Error
-                    end
+            case normalize_proxy_protocol_trust(Type, ListenerOpts0) of
+                {ok, ListenerOpts} ->
+                    maybe_warn_trust_all_proxy_protocol(Type, AAddr, Port, ListenerOpts),
+                    ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
+                    TransportMod = transport_for_type(Type),
+                    TransportOptions = maps:from_list(
+                        [
+                            {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
+                            {num_acceptors, NrOfAcceptors},
+                            {max_connections, MaxConns}
+                            | transport_opts_for_type(Type, ListenerOpts)
+                        ]
+                    ),
+                    case protocol_for_type(Type) of
+                        cowboy_clear ->
+                            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+                        _ ->
+                            case
+                                ranch:start_listener(
+                                    Ref,
+                                    TransportMod,
+                                    TransportOptions,
+                                    protocol_for_type(Type),
+                                    ProtocolOpts
+                                )
+                            of
+                                {ok, _} -> ok;
+                                Error -> Error
+                            end
+                    end;
+                {error, _} = Error ->
+                    Error
             end;
         {error, _} = Error ->
             Error
@@ -378,7 +384,17 @@ socket_opts(ranch_tcp, _) -> [];
 socket_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 transport_opts_for_type(Type, Opts) ->
-    transport_opts(transport_for_type(Type), Opts).
+    TransportOpts = transport_opts(transport_for_type(Type), Opts),
+    case {protocol_for_type(Type), proplists:get_value(proxy_protocol, Opts, false)} of
+        {vmq_ranch, true} ->
+            TrustedProxies = proplists:get_value(proxy_protocol_trusted_proxy, Opts),
+            [
+                {trusted_proxies, vmq_proxy_protocol:ranch_trusted_proxies(TrustedProxies)}
+                | TransportOpts
+            ];
+        _ ->
+            TransportOpts
+    end.
 transport_opts(ranch_tcp, _) ->
     [];
 transport_opts(ranch_ssl, Opts) ->
@@ -462,9 +478,19 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults2]
         end,
     MaybeProxyDefaults2 =
+        case lists:keyfind(proxy_protocol_trusted_proxy, 1, Opts) of
+            false -> MaybeProxyDefaults;
+            {_, V3} -> [{proxy_protocol_trusted_proxy, V3} | MaybeProxyDefaults]
+        end,
+    MaybeProxyDefaults3 =
+        case lists:keyfind(proxy_protocol_timeout, 1, Opts) of
+            false -> MaybeProxyDefaults2;
+            {_, V4} -> [{proxy_protocol_timeout, V4} | MaybeProxyDefaults2]
+        end,
+    MaybeProxyDefaults4 =
         case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
             false ->
-                MaybeProxyDefaults;
+                MaybeProxyDefaults3;
             {_, V2} ->
                 [
                     {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
@@ -472,7 +498,7 @@ default_session_opts(Opts) ->
                     {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, undefined)},
                     {xff_use_cn_as_username,
                         proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
-                    | MaybeProxyDefaults
+                    | MaybeProxyDefaults3
                 ]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3, 4]),
@@ -491,7 +517,7 @@ default_session_opts(Opts) ->
         {active_n, ActiveN},
         {auth_plugins, AuthPlugins},
         {authz_plugins, AuthzPlugins}
-        | MaybeProxyDefaults2
+        | MaybeProxyDefaults4
     ],
     case proplists:get_value(forward_connection_opts, Opts, false) of
         true ->
@@ -541,6 +567,47 @@ validate_plugin_chain_members(Key, [Plugin | _], _EnabledPlugins) ->
     {error, {invalid_plugin_name, Key, Plugin}};
 validate_plugin_chain_members(_Key, [], _EnabledPlugins) ->
     ok.
+
+normalize_proxy_protocol_trust(Type, Opts) ->
+    case {protocol_for_type(Type), proplists:get_value(proxy_protocol, Opts, false)} of
+        {vmq_ranch, true} ->
+            TrustedProxy = proplists:get_value(proxy_protocol_trusted_proxy, Opts, undefined),
+            case vmq_proxy_protocol:parse_trusted_proxies(TrustedProxy) of
+                {ok, TrustedProxies} ->
+                    normalize_proxy_protocol_timeout(
+                        lists:keystore(
+                            proxy_protocol_trusted_proxy,
+                            1,
+                            Opts,
+                            {proxy_protocol_trusted_proxy, TrustedProxies}
+                        )
+                    );
+                {error, _} = Error ->
+                    Error
+            end;
+        _ ->
+            {ok, Opts}
+    end.
+
+normalize_proxy_protocol_timeout(Opts) ->
+    case proplists:get_value(proxy_protocol_timeout, Opts, 10000) of
+        Timeout when is_integer(Timeout), Timeout >= 0 ->
+            {ok, Opts};
+        Timeout ->
+            {error, {invalid_proxy_protocol_timeout, Timeout}}
+    end.
+
+maybe_warn_trust_all_proxy_protocol(Type, Addr, Port, Opts) ->
+    case proplists:get_value(proxy_protocol_trusted_proxy, Opts) of
+        all ->
+            ?LOG_WARNING(
+                "PROXY protocol is enabled on ~p listener(~p, ~p) with "
+                "proxy_protocol_trusted_proxy=*; every directly connected peer is trusted",
+                [Type, Addr, Port]
+            );
+        _ ->
+            ok
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
