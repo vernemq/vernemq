@@ -14,7 +14,9 @@
           proxy_use_cn_as_username_off/1,
           proxy_forward_connection_opts_test/1,
           proxy_protocol_v2_client_cert_metadata_test/1,
+          proxy_trusted_proxy_config_test/1,
           proxy_trusted_proxy_test/1,
+          proxy_trust_all_escape_hatch_test/1,
           proxy_untrusted_proxy_test/1,
           tls_proxy_protocol_v2_client_cert_metadata_test/1,
           tls_proxy_protocol_v2_untrusted_proxy_test/1,
@@ -43,8 +45,10 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, false),
     vmq_server_cmd:set_config(max_client_id_size, 50),
     vmq_server_cmd:listener_start(1888, [{proxy_protocol, true},
+                                         {proxy_protocol_trusted_proxy, "127.0.0.1"},
                                          {proxy_protocol_use_cn_as_username, false}]),
-    vmq_server_cmd:listener_start(1889, [{proxy_protocol, true}
+    vmq_server_cmd:listener_start(1889, [{proxy_protocol, true},
+                                         {proxy_protocol_trusted_proxy, "127.0.0.1"}
                                          %% proxy_protocol_use_cn_as_username
                                          %% defaults to true as this
                                          %% was the default behaviour
@@ -54,16 +58,21 @@ init_per_testcase(_Case, Config) ->
                                         ]),
     vmq_server_cmd:listener_start(1893, "127.0.0.1", [
         {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.1"},
         {proxy_protocol_use_cn_as_username, false},
         {forward_connection_opts, true}
     ]),
     vmq_server_cmd:listener_start(1896, "127.0.0.1", [
         {proxy_protocol, true},
-        {proxy_protocol_trusted_proxy, "127.0.0.1"}
+        {proxy_protocol_trusted_proxy, " 127.0.0.2 ; 127.0.0.1 "}
     ]),
     vmq_server_cmd:listener_start(1897, "127.0.0.1", [
         {proxy_protocol, true},
         {proxy_protocol_trusted_proxy, "127.0.0.2"}
+    ]),
+    vmq_server_cmd:listener_start(1898, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "*"}
     ]),
     vmq_server_cmd:listener_start(1894, "127.0.0.1", [
         {ssl, true},
@@ -106,7 +115,9 @@ all() ->
      proxy_use_cn_as_username_off,
      proxy_forward_connection_opts_test,
      proxy_protocol_v2_client_cert_metadata_test,
+     proxy_trusted_proxy_config_test,
      proxy_trusted_proxy_test,
+     proxy_trust_all_escape_hatch_test,
      proxy_untrusted_proxy_test,
      tls_proxy_protocol_v2_client_cert_metadata_test,
      tls_proxy_protocol_v2_untrusted_proxy_test,
@@ -271,11 +282,58 @@ proxy_protocol_v2_client_cert_metadata_test(_) ->
       auth_on_register, ?MODULE, hook_proxy_register_with_extended_metadata, 6),
     ok = gen_tcp:close(Socket).
 
+proxy_trusted_proxy_config_test(_) ->
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_proxy_protocol:parse_trusted_proxies(undefined),
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_proxy_protocol:parse_trusted_proxies("  "),
+    {ok, all} = vmq_proxy_protocol:parse_trusted_proxies(" * "),
+    {ok, TrustedProxies} =
+        vmq_proxy_protocol:parse_trusted_proxies(" 127.0.0.1 ; 0:0:0:0:0:0:0:1 "),
+    true = lists:member({127,0,0,1}, TrustedProxies),
+    true = lists:member({0,0,0,0,0,0,0,1}, TrustedProxies),
+    {error, {invalid_proxy_protocol_trusted_proxy, "not-an-ip"}} =
+        vmq_proxy_protocol:parse_trusted_proxies("127.0.0.1;not-an-ip"),
+    {error, {invalid_proxy_protocol_trusted_proxy, ""}} =
+        vmq_proxy_protocol:parse_trusted_proxies("127.0.0.1;;127.0.0.2"),
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1899, [{proxy_protocol, true}]),
+    {error, {invalid_proxy_protocol_trusted_proxy, "invalid"}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1900, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "invalid"}
+        ]).
+
 proxy_trusted_proxy_test(_) ->
     Connect = packet:gen_connect("connect-proxy-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
     Host = {127,0,0,1},
     Port = 1896,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ProxyInfo = #{
+        version => 2,
+        src_address => {1,1,1,1},
+        src_port => 1234,
+        dest_address => {2,2,2,2},
+        dest_port => 4321,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream
+    },
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    ok = gen_tcp:send(Socket, Connect),
+    ok = packet:expect_packet(Socket, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ok = gen_tcp:close(Socket).
+
+proxy_trust_all_escape_hatch_test(_) ->
+    Connect = packet:gen_connect("connect-proxy-test", [{keepalive,10}]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1898,
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_register, ?MODULE, hook_proxy_register, 5),
     ProxyInfo = #{

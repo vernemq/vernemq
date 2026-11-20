@@ -974,8 +974,11 @@
 
 %% @doc listener.ssl.proxy_protocol_trusted_proxy configures the list of direct
 %% proxy IP addresses allowed to send PROXY protocol headers to MQTT TLS
-%% listeners. The list is semicolon-separated. If unset, no direct proxy IP
-%% check is performed.
+%% listeners. The list is semicolon-separated and is required when the PROXY
+%% protocol is enabled. Use "*" to explicitly trust every directly connected
+%% peer. This escape hatch should only be used when network access to the
+%% listener is restricted by other means. CIDR ranges and hostnames are not
+%% supported.
 {mapping, "listener.ssl.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
                                                                    {default, ""},
                                                                    {datatype, string},
@@ -1013,8 +1016,11 @@
 
 %% @doc listener.tcp.proxy_protocol_trusted_proxy configures the list of direct
 %% proxy IP addresses allowed to send PROXY protocol headers to MQTT TCP
-%% listeners. The list is semicolon-separated. If unset, no direct proxy IP
-%% check is performed.
+%% listeners. The list is semicolon-separated and is required when the PROXY
+%% protocol is enabled. Use "*" to explicitly trust every directly connected
+%% peer. This escape hatch should only be used when network access to the
+%% listener is restricted by other means. CIDR ranges and hostnames are not
+%% supported.
 {mapping, "listener.tcp.proxy_protocol_trusted_proxy", "vmq_server.listeners", [
                                                                    {default, ""},
                                                                    {datatype, string},

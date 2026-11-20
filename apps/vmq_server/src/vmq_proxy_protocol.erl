@@ -14,14 +14,22 @@
 
 -module(vmq_proxy_protocol).
 
--export([recv_proxy_header/2, recv_proxy_header/3, check_trusted_proxy/2, parse/1]).
+-export([
+    recv_proxy_header/2,
+    recv_proxy_header/3,
+    check_trusted_proxy/2,
+    parse_trusted_proxies/1,
+    parse/1
+]).
+
+-type trusted_proxies() :: all | [inet:ip_address()].
 
 -spec recv_proxy_header(any(), timeout()) ->
     {ok, map()} | {error, closed | atom()} | {error, protocol_error, atom()}.
 recv_proxy_header(Socket, Timeout) ->
     recv_proxy_header_tcp(Socket, Timeout).
 
--spec recv_proxy_header(ranch:ref(), timeout(), undefined | string()) ->
+-spec recv_proxy_header(ranch:ref(), timeout(), trusted_proxies()) ->
     {ok, map()} | {error, closed | atom()} | {error, protocol_error, atom()}.
 recv_proxy_header(Ref, Timeout, TrustedProxy) ->
     receive
@@ -34,22 +42,73 @@ recv_proxy_header(Ref, Timeout, TrustedProxy) ->
             end
     end.
 
--spec check_trusted_proxy(any(), undefined | string()) -> ok | {error, any()}.
-check_trusted_proxy(_, undefined) ->
+-spec parse_trusted_proxies(undefined | string() | binary() | trusted_proxies()) ->
+    {ok, trusted_proxies()} | {error, any()}.
+parse_trusted_proxies(undefined) ->
+    {error, proxy_protocol_trusted_proxy_required};
+parse_trusted_proxies(all) ->
+    {ok, all};
+parse_trusted_proxies(Value) when is_binary(Value) ->
+    parse_trusted_proxies(binary_to_list(Value));
+parse_trusted_proxies([IP | _] = Value) when is_tuple(IP) ->
+    case lists:all(fun is_ip_address/1, Value) of
+        true -> {ok, lists:usort(Value)};
+        false -> {error, {invalid_proxy_protocol_trusted_proxy, Value}}
+    end;
+parse_trusted_proxies(Value) when is_list(Value) ->
+    case string:trim(Value) of
+        "" ->
+            {error, proxy_protocol_trusted_proxy_required};
+        "*" ->
+            {ok, all};
+        Trimmed ->
+            parse_trusted_proxy_entries(string:split(Trimmed, ";", all), [])
+    end;
+parse_trusted_proxies(Value) ->
+    {error, {invalid_proxy_protocol_trusted_proxy, Value}}.
+
+parse_trusted_proxy_entries([Entry0 | Rest], Acc) ->
+    Entry = string:trim(Entry0),
+    case inet:parse_strict_address(Entry) of
+        {ok, IP} -> parse_trusted_proxy_entries(Rest, [IP | Acc]);
+        {error, _} -> {error, {invalid_proxy_protocol_trusted_proxy, Entry0}}
+    end;
+parse_trusted_proxy_entries([], Acc) ->
+    {ok, lists:usort(Acc)}.
+
+is_ip_address(IP) when is_tuple(IP), tuple_size(IP) =:= 4 ->
+    lists:all(
+        fun(Part) -> is_integer(Part) andalso Part >= 0 andalso Part =< 255 end, tuple_to_list(IP)
+    );
+is_ip_address(IP) when is_tuple(IP), tuple_size(IP) =:= 8 ->
+    lists:all(
+        fun(Part) -> is_integer(Part) andalso Part >= 0 andalso Part =< 65535 end,
+        tuple_to_list(IP)
+    );
+is_ip_address(_) ->
+    false.
+
+-spec check_trusted_proxy(any(), trusted_proxies()) -> ok | {error, any()}.
+check_trusted_proxy(_, all) ->
     ok;
-check_trusted_proxy(_, "") ->
-    ok;
-check_trusted_proxy(Socket, TrustedProxy) ->
+check_trusted_proxy(Socket, TrustedProxies) when is_list(TrustedProxies) ->
     case inet:peername(Socket) of
-        {ok, {IP, _Port}} ->
-            TrustedProxies = string:tokens(TrustedProxy, ";"),
-            case lists:member(inet:ntoa(IP), TrustedProxies) of
+        {ok, {IP, _Port}} when
+            is_tuple(IP) andalso (tuple_size(IP) =:= 4 orelse tuple_size(IP) =:= 8)
+        ->
+            case lists:member(IP, TrustedProxies) of
                 true -> ok;
                 false -> {error, proxy_protocol_trusted_proxy_not_accepted}
             end;
+        {ok, {local, _Path}} ->
+            {error, proxy_protocol_local_socket_not_supported};
+        {ok, Peer} ->
+            {error, {invalid_proxy_protocol_peer, Peer}};
         {error, _} = Error ->
             Error
-    end.
+    end;
+check_trusted_proxy(_, _) ->
+    {error, proxy_protocol_trusted_proxy_required}.
 
 recv_proxy_header_tcp(Socket, Timeout) ->
     case gen_tcp:recv(Socket, 0, Timeout) of

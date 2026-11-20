@@ -139,36 +139,41 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     ),
     case validate_plugin_chains(Opts) of
         ok ->
-            ListenerOpts = [
+            ListenerOpts0 = [
                 {listener_addr, AAddr}, {listener_port, Port}, {listener_type, Type} | Opts
             ],
-            maybe_warn_untrusted_proxy_protocol(Type, AAddr, Port, ListenerOpts),
-            ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
-            TransportMod = transport_for_type(Type),
-            TransportOptions = maps:from_list(
-                [
-                    {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
-                    {num_acceptors, NrOfAcceptors},
-                    {max_connections, MaxConns}
-                    | transport_opts_for_type(Type, Opts)
-                ]
-            ),
-            case protocol_for_type(Type) of
-                cowboy_clear ->
-                    start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
-                _ ->
-                    case
-                        ranch:start_listener(
-                            Ref,
-                            TransportMod,
-                            TransportOptions,
-                            protocol_for_type(Type),
-                            ProtocolOpts
-                        )
-                    of
-                        {ok, _} -> ok;
-                        Error -> Error
-                    end
+            case normalize_proxy_protocol_trust(Type, ListenerOpts0) of
+                {ok, ListenerOpts} ->
+                    maybe_warn_trust_all_proxy_protocol(Type, AAddr, Port, ListenerOpts),
+                    ProtocolOpts = protocol_opts_for_type(Type, ListenerOpts),
+                    TransportMod = transport_for_type(Type),
+                    TransportOptions = maps:from_list(
+                        [
+                            {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
+                            {num_acceptors, NrOfAcceptors},
+                            {max_connections, MaxConns}
+                            | transport_opts_for_type(Type, Opts)
+                        ]
+                    ),
+                    case protocol_for_type(Type) of
+                        cowboy_clear ->
+                            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+                        _ ->
+                            case
+                                ranch:start_listener(
+                                    Ref,
+                                    TransportMod,
+                                    TransportOptions,
+                                    protocol_for_type(Type),
+                                    ProtocolOpts
+                                )
+                            of
+                                {ok, _} -> ok;
+                                Error -> Error
+                            end
+                    end;
+                {error, _} = Error ->
+                    Error
             end;
         {error, _} = Error ->
             Error
@@ -553,23 +558,32 @@ validate_plugin_chain_members(Key, [Plugin | _], _EnabledPlugins) ->
 validate_plugin_chain_members(_Key, [], _EnabledPlugins) ->
     ok.
 
-maybe_warn_untrusted_proxy_protocol(Type, Addr, Port, Opts) ->
-    case
-        {
-            proplists:get_value(proxy_protocol, Opts, false),
-            proplists:get_value(proxy_protocol_trusted_proxy, Opts, "")
-        }
-    of
-        {true, ""} ->
+normalize_proxy_protocol_trust(Type, Opts) ->
+    case {protocol_for_type(Type), proplists:get_value(proxy_protocol, Opts, false)} of
+        {vmq_ranch, true} ->
+            TrustedProxy = proplists:get_value(proxy_protocol_trusted_proxy, Opts, undefined),
+            case vmq_proxy_protocol:parse_trusted_proxies(TrustedProxy) of
+                {ok, TrustedProxies} ->
+                    {ok,
+                        lists:keystore(
+                            proxy_protocol_trusted_proxy,
+                            1,
+                            Opts,
+                            {proxy_protocol_trusted_proxy, TrustedProxies}
+                        )};
+                {error, _} = Error ->
+                    Error
+            end;
+        _ ->
+            {ok, Opts}
+    end.
+
+maybe_warn_trust_all_proxy_protocol(Type, Addr, Port, Opts) ->
+    case proplists:get_value(proxy_protocol_trusted_proxy, Opts) of
+        all ->
             ?LOG_WARNING(
-                "PROXY protocol is enabled on ~p listener(~p, ~p) without proxy_protocol_trusted_proxy; "
-                "only expose this listener to trusted proxies",
-                [Type, Addr, Port]
-            );
-        {true, undefined} ->
-            ?LOG_WARNING(
-                "PROXY protocol is enabled on ~p listener(~p, ~p) without proxy_protocol_trusted_proxy; "
-                "only expose this listener to trusted proxies",
+                "PROXY protocol is enabled on ~p listener(~p, ~p) with "
+                "proxy_protocol_trusted_proxy=*; every directly connected peer is trusted",
                 [Type, Addr, Port]
             );
         _ ->
