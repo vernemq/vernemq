@@ -564,18 +564,27 @@ normalize_proxy_protocol_trust(Type, Opts) ->
             TrustedProxy = proplists:get_value(proxy_protocol_trusted_proxy, Opts, undefined),
             case vmq_proxy_protocol:parse_trusted_proxies(TrustedProxy) of
                 {ok, TrustedProxies} ->
-                    {ok,
+                    normalize_proxy_protocol_timeout(
                         lists:keystore(
                             proxy_protocol_trusted_proxy,
                             1,
                             Opts,
                             {proxy_protocol_trusted_proxy, TrustedProxies}
-                        )};
+                        )
+                    );
                 {error, _} = Error ->
                     Error
             end;
         _ ->
             {ok, Opts}
+    end.
+
+normalize_proxy_protocol_timeout(Opts) ->
+    case proplists:get_value(proxy_protocol_timeout, Opts, 10000) of
+        Timeout when is_integer(Timeout), Timeout >= 0 ->
+            {ok, Opts};
+        Timeout ->
+            {error, {invalid_proxy_protocol_timeout, Timeout}}
     end.
 
 maybe_warn_trust_all_proxy_protocol(Type, Addr, Port, Opts) ->

@@ -35,7 +35,8 @@ end_per_testcase(_TestCase, _Config) ->
 groups() ->
     Tests =
         [proxy_protocol_inheritance_test,
-         proxy_protocol_override_test,
+          proxy_protocol_override_test,
+          proxy_protocol_invalid_timeout_test,
          forward_connection_opts_inheritance_test,
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
@@ -265,6 +266,17 @@ proxy_protocol_override_test(_Config) ->
     8000 = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884},proxy_protocol_timeout]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
+
+proxy_protocol_invalid_timeout_test(_Config) ->
+    Conf = [
+            {["listener","tcp","proxy_protocol_timeout"], "-1"},
+            {["listener","tcp","default"], "127.0.0.1:1884"}
+            | global_substitutions()
+           ],
+    case catch expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, proxy_protocol_timeout]) of
+        {{error, _, _}, _} -> ok;
+        _ -> ct:fail("Expected validation failure for negative PROXY protocol timeout")
+    end.
 
 forward_connection_opts_inheritance_test(_Config) ->
     Conf = [

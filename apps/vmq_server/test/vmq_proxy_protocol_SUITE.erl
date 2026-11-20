@@ -22,6 +22,7 @@
           tls_proxy_protocol_v2_fragmented_client_cert_test/1,
           tls_proxy_protocol_v2_untrusted_proxy_test/1,
           proxy_protocol_v2_malformed_tlv_test/1,
+          proxy_protocol_timeout_test/1,
           ws_proxy_protocol_v2_use_cn_as_username_on_test/1,
           ws_proxy_protocol_v2_use_cn_as_username_off_test/1]).
 
@@ -76,6 +77,11 @@ init_per_testcase(_Case, Config) ->
         {proxy_protocol, true},
         {proxy_protocol_trusted_proxy, "*"}
     ]),
+    vmq_server_cmd:listener_start(1903, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.1"},
+        {proxy_protocol_timeout, 100}
+    ]),
     vmq_server_cmd:listener_start(1894, "127.0.0.1", [
         {ssl, true},
         {proxy_protocol, true},
@@ -125,6 +131,7 @@ all() ->
      tls_proxy_protocol_v2_fragmented_client_cert_test,
      tls_proxy_protocol_v2_untrusted_proxy_test,
      proxy_protocol_v2_malformed_tlv_test,
+     proxy_protocol_timeout_test,
      ws_proxy_protocol_v2_use_cn_as_username_on_test,
      ws_proxy_protocol_v2_use_cn_as_username_off_test].
 
@@ -306,6 +313,18 @@ proxy_trusted_proxy_config_test(_) ->
         vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1900, [
             {proxy_protocol, true},
             {proxy_protocol_trusted_proxy, "invalid"}
+        ]),
+    {error, {invalid_proxy_protocol_timeout, -1}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1901, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "127.0.0.1"},
+            {proxy_protocol_timeout, -1}
+        ]),
+    {error, {invalid_proxy_protocol_timeout, infinity}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1902, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "127.0.0.1"},
+            {proxy_protocol_timeout, infinity}
         ]).
 
 proxy_trusted_proxy_test(_) ->
@@ -456,6 +475,14 @@ proxy_protocol_v2_malformed_tlv_test(_) ->
     {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
     ok = gen_tcp:send(Socket, Header),
     {error, closed} = gen_tcp:recv(Socket, 0, 6000).
+
+proxy_protocol_timeout_test(_) ->
+    Host = {127,0,0,1},
+    Port = 1903,
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    IncompleteHeader = <<"\r\n\r\n\0\r\nQUIT\n", 2:4, 1:4, 1:4, 1:4, 100:16>>,
+    ok = gen_tcp:send(Socket, IncompleteHeader),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 ws_proxy_protocol_v2_use_cn_as_username_on_test(_) ->
   Connect = packet:gen_connect("connect-proxy-test", [{keepalive,60},{username, <<"username">>},

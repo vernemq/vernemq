@@ -989,13 +989,17 @@
                                                                           hidden
                                                                          ]}.
 
+%% @doc Maximum time in non-negative milliseconds allowed to receive the
+%% complete PROXY protocol header.
 {mapping, "listener.ssl.proxy_protocol_timeout", "vmq_server.listeners", [
                                                                    {default, 10000},
                                                                    {datatype, integer},
+                                                                   {validators, ["proxy_protocol_timeout_validator"]},
                                                                    hidden
                                                                   ]}.
 {mapping, "listener.ssl.$name.proxy_protocol_timeout", "vmq_server.listeners", [
                                                                          {datatype, integer},
+                                                                         {validators, ["proxy_protocol_timeout_validator"]},
                                                                          hidden
                                                                         ]}.
 
@@ -1034,12 +1038,21 @@
 {mapping, "listener.tcp.proxy_protocol_timeout", "vmq_server.listeners", [
                                                                    {default, 10000},
                                                                    {datatype, integer},
+                                                                   {validators, ["proxy_protocol_timeout_validator"]},
                                                                    hidden
                                                                   ]}.
 {mapping, "listener.tcp.$name.proxy_protocol_timeout", "vmq_server.listeners", [
                                                                          {datatype, integer},
+                                                                         {validators, ["proxy_protocol_timeout_validator"]},
                                                                          hidden
                                                                         ]}.
+
+{validator, "proxy_protocol_timeout_validator", "value must be a non-negative integer",
+ fun(Val) when is_integer(Val), Val >= 0 ->
+         true;
+    (_Val) ->
+         false
+ end}.
 
 {mapping, "listener.ws.proxy_protocol", "vmq_server.listeners", [
                                                                    {default, off},
