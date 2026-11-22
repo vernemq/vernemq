@@ -232,6 +232,9 @@ variable(_, _) ->
 
 parse_last_will_topic(Rest, 0, 0, 0, Conn) ->
     {ok, Rest, Conn};
+parse_last_will_topic(_, 1, _, 3, _) ->
+    %% If the Will Flag is set, the Will QoS MUST NOT be 3 [MQTT-3.1.2-14].
+    {error, invalid_will_qos};
 parse_last_will_topic(
     <<WillTopicLen:16/big, WillTopic:WillTopicLen/binary, WillMsgLen:16/big,
         WillMsg:WillMsgLen/binary, Rest/binary>>,

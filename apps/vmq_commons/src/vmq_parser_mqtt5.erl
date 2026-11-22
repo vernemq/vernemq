@@ -389,6 +389,9 @@ variable(_, _) ->
 parse_will_properties(Rest0, <<_:2, 0:4>> = Flags) ->
     %% All will flags are zero, no last will.
     parse_username(Rest0, Flags, #{lwt => undefined});
+parse_will_properties(_Rest0, <<_:3, 3:2, 1:1>>) ->
+    %% A Will QoS of 3 is a Malformed Packet [MQTT-3.1.2-12].
+    {error, invalid_will_qos};
 parse_will_properties(Rest0, <<_:2, Retain:1, QoS:2, 1:1>> = Flags) ->
     case parse_properties(Rest0, ?allowedWillProperties) of
         {ok, WillProperties,
