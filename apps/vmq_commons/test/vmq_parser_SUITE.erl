@@ -33,7 +33,8 @@ all() ->
       parse_unparse_tests,
       suback_rejects_invalid_return_codes,
       no_null_char_in_client,
-      subscribe_invalid_wildcard_in_word
+      subscribe_invalid_wildcard_in_word,
+      will_qos_3_is_rejected
      ].
 
 %%--------------------------------------------------------------------
@@ -73,6 +74,15 @@ not_enough_data_max_not_exceeded(_Config) ->
 no_null_char_in_client(_Config) ->
     C = vmq_parser:gen_connect(<<1,0>>, []),
     {{error, invalid_utf8_string}, <<>>} = vmq_parser:parse(C).
+
+will_qos_3_is_rejected(_Config) ->
+    %% If the Will Flag is set, the Will QoS MUST NOT be 3 [MQTT-3.1.2-14].
+    Will = [{will_topic, "will/topic"}, {will_msg, "will message"}],
+    Bad = vmq_parser:gen_connect("test-client", [{will_qos, 3} | Will]),
+    {{error, invalid_will_qos}, <<>>} = vmq_parser:parse(Bad),
+    Good = vmq_parser:gen_connect("test-client", [{will_qos, 2} | Will]),
+    {Frame, <<>>} = vmq_parser:parse(Good),
+    mqtt_connect = element(1, Frame).
 
 subscribe_invalid_wildcard_in_word(_Config) ->
     %% A SUBSCRIBE whose topic filter contains a '+' wildcard in the middle

@@ -40,7 +40,8 @@ all() ->
      parse_unparse_disconnect_test,
      parse_unparse_auth_test,
      no_null_char_in_client,
-     subscribe_invalid_wildcard_in_word].
+     subscribe_invalid_wildcard_in_word,
+     will_qos_3_is_rejected].
 
 parse_unparse_tests(_Config) ->
     Properties = #{p_session_expiry_interval => 12341234},
@@ -265,6 +266,15 @@ parse_unparse_properties_test(_Config) ->
 no_null_char_in_client(_Config) ->
     C = vmq_parser_mqtt5:gen_connect(<<1,0>>, []),
     {{error, invalid_utf8_string}, <<>>} = vmq_parser_mqtt5:parse(C).
+
+will_qos_3_is_rejected(_Config) ->
+    %% A Will QoS of 3 is a Malformed Packet [MQTT-3.1.2-12].
+    LWT = #mqtt5_lwt{will_properties = #{}, will_topic = [<<"will">>, <<"topic">>],
+                     will_msg = <<"will message">>, will_retain = false, will_qos = 3},
+    Bad = vmq_parser_mqtt5:gen_connect("test-client", [{lwt, LWT}]),
+    {{error, invalid_will_qos}, <<>>} = vmq_parser_mqtt5:parse(Bad),
+    Good = vmq_parser_mqtt5:gen_connect("test-client", [{lwt, LWT#mqtt5_lwt{will_qos = 2}}]),
+    {#mqtt5_connect{lwt = #mqtt5_lwt{will_qos = 2}}, <<>>} = vmq_parser_mqtt5:parse(Good).
 
 subscribe_invalid_wildcard_in_word(_Config) ->
     %% A SUBSCRIBE whose topic filter contains a '+' wildcard in the middle
