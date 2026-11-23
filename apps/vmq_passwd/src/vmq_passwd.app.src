@@ -12,6 +12,8 @@
     {mod, {vmq_passwd_app, []}},
     {env, [
         {file, "priv/test.passwd"},
+        {client_id_file, undefined},
+        {client_id_binding, disabled},
         {interval, 10},
         {vmq_config_enabled, true},
         {vmq_plugin_hooks, [
