@@ -32,7 +32,7 @@
     code_change/3
 ]).
 
--record(state, {file, interval, timer}).
+-record(state, {file, client_id_file, client_id_binding, interval, timer}).
 -define(APP, vmq_passwd).
 
 %%%===================================================================
@@ -112,13 +112,22 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(reload, #state{file = File, interval = Interval} = State) ->
+handle_info(
+    reload,
+    #state{
+        file = File,
+        client_id_file = ClientIdFile,
+        client_id_binding = ClientIdBinding,
+        interval = Interval
+    } = State
+) ->
     case filelib:is_file(File) of
         true ->
             ok = vmq_passwd:load_from_file(File);
         false ->
             ok
     end,
+    reload_client_ids(ClientIdBinding, ClientIdFile),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -156,9 +165,12 @@ init_state(State) ->
         TRef -> erlang:cancel_timer(TRef)
     end,
     {ok, File} = application:get_env(?APP, file),
+    ClientIdFile = application:get_env(?APP, client_id_file, undefined),
+    ClientIdBinding = application:get_env(?APP, client_id_binding, disabled),
     {ok, Interval} = application:get_env(?APP, interval),
     ok = vmq_passwd:init(),
     ok = vmq_passwd:load_from_file(File),
+    reload_client_ids(ClientIdBinding, ClientIdFile),
     {NewI, NewTRef} =
         case Interval of
             0 ->
@@ -168,4 +180,31 @@ init_state(State) ->
                 NTRef = erlang:send_after(IinMs, self(), reload),
                 {IinMs, NTRef}
         end,
-    State#state{file = File, interval = NewI, timer = NewTRef}.
+    State#state{
+        file = File,
+        client_id_file = ClientIdFile,
+        client_id_binding = ClientIdBinding,
+        interval = NewI,
+        timer = NewTRef
+    }.
+
+reload_client_ids(disabled, _File) ->
+    vmq_passwd:clear_client_ids();
+reload_client_ids(_Mode, undefined) ->
+    vmq_passwd:invalidate_client_ids();
+reload_client_ids(_Mode, File) ->
+    case filelib:is_file(File) of
+        true ->
+            case vmq_passwd:load_client_ids_from_file(File) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    error_logger:error_msg(
+                        "can't load vmq_passwd client ID file ~p due to ~p~n", [File, Reason]
+                    ),
+                    vmq_passwd:invalidate_client_ids()
+            end;
+        false ->
+            error_logger:error_msg("can't load vmq_passwd client ID file ~p~n", [File]),
+            vmq_passwd:invalidate_client_ids()
+    end.

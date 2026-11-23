@@ -20,6 +20,8 @@ register() ->
     ConfigKeys =
         [
             "vmq_passwd.password_file",
+            "vmq_passwd.client_id_file",
+            "vmq_passwd.client_id_binding",
             "vmq_passwd.password_reload_interval"
         ],
     [
