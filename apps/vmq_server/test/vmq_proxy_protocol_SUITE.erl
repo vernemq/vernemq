@@ -9,17 +9,29 @@
         ]).
 
 -export([proxy_test/1,
-         proxy_local_command_test/1,
-         proxy_use_cn_as_username_on/1,
-         proxy_use_cn_as_username_off/1,
-         proxy_forward_connection_opts_test/1,
-         ws_proxy_protocol_v2_use_cn_as_username_on_test/1,
-         ws_proxy_protocol_v2_use_cn_as_username_off_test/1]).
+          proxy_local_command_test/1,
+          proxy_use_cn_as_username_on/1,
+          proxy_use_cn_as_username_off/1,
+          proxy_forward_connection_opts_test/1,
+          proxy_protocol_v2_client_cert_metadata_test/1,
+          proxy_trusted_proxy_config_test/1,
+          proxy_trusted_proxy_test/1,
+          proxy_trust_all_escape_hatch_test/1,
+          proxy_untrusted_proxy_test/1,
+          tls_proxy_protocol_v2_client_cert_metadata_test/1,
+          tls_proxy_protocol_v2_fragmented_client_cert_test/1,
+          tls_proxy_protocol_v2_untrusted_proxy_test/1,
+          proxy_protocol_v2_malformed_tlv_test/1,
+          proxy_protocol_timeout_test/1,
+          ws_proxy_protocol_v2_use_cn_as_username_on_test/1,
+          ws_proxy_protocol_v2_use_cn_as_username_off_test/1]).
 
 -export([hook_proxy_register/5,
-         hook_proxy_register_with_metadata/6,
-         hook_proxy_register_use_identity_as_username_on/5,
-         hook_proxy_register_use_identity_as_username_off/5]).
+          hook_proxy_register_with_metadata/6,
+          hook_proxy_register_with_extended_metadata/6,
+          hook_tls_proxy_register_with_metadata/6,
+          hook_proxy_register_use_identity_as_username_on/5,
+          hook_proxy_register_use_identity_as_username_off/5]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -36,8 +48,10 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, false),
     vmq_server_cmd:set_config(max_client_id_size, 50),
     vmq_server_cmd:listener_start(1888, [{proxy_protocol, true},
+                                         {proxy_protocol_trusted_proxy, "127.0.0.1"},
                                          {proxy_protocol_use_cn_as_username, false}]),
-    vmq_server_cmd:listener_start(1889, [{proxy_protocol, true}
+    vmq_server_cmd:listener_start(1889, [{proxy_protocol, true},
+                                         {proxy_protocol_trusted_proxy, "127.0.0.1"}
                                          %% proxy_protocol_use_cn_as_username
                                          %% defaults to true as this
                                          %% was the default behaviour
@@ -47,8 +61,46 @@ init_per_testcase(_Case, Config) ->
                                         ]),
     vmq_server_cmd:listener_start(1893, "127.0.0.1", [
         {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.1"},
         {proxy_protocol_use_cn_as_username, false},
         {forward_connection_opts, true}
+    ]),
+    vmq_server_cmd:listener_start(1896, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, " 127.0.0.2 ; 127.0.0.1 "}
+    ]),
+    vmq_server_cmd:listener_start(1897, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.2"}
+    ]),
+    vmq_server_cmd:listener_start(1898, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "*"}
+    ]),
+    vmq_server_cmd:listener_start(1903, "127.0.0.1", [
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.1"},
+        {proxy_protocol_timeout, 100}
+    ]),
+    vmq_server_cmd:listener_start(1894, "127.0.0.1", [
+        {ssl, true},
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.1"},
+        {proxy_protocol_use_cn_as_username, true},
+        {forward_connection_opts, true},
+        {cafile, ssl_path("all-ca.crt")},
+        {certfile, ssl_path("server.crt")},
+        {keyfile, ssl_path("server.key")},
+        {tls_version, "tlsv1.2"}
+    ]),
+    vmq_server_cmd:listener_start(1895, "127.0.0.1", [
+        {ssl, true},
+        {proxy_protocol, true},
+        {proxy_protocol_trusted_proxy, "127.0.0.2"},
+        {cafile, ssl_path("all-ca.crt")},
+        {certfile, ssl_path("server.crt")},
+        {keyfile, ssl_path("server.key")},
+        {tls_version, "tlsv1.2"}
     ]),
    vmq_server_cmd:listener_start(1891, "127.0.0.1", [{websocket,true}, {proxy_protocol, true},
                                         {proxy_protocol_use_cn_as_username, true},
@@ -70,6 +122,16 @@ all() ->
      proxy_use_cn_as_username_on,
      proxy_use_cn_as_username_off,
      proxy_forward_connection_opts_test,
+     proxy_protocol_v2_client_cert_metadata_test,
+     proxy_trusted_proxy_config_test,
+     proxy_trusted_proxy_test,
+     proxy_trust_all_escape_hatch_test,
+     proxy_untrusted_proxy_test,
+     tls_proxy_protocol_v2_client_cert_metadata_test,
+     tls_proxy_protocol_v2_fragmented_client_cert_test,
+     tls_proxy_protocol_v2_untrusted_proxy_test,
+     proxy_protocol_v2_malformed_tlv_test,
+     proxy_protocol_timeout_test,
      ws_proxy_protocol_v2_use_cn_as_username_on_test,
      ws_proxy_protocol_v2_use_cn_as_username_off_test].
 
@@ -206,13 +268,226 @@ proxy_forward_connection_opts_test(_) ->
           transport_family => ipv4,
           transport_protocol => stream},
     {ok, Socket} = gen_tcp:connect(Host, Port,
-                                   [binary, {active, false}, {packet, raw}]),
+                                    [binary, {active, false}, {packet, raw}]),
     ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
     ok = gen_tcp:send(Socket, Connect),
     ok = packet:expect_packet(Socket, connack, Connack),
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_proxy_register_with_metadata, 6),
     ok = gen_tcp:close(Socket).
+
+proxy_protocol_v2_client_cert_metadata_test(_) ->
+    ClientCert = load_cert("client.crt"),
+    Connect = packet:gen_connect("connect-proxy-v2-client-cert-metadata-test", [{keepalive,10}]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1893,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register_with_extended_metadata, 6),
+    {ok, Socket} = gen_tcp:connect(Host, Port,
+                                    [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, proxy_v2_ssl_header(ClientCert, Port)),
+    ok = gen_tcp:send(Socket, Connect),
+    ok = packet:expect_packet(Socket, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register_with_extended_metadata, 6),
+    ok = gen_tcp:close(Socket).
+
+proxy_trusted_proxy_config_test(_) ->
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_proxy_protocol:parse_trusted_proxies(undefined),
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_proxy_protocol:parse_trusted_proxies("  "),
+    {ok, all} = vmq_proxy_protocol:parse_trusted_proxies(" * "),
+    {ok, TrustedProxies} =
+        vmq_proxy_protocol:parse_trusted_proxies(" 127.0.0.1 ; 0:0:0:0:0:0:0:1 "),
+    true = lists:member({127,0,0,1}, TrustedProxies),
+    true = lists:member({0,0,0,0,0,0,0,1}, TrustedProxies),
+    RanchTrustedProxies = vmq_proxy_protocol:ranch_trusted_proxies(TrustedProxies),
+    true = lists:member({{127,0,0,1}, 32}, RanchTrustedProxies),
+    true = lists:member({{0,0,0,0,0,0,0,1}, 128}, RanchTrustedProxies),
+    [{{0,0,0,0}, 0}, {{0,0,0,0,0,0,0,0}, 0}] =
+        vmq_proxy_protocol:ranch_trusted_proxies(all),
+    {error, {invalid_proxy_protocol_trusted_proxy, "not-an-ip"}} =
+        vmq_proxy_protocol:parse_trusted_proxies("127.0.0.1;not-an-ip"),
+    {error, {invalid_proxy_protocol_trusted_proxy, ""}} =
+        vmq_proxy_protocol:parse_trusted_proxies("127.0.0.1;;127.0.0.2"),
+    {error, proxy_protocol_trusted_proxy_required} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1899, [{proxy_protocol, true}]),
+    {error, {invalid_proxy_protocol_trusted_proxy, "invalid"}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1900, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "invalid"}
+        ]),
+    {error, {invalid_proxy_protocol_timeout, -1}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1901, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "127.0.0.1"},
+            {proxy_protocol_timeout, -1}
+        ]),
+    {error, {invalid_proxy_protocol_timeout, infinity}} =
+        vmq_ranch_config:start_listener(mqtt, "127.0.0.1", 1902, [
+            {proxy_protocol, true},
+            {proxy_protocol_trusted_proxy, "127.0.0.1"},
+            {proxy_protocol_timeout, infinity}
+        ]).
+
+proxy_trusted_proxy_test(_) ->
+    Connect = packet:gen_connect("connect-proxy-test", [{keepalive,10}]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1896,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ProxyInfo = #{
+        version => 2,
+        src_address => {1,1,1,1},
+        src_port => 1234,
+        dest_address => {2,2,2,2},
+        dest_port => 4321,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream
+    },
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    ok = gen_tcp:send(Socket, Connect),
+    ok = packet:expect_packet(Socket, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ok = gen_tcp:close(Socket).
+
+proxy_trust_all_escape_hatch_test(_) ->
+    Connect = packet:gen_connect("connect-proxy-test", [{keepalive,10}]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1898,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ProxyInfo = #{
+        version => 2,
+        src_address => {1,1,1,1},
+        src_port => 1234,
+        dest_address => {2,2,2,2},
+        dest_port => 4321,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream
+    },
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    ok = gen_tcp:send(Socket, Connect),
+    ok = packet:expect_packet(Socket, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ok = gen_tcp:close(Socket).
+
+proxy_untrusted_proxy_test(_) ->
+    Host = {127,0,0,1},
+    Port = 1897,
+    ProxyInfo = #{
+        version => 2,
+        src_address => {1,1,1,1},
+        src_port => 1234,
+        dest_address => {2,2,2,2},
+        dest_port => 4321,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream
+    },
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    {error, closed} = gen_tcp:recv(Socket, 0, 6000).
+
+tls_proxy_protocol_v2_client_cert_metadata_test(_) ->
+    ClientCert = load_cert("client.crt"),
+    Connect = packet:gen_connect("connect-tls-proxy-metadata-test", [
+        {keepalive, 10},
+        {username, <<"username">>},
+        {password, <<"password">>}
+    ]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1894,
+    vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ProxyHeader = proxy_v2_ssl_header(ClientCert),
+    ok = gen_tcp:send(Socket, ProxyHeader),
+    {ok, SSock} = ssl:connect(
+        Socket,
+        [binary, {active, false}, {packet, raw}, {verify, verify_none}, {versions, ['tlsv1.2']}],
+        6000
+    ),
+    ok = ssl:send(SSock, Connect),
+    ok = packet:expect_packet(ssl, SSock, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    ok = ssl:close(SSock).
+
+tls_proxy_protocol_v2_fragmented_client_cert_test(_) ->
+    ClientCert = load_cert("client.crt"),
+    Connect = packet:gen_connect("connect-tls-proxy-metadata-test", [
+        {keepalive, 10},
+        {username, <<"username">>},
+        {password, <<"password">>}
+    ]),
+    Connack = packet:gen_connack(0),
+    Host = {127,0,0,1},
+    Port = 1894,
+    vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ProxyHeader = iolist_to_binary(proxy_v2_ssl_header(ClientCert)),
+    <<First:16/binary, Rest/binary>> = ProxyHeader,
+    ok = gen_tcp:send(Socket, First),
+    timer:sleep(100),
+    ok = gen_tcp:send(Socket, Rest),
+    {ok, SSock} = ssl:connect(
+        Socket,
+        [binary, {active, false}, {packet, raw}, {verify, verify_none}, {versions, ['tlsv1.2']}],
+        6000
+    ),
+    ok = ssl:send(SSock, Connect),
+    ok = packet:expect_packet(ssl, SSock, connack, Connack),
+    vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register, ?MODULE, hook_tls_proxy_register_with_metadata, 6),
+    ok = ssl:close(SSock).
+
+tls_proxy_protocol_v2_untrusted_proxy_test(_) ->
+    ClientCert = load_cert("client.crt"),
+    Host = {127,0,0,1},
+    Port = 1895,
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, proxy_v2_ssl_header(ClientCert, Port)),
+    {error, closed} = ssl:connect(
+        Socket,
+        [binary, {active, false}, {packet, raw}, {verify, verify_none}, {versions, ['tlsv1.2']}],
+        6000
+    ).
+
+proxy_protocol_v2_malformed_tlv_test(_) ->
+    Signature = <<"\r\n\r\n\0\r\nQUIT\n">>,
+    Addresses = <<3,4,5,6, 7,8,9,10, 7777:16, 1893:16>>,
+    TruncatedTLV = <<16#1, 1:16>>,
+    Len = byte_size(Addresses) + byte_size(TruncatedTLV),
+    Header = <<Signature/binary, 2:4, 1:4, 1:4, 1:4, Len:16, Addresses/binary,
+        TruncatedTLV/binary>>,
+    {error, 'Invalid TLV length in the PROXY protocol binary header. (PP 2.2)'} =
+        ranch_proxy_header:parse(Header),
+    Host = {127,0,0,1},
+    Port = 1893,
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, Header),
+    {error, closed} = gen_tcp:recv(Socket, 0, 6000).
+
+proxy_protocol_timeout_test(_) ->
+    Host = {127,0,0,1},
+    Port = 1903,
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}]),
+    IncompleteHeader = <<"\r\n\r\n\0\r\nQUIT\n", 2:4, 1:4, 1:4, 1:4, 100:16>>,
+    ok = gen_tcp:send(Socket, IncompleteHeader),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 ws_proxy_protocol_v2_use_cn_as_username_on_test(_) ->
   Connect = packet:gen_connect("connect-proxy-test", [{keepalive,60},{username, <<"username">>},
@@ -298,8 +573,68 @@ hook_proxy_register_with_metadata(
     _,
     _,
     _,
-    #{listener_addr := {127,0,0,1}, listener_port := 1893, listener_type := mqtt}
+    #{
+        listener_addr := {127,0,0,1},
+        listener_port := 1893,
+        listener_type := mqtt,
+        proxy_protocol := #{
+            version := 2,
+            command := proxy,
+            src_address := {1,1,1,1},
+            src_port := 1234,
+            dest_address := {2,2,2,2},
+            dest_port := 4321
+        }
+    }
 ) ->
+    ok.
+
+hook_proxy_register_with_extended_metadata(
+    {{3,4,5,6}, 7777},
+    {[], <<"connect-proxy-v2-client-cert-metadata-test">>},
+    _,
+    _,
+    _,
+    #{
+        listener_addr := {127,0,0,1},
+        listener_port := 1893,
+        listener_type := mqtt,
+        proxy_protocol := #{
+            raw_tlvs := [{16#ea, <<1, "test-id">>}],
+            ssl := #{
+                cn := <<"proxy client">>,
+                client_cert := ClientCert,
+                group := <<"secp256r1">>,
+                sig_scheme := <<"rsa_pss_rsae_sha256">>
+            }
+        }
+    }
+) ->
+    ClientCert = load_cert("client.crt"),
+    ok.
+
+hook_tls_proxy_register_with_metadata(
+    {{3,4,5,6}, 7777},
+    {[], <<"connect-tls-proxy-metadata-test">>},
+    <<"proxy client">>,
+    _,
+    _,
+    #{
+        listener_addr := {127,0,0,1},
+        listener_port := 1894,
+        listener_type := mqtts,
+        proxy_protocol := #{
+            raw_tlvs := [{16#ea, <<1, "test-id">>}],
+            ssl := #{
+                cn := <<"proxy client">>,
+                client_cert := ClientCert,
+                group := <<"secp256r1">>,
+                sig_scheme := <<"rsa_pss_rsae_sha256">>
+            }
+        }
+    }
+) when is_binary(ClientCert) ->
+    ClientCert = load_cert("client.crt"),
     ok.
 
 hook_proxy_register_use_identity_as_username_on({{1,2,3,4},5555},{[], <<"connect-proxy-test">>},<<"sni_hostname">>,_,_) ->
@@ -307,3 +642,40 @@ hook_proxy_register_use_identity_as_username_on({{1,2,3,4},5555},{[], <<"connect
 
 hook_proxy_register_use_identity_as_username_off({{2,3,4,5},6666},{[], <<"connect-proxy-test">>},<<"username">>,_,_) ->
     ok.
+
+proxy_v2_ssl_header(ClientCert) ->
+    proxy_v2_ssl_header(ClientCert, 1894).
+
+proxy_v2_ssl_header(ClientCert, DestPort) ->
+    ranch_proxy_header:header(#{
+        version => 2,
+        command => proxy,
+        transport_family => ipv4,
+        transport_protocol => stream,
+        src_address => {3,4,5,6},
+        src_port => 7777,
+        dest_address => {7,8,9,10},
+        dest_port => DestPort,
+        ssl => #{
+            client => [ssl, cert_conn],
+            verified => true,
+            version => <<"TLSv1.2">>,
+            cn => <<"proxy client">>,
+            cipher => <<"ECDHE-RSA-AES256-GCM-SHA384">>,
+            group => <<"secp256r1">>,
+            sig_scheme => <<"rsa_pss_rsae_sha256">>,
+            client_cert => ClientCert
+        },
+        raw_tlvs => [{16#ea, <<1, "test-id">>}]
+    }).
+
+load_cert(File) ->
+    {ok, Bin} = file:read_file(ssl_path(File)),
+    [{_, DER, _}] = public_key:pem_decode(Bin),
+    DER.
+
+ssl_path(File) ->
+    Path = filename:dirname(
+        proplists:get_value(source, ?MODULE:module_info(compile))
+    ),
+    filename:join([Path, "ssl", File]).
