@@ -68,6 +68,10 @@
 %% exported for testing purposes
 -export([retain_pre/1]).
 
+-ifdef(TEST).
+-export([fold_subscriber_subscriptions/4]).
+-endif.
+
 -record(publish_fold_acc, {
     msg :: msg(),
     default_deliver_msg :: msg(),
@@ -1218,16 +1222,25 @@ subscribe_subscriber_changes(Opts) ->
 
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
-        fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
+        fun(SubscriberId, Subs, AAcc) ->
+            fold_subscriber_subscriptions(SubscriberId, Subs, FoldFun, AAcc)
+        end,
+        Acc
+    ).
+
+fold_subscriber_subscriptions({MP, _} = SubscriberId, Subs, FoldFun, Acc) ->
+    lists:foldl(
+        fun({_, CleanSession, _} = NodeSubs, AAcc) ->
             vmq_subscriber:fold(
                 fun({Topic, QoS, Node}, AAAcc) ->
                     FoldFun({MP, Topic, {SubscriberId, QoS, Node, CleanSession}}, AAAcc)
                 end,
                 AAcc,
-                Subs
+                [NodeSubs]
             )
         end,
-        Acc
+        Acc,
+        Subs
     ).
 
 fold_subscribers(FoldFun, Acc) ->

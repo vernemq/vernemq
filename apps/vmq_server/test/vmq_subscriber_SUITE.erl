@@ -27,6 +27,7 @@ all() ->
         get_changes_4_test,
         change_node_test,
         change_node_all_test,
+        fold_subscriber_subscriptions_test,
         add_subscription_test,
         remove_subscription_test
     ].
@@ -188,6 +189,22 @@ change_node_all_test(_) ->
     ?assertEqual(
         {[{node_c, false, [{a, 1}, {b, 2}, {c, 2}]}], [node_a, node_b]},
         vmq_subscriber:change_node_all(Subs, node_c, false)
+    ).
+
+fold_subscriber_subscriptions_test(_) ->
+    SubscriberId = {"mountpoint", <<"client-id">>},
+    Subs = [
+        {node_a, true, [{[<<"a">>], 0}]},
+        {node_b, false, [{[<<"b">>], 1}, {[<<"c">>], 2}]}
+    ],
+    FoldFun = fun(Subscription, Acc) -> [Subscription | Acc] end,
+    ?assertEqual(
+        [
+            {"mountpoint", [<<"c">>], {SubscriberId, 2, node_b, false}},
+            {"mountpoint", [<<"b">>], {SubscriberId, 1, node_b, false}},
+            {"mountpoint", [<<"a">>], {SubscriberId, 0, node_a, true}}
+        ],
+        vmq_reg:fold_subscriber_subscriptions(SubscriberId, Subs, FoldFun, [])
     ).
 
 add_subscription_test(_) ->
