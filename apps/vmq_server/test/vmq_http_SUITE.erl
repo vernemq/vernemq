@@ -33,10 +33,16 @@ all() ->
 simple_healthcheck_test(_) ->
     %% we have to setup the listener here, because vmq_test_utils is overriding
     %% the default set in vmq_server.app.src
-    vmq_server_cmd:listener_start(8888, [{http, true},
+    Port = 18888,
+    vmq_server_cmd:listener_start(Port, [{http, true},
                                          {config_mod, vmq_health_http},
                                          {config_fun, routes}]),
     application:ensure_all_started(inets),
-    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8888/health"),
+    BaseUrl = "http://localhost:" ++ integer_to_list(Port),
+    {ok, {_Status, _Headers, Body}} = httpc:request(BaseUrl ++ "/health"),
     JsonResponse = vmq_json:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
-    <<"OK">> = maps:get(<<"status">>, JsonResponse).
+    <<"OK">> = maps:get(<<"status">>, JsonResponse),
+    {ok, {_ReadyStatus, _ReadyHeaders, ReadyBody}} =
+        httpc:request(BaseUrl ++ "/health/ready"),
+    ReadyResponse = vmq_json:decode(list_to_binary(ReadyBody), [return_maps, {labels, binary}]),
+    <<"OK">> = maps:get(<<"status">>, ReadyResponse).

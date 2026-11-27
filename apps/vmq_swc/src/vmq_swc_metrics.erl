@@ -92,7 +92,7 @@ metrics() ->
         ),
 
     Gauges = gen_server:call(?SERVER, get_gauges, infinity),
-    maps:fold(
+    Metrics = maps:fold(
         fun({MetricName, Group}, {GaugeFun, _OwnerRef}, Acc) ->
             try
                 UniqueId = list_to_atom(atom_to_list(MetricName) ++ "_" ++ atom_to_list(Group)),
@@ -105,7 +105,19 @@ metrics() ->
         end,
         Histograms,
         Gauges
-    ).
+    ),
+    Initialized =
+        try vmq_swc_group_coordinator:is_ready() of
+            true -> 1;
+            false -> 0
+        catch
+            _:_ -> 0
+        end,
+    [
+        {gauge, [], swc_initialized, swc_initialized,
+            <<"Whether all local SWC groups completed initial synchronization.">>, Initialized}
+        | Metrics
+    ].
 
 incr_bucket_ops(V) when V =< 10 ->
     [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];

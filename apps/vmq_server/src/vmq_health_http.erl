@@ -23,6 +23,7 @@
 routes() ->
     [
         {"/health", ?MODULE, []},
+        {"/health/ready", ?MODULE, []},
         {"/health/ping", ?MODULE, []},
         {"/health/listeners", ?MODULE, []},
         {"/health/listeners_full_cluster", ?MODULE, []}
@@ -36,6 +37,16 @@ init(Req, Opts) ->
                 {200, [{<<"status">>, <<"OK">>}]};
             <<"/health">> ->
                 case check_health_concerns() of
+                    [] ->
+                        {200, [{<<"status">>, <<"OK">>}]};
+                    Concerns ->
+                        {503, [
+                            {<<"status">>, <<"DOWN">>},
+                            {<<"reasons">>, Concerns}
+                        ]}
+                end;
+            <<"/health/ready">> ->
+                case check_readiness_concerns() of
                     [] ->
                         {200, [{<<"status">>, <<"OK">>}]};
                     Concerns ->
@@ -88,6 +99,29 @@ check_health_concerns() ->
         end,
         [cluster_status(), listeners_status()]
     ).
+
+-spec check_readiness_concerns() -> [] | [Concern :: binary()].
+check_readiness_concerns() ->
+    lists:filtermap(
+        fun(Status) ->
+            case Status of
+                ok -> false;
+                {error, Reason} -> {true, list_to_binary(Reason)}
+            end
+        end,
+        [cluster_status(), listeners_status(), swc_status()]
+    ).
+
+-spec swc_status() -> ok | {error, Reason :: string()}.
+swc_status() ->
+    try vmq_swc_group_coordinator:is_ready() of
+        true -> ok;
+        false -> {error, "SWC metadata is not synchronized"}
+    catch
+        Exception:Reason ->
+            ?LOG_DEBUG("SWC readiness check failed ~p:~p", [Exception, Reason]),
+            {error, "Unknown SWC synchronization status"}
+    end.
 
 -spec cluster_status() -> ok | {error, Reason :: string()}.
 cluster_status() ->

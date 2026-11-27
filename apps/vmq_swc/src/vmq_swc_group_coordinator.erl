@@ -24,6 +24,7 @@
     start_link/0,
     group_initialized/2,
     sync_state/0,
+    is_ready/0,
     flag_as_init_synced/0
 ]).
 
@@ -54,6 +55,9 @@ group_initialized(Group, Bool) ->
 sync_state() ->
     gen_server:call(?MODULE, get_sync_state).
 
+is_ready() ->
+    gen_server:call(?MODULE, is_ready).
+
 flag_as_init_synced() ->
     gen_server:call(?MODULE, flag_as_init_synced).
 
@@ -68,6 +72,11 @@ init([]) ->
 
 handle_call(get_sync_state, _From, #state{sync_state = SyncState} = State) ->
     {reply, SyncState, State};
+handle_call(is_ready, _From, #state{sync_state = SyncState} = State) ->
+    IsReady =
+        map_size(SyncState) > 0 andalso
+            lists:all(fun(Initialized) -> Initialized end, maps:values(SyncState)),
+    {reply, IsReady, State};
 handle_call(flag_as_init_synced, _From, _State) ->
     persistent_term:put({?MODULE, init_sync}, 1),
     {_, SWCGroups} = persistent_term:get({vmq_swc_plugin, swc}),
@@ -111,6 +120,9 @@ check_sync_state(M) ->
             persistent_term:put({?MODULE, init_sync}, 1),
             ok = enable_broadcast(L);
         _ ->
+            %% A previously initialized standalone node can be moved back into
+            %% bootstrap mode by the cluster join procedure.
+            persistent_term:put({?MODULE, init_sync}, 0),
             ok
     end.
 

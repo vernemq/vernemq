@@ -64,9 +64,39 @@ init_per_testcase(init_sync_persistent_update_test, Config) ->
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, 0}, {auto_gc, true} | Config0],
     init_per_testcase_(Case, Config1, [electra, flail]);
+init_per_testcase(normal_sync_tombstone_gc_test = Case, Config0) ->
+    Config1 = [{sync_interval, 0}, {auto_gc, false} | Config0],
+    init_per_testcase_(Case, Config1, [electra, flail]);
+init_per_testcase(normal_sync_restart_test = Case, Config0) ->
+    Config1 = [{sync_interval, 0}, {exchange_batch_size, 1} | Config0],
+    init_per_testcase_(Case, Config1, [electra, flail]);
+init_per_testcase(normal_sync_sparse_clock_test = Case, Config0) ->
+    Config1 = [{sync_interval, 0}, {exchange_batch_size, 1} | Config0],
+    init_per_testcase_(Case, Config1, [electra, flail]);
 init_per_testcase(full_sync_test = Case, Config0) ->
     Config1 = [{exchange_batch_size, 1}|Config0],
     init_per_testcase_(Case, Config1, [electra, katana, flail, gargoyle]);
+init_per_testcase(snapshot_bootstrap_large_clock_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
+init_per_testcase(snapshot_bootstrap_restart_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
+init_per_testcase(snapshot_bootstrap_concurrent_writes_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
+init_per_testcase(snapshot_bootstrap_empty_history_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
+init_per_testcase(snapshot_bootstrap_local_write_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
+init_per_testcase(snapshot_bootstrap_concurrent_joins_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {exchange_batch_size, 1}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana, flail]);
+init_per_testcase(snapshot_bootstrap_source_not_ready_test = Case, Config0) ->
+    Config1 = [{init_sync_procedure, false}, {sync_interval, 0} | Config0],
+    init_per_testcase_(Case, Config1, [electra, katana]);
 init_per_testcase(Case, Config) ->
     init_per_testcase_(Case, Config, [electra, katana, flail, gargoyle]).
 
@@ -119,11 +149,21 @@ groups() ->
                 read_write_delete_test,
                 partitioned_cluster_test,
                 partitioned_delete_test,
+                normal_sync_tombstone_gc_test,
+                normal_sync_restart_test,
+                normal_sync_sparse_clock_test,
                 siblings_test,
                 cluster_leave_test,
                 cluster_join_test,
                 events_test,
-                full_sync_test],
+                full_sync_test,
+                snapshot_bootstrap_large_clock_test,
+                snapshot_bootstrap_restart_test,
+                snapshot_bootstrap_concurrent_writes_test,
+                snapshot_bootstrap_empty_history_test,
+                snapshot_bootstrap_local_write_test,
+                snapshot_bootstrap_concurrent_joins_test,
+                snapshot_bootstrap_source_not_ready_test],
     [{rocksdb, [shuffle], AllTests},
      {leveled, [shuffle], AllTests},
      {leveldb, [shuffle], AllTests}].
@@ -350,6 +390,109 @@ partitioned_delete_test(Config) ->
     %% io:format(user, "Nodes: ~p~n", [Nodes]),
     ok.
 
+normal_sync_tombstone_gc_test(Config) ->
+    [SourceNode, LaggingNode] = Nodes = proplists:get_value(nodes, Config),
+    ?assertEqual(ok, rpc:call(LaggingNode, vmq_swc_peer_service, join, [SourceNode])),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, lists:sort(Nodes)),
+    Prefix = normal_sync_gc,
+    Key = deleted_key,
+    SKey = sext:encode({Prefix, Key}),
+
+    ok = put_metadata(SourceNode, Prefix, Key, value, []),
+    ok = wait_until_converged(Nodes, Prefix, Key, value),
+    disable_broadcast(Nodes),
+    ok = delete_metadata(SourceNode, Prefix, Key),
+    ?assertEqual(undefined,
+                 get_metadata(SourceNode, Prefix, Key, [{allow_put, false}])),
+    ?assertEqual(value,
+                 get_metadata(LaggingNode, Prefix, Key, [{allow_put, false}])),
+
+    %% The lagging member has not acknowledged the delete, so neither the
+    %% tombstone nor its dot-to-key mapping may be garbage-collected.
+    ok = rpc:call(SourceNode, vmq_swc_store, do_gc, [?STORE_NAME, SourceNode]),
+    ?assertMatch({ok, _}, rpc:call(SourceNode, vmq_swc_db, get,
+                                   [config(SourceNode), obj, SKey])),
+    ?assert(dkm_has_key(SourceNode, SKey)),
+
+    %% Pull the tombstone, then let the source observe the receiver's updated
+    %% clock. Only after that acknowledgement is GC safe.
+    rpc:call(LaggingNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    ok = wait_until_converged(Nodes, Prefix, Key, undefined),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() ->
+                   rpc:call(SourceNode, erlang, send,
+                            [?STORE_NAME, {sync_with, LaggingNode}]),
+                   rpc:call(SourceNode, vmq_swc_store, do_gc,
+                            [?STORE_NAME, SourceNode]),
+                   rpc:call(SourceNode, vmq_swc_db, get,
+                            [config(SourceNode), obj, SKey]) =:= not_found
+           end, 60*2, 100),
+    ?assertNot(dkm_has_key(SourceNode, SKey)).
+
+normal_sync_restart_test(Config) ->
+    [SourceNode, ReceivingNode] = Nodes = proplists:get_value(nodes, Config),
+    ?assertEqual(ok, rpc:call(ReceivingNode, vmq_swc_peer_service, join, [SourceNode])),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, lists:sort(Nodes)),
+    disable_broadcast(Nodes),
+    Prefix = normal_sync_restart,
+    ObjectCount = 1000,
+    lists:foreach(fun(I) ->
+                          ok = put_metadata(SourceNode, Prefix, I, I, [])
+                  end, lists:seq(1, ObjectCount)),
+    SourceClock = rpc:call(SourceNode, vmq_swc_store, node_clock, [config(SourceNode)]),
+
+    rpc:call(ReceivingNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() ->
+                   Count = metadata_count(ReceivingNode, Prefix),
+                   Count > 0 andalso Count < ObjectCount
+           end, 60*3, 10),
+    restart_remote_store(ReceivingNode),
+    rpc:call(ReceivingNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() -> metadata_count(ReceivingNode, Prefix) =:= ObjectCount end,
+           60*3, 100),
+    ok = wait_until_converged(Nodes, Prefix, 1, 1),
+    ok = wait_until_converged(Nodes, Prefix, ObjectCount div 2, ObjectCount div 2),
+    ok = wait_until_converged(Nodes, Prefix, ObjectCount, ObjectCount),
+    assert_clock_descends(ReceivingNode, SourceClock).
+
+normal_sync_sparse_clock_test(Config) ->
+    [SourceNode, ReceivingNode] = Nodes = proplists:get_value(nodes, Config),
+    ?assertEqual(ok, rpc:call(ReceivingNode, vmq_swc_peer_service, join, [SourceNode])),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, lists:sort(Nodes)),
+    disable_broadcast(Nodes),
+    Prefix = normal_sync_sparse,
+    Key = sparse_key,
+    SKey = sext:encode({Prefix, Key}),
+    SparseId = {'retired-normal-sync-actor', <<"sparse-actor">>},
+    SparseCounter = 1_000,
+    SparseEntry = {1, 1 bsl (SparseCounter - 2)},
+    ExpectedReceivingEntry = {0, 1 bsl (SparseCounter - 1)},
+    Dot = {SparseId, SparseCounter},
+    SparseObject0 = swc_kv:add(swc_kv:new(), Dot, sparse_value),
+
+    SourceConfig = config(SourceNode),
+    SourceClock0 = rpc:call(SourceNode, vmq_swc_store, node_clock, [SourceConfig]),
+    SourceClock1 = maps:put(SparseId, SparseEntry, SourceClock0),
+    SparseObject = swc_kv:strip(SparseObject0, SourceClock1),
+    ok = rpc:call(SourceNode, vmq_swc_db, put_many,
+                  [SourceConfig,
+                   [{obj, SKey, term_to_binary(SparseObject)},
+                    {dkm, sext:encode(Dot), SKey}]]),
+    ok = rpc:call(SourceNode, vmq_swc_store, set_nodeclock,
+                  [?STORE_NAME, SourceClock1]),
+    restart_remote_store(SourceNode),
+
+    rpc:call(ReceivingNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    ok = wait_until_converged(Nodes, Prefix, Key, sparse_value),
+    ReceivingClock = rpc:call(ReceivingNode, vmq_swc_store, node_clock,
+                              [config(ReceivingNode)]),
+    %% Normal repair may claim the explicitly transferred high dot, but unlike
+    %% a complete bootstrap snapshot it must not claim the unrelated base dot
+    %% for which no object was returned.
+    ?assertEqual(ExpectedReceivingEntry, swc_node:get(SparseId, ReceivingClock)).
+
 siblings_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
     [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
@@ -519,6 +662,321 @@ full_sync_test(Config) ->
                           ok = wait_until_converged([LastNode|Nodes], rand, Key, Val)
                   end, Objects ++ Objects1).
 
+snapshot_bootstrap_large_clock_test(Config) ->
+    [JoiningNode, SourceNode] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+
+    %% Build the causal shape of a node joining millions of writes behind
+    %% without making the test perform millions of writes.
+    SourceId = set_local_counter(SourceNode, 5_000_000),
+    ok = put_metadata(SourceNode, bootstrap, first, value1, []),
+    ok = put_metadata(SourceNode, bootstrap, second, value2, []),
+
+    %% With the deprecated eager setting off, the node starts as a normal
+    %% standalone node. The join operation must activate bootstrap itself.
+    ?assertEqual(true, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                [config(JoiningNode)])),
+    ?assertEqual(ok, rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])),
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    ok = wait_until_converged(Nodes, bootstrap, first, value1),
+    ok = wait_until_converged(Nodes, bootstrap, second, value2),
+
+    ?assert(is_pid(rpc:call(JoiningNode, erlang, whereis, [?STORE_NAME]))),
+    JoiningClock = rpc:call(JoiningNode, vmq_swc_store, node_clock, [config(JoiningNode)]),
+    {Counter, 0} = swc_node:get(SourceId, JoiningClock),
+    ?assert(Counter >= 5_000_002),
+    ?assertEqual(not_found, bootstrap_marker(JoiningNode)).
+
+snapshot_bootstrap_restart_test(Config) ->
+    [JoiningNode, SourceNode] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+    lists:foreach(fun(I) ->
+                          ok = put_metadata(SourceNode, bootstrap_restart, I, I, [])
+                  end, lists:seq(1, 500)),
+
+    Parent = self(),
+    spawn(fun() ->
+                  Parent ! {join_result,
+                            rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])}
+          end),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() ->
+                   bootstrap_marker(JoiningNode) =/= not_found andalso
+                   get_metadata(JoiningNode, bootstrap_restart, 250,
+                                [{allow_put, false}]) =:= 250 andalso
+                   rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                            [config(JoiningNode)]) =:= false
+           end, 60*3, 10),
+
+    StoreSupId = {vmq_swc_store_sup, ?SWC_GROUP},
+    ok = rpc:call(JoiningNode, supervisor, terminate_child, [vmq_swc_sup, StoreSupId]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() -> undefined =:= rpc:call(JoiningNode, erlang, whereis, [?STORE_NAME]) end,
+           60, 100),
+    ok = rpc:call(JoiningNode, application, set_env,
+                  [vmq_swc, init_sync_procedure, false]),
+    {ok, _} = rpc:call(JoiningNode, supervisor, restart_child, [vmq_swc_sup, StoreSupId]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() -> is_pid(rpc:call(JoiningNode, erlang, whereis, [?STORE_NAME])) end,
+           60, 100),
+
+    %% The durable marker takes precedence over the now-disabled setting.
+    ?assertEqual(false, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                 [config(JoiningNode)])),
+    rpc:call(JoiningNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    receive
+        {join_result, JoinResult} -> ?assertEqual(ok, JoinResult)
+    after 300000 ->
+        ct:fail(join_timeout)
+    end,
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    ok = wait_until_converged(Nodes, bootstrap_restart, 1, 1),
+    ok = wait_until_converged(Nodes, bootstrap_restart, 250, 250),
+    ok = wait_until_converged(Nodes, bootstrap_restart, 500, 500),
+    ?assertEqual(not_found, bootstrap_marker(JoiningNode)),
+    ?assertEqual(true, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                [config(JoiningNode)])).
+
+snapshot_bootstrap_concurrent_writes_test(Config) ->
+    [JoiningNode, SourceNode] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+    InitialObjects = [{I, I} || I <- lists:seq(1, 500)],
+    lists:foreach(fun({Key, Val}) ->
+                          ok = put_metadata(SourceNode, bootstrap_concurrent, Key, Val, [])
+                  end, InitialObjects),
+
+    Parent = self(),
+    spawn(fun() ->
+                  Parent ! {join_result,
+                            rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])}
+          end),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() ->
+                   get_metadata(JoiningNode, bootstrap_concurrent, 250,
+                                [{allow_put, false}]) =:= 250 andalso
+                   rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                            [config(JoiningNode)]) =:= false
+           end,
+           60*3, 10),
+
+    %% These writes happen after the snapshot clock was captured. Some can be
+    %% observed by the scan and the rest must be collected by anti-entropy.
+    ok = put_metadata(SourceNode, bootstrap_concurrent, 1, updated, []),
+    ConcurrentObjects = [{I, I} || I <- lists:seq(501, 525)],
+    lists:foreach(fun({Key, Val}) ->
+                          ok = put_metadata(SourceNode, bootstrap_concurrent, Key, Val, [])
+                  end, ConcurrentObjects),
+
+    receive
+        {join_result, JoinResult} -> ?assertEqual(ok, JoinResult)
+    after 300000 ->
+        ct:fail(join_timeout)
+    end,
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    rpc:call(JoiningNode, erlang, send, [?STORE_NAME, {sync_with, SourceNode}]),
+    ok = wait_until_converged(Nodes, bootstrap_concurrent, 1, updated),
+    lists:foreach(fun({Key, Val}) ->
+                          ok = wait_until_converged(Nodes, bootstrap_concurrent, Key, Val)
+                  end, ConcurrentObjects),
+    ok = wait_until_converged(Nodes, bootstrap_concurrent, 250, 250),
+    ?assertEqual(true, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                [config(JoiningNode)])).
+
+snapshot_bootstrap_empty_history_test(Config) ->
+    [JoiningNode, SourceNode] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+    Prefix = bootstrap_empty_history,
+    Key = deleted_key,
+    SKey = sext:encode({Prefix, Key}),
+
+    ok = put_metadata(SourceNode, Prefix, Key, value, []),
+    ok = delete_metadata(SourceNode, Prefix, Key),
+    ok = rpc:call(SourceNode, vmq_swc_store, do_gc, [?STORE_NAME, SourceNode]),
+    ?assertEqual(not_found,
+                 rpc:call(SourceNode, vmq_swc_db, get,
+                          [config(SourceNode), obj, SKey])),
+    SourceClock = rpc:call(SourceNode, vmq_swc_store, node_clock, [config(SourceNode)]),
+
+    Parent = self(),
+    spawn(fun() ->
+                  Parent ! {join_result,
+                            rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])}
+          end),
+    InitResult = vmq_swc_test_utils:wait_until(
+                   fun() ->
+                           rpc:call(JoiningNode, persistent_term, get,
+                                    [{vmq_swc_store, init_sync, ?SWC_GROUP}, false]) =:= true
+                   end, 100, 100),
+    case InitResult of
+        ok -> ok;
+        _ ->
+            StorePid = rpc:call(JoiningNode, erlang, whereis, [?STORE_NAME]),
+            StoreInfo = rpc:call(JoiningNode, erlang, process_info,
+                                 [StorePid, [current_function, current_stacktrace,
+                                             message_queue_len, messages]]),
+            ExchangeSup = list_to_atom("vmq_swc_exchange_sup_" ++ atom_to_list(?SWC_GROUP)),
+            Exchanges = rpc:call(JoiningNode, supervisor, which_children, [ExchangeSup]),
+            ct:fail({bootstrap_not_completed, bootstrap_marker(JoiningNode),
+                     bootstrap_peer_marker(JoiningNode), StoreInfo, Exchanges})
+    end,
+    receive
+        {join_result, JoinResult} -> ?assertEqual(ok, JoinResult)
+    after 300000 ->
+        ct:fail(join_timeout)
+    end,
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, lists:sort(Nodes)),
+    ?assertEqual(undefined, get_metadata(JoiningNode, Prefix, Key, [{allow_put, false}])),
+    assert_clock_descends(JoiningNode, SourceClock),
+    ?assertEqual(not_found, bootstrap_marker(JoiningNode)),
+    ?assertEqual(not_found, bootstrap_peer_marker(JoiningNode)),
+
+    StorePid0 = rpc:call(JoiningNode, erlang, whereis, [?STORE_NAME]),
+    true = rpc:call(JoiningNode, erlang, exit, [StorePid0, kill]),
+    _StorePid1 = wait_until_remote_pid(JoiningNode, ?STORE_NAME, StorePid0, 100),
+    ?assertEqual(true, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                [config(JoiningNode)])),
+    assert_clock_descends(JoiningNode, SourceClock),
+    ?assertEqual(not_found, bootstrap_marker(JoiningNode)),
+    ?assertEqual(not_found, bootstrap_peer_marker(JoiningNode)).
+
+snapshot_bootstrap_local_write_test(Config) ->
+    [JoiningNode, SourceNode] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+    lists:foreach(fun(I) ->
+                          ok = put_metadata(SourceNode, bootstrap_local_write, I, I, [])
+                  end, lists:seq(1, 1000)),
+
+    Parent = self(),
+    spawn(fun() ->
+                  Parent ! {join_result,
+                            rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])}
+          end),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() ->
+                   get_metadata(JoiningNode, bootstrap_local_write, 10,
+                                [{allow_put, false}]) =:= 10 andalso
+                   rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                            [config(JoiningNode)]) =:= false
+           end, 60*3, 10),
+
+    LocalClock0 = rpc:call(JoiningNode, vmq_swc_store, node_clock, [config(JoiningNode)]),
+    LocalId = local_id(JoiningNode, LocalClock0),
+    ok = put_metadata(JoiningNode, bootstrap_local_write, local_only, local_value, []),
+    LocalClock1 = rpc:call(JoiningNode, vmq_swc_store, node_clock, [config(JoiningNode)]),
+    LocalEntry = swc_node:get(LocalId, LocalClock1),
+    %% Make the interleaving explicit: the write completed while bootstrap was
+    %% still active, after at least one snapshot batch had been imported.
+    ?assertEqual(false, rpc:call(JoiningNode, vmq_swc_store, get_init_sync,
+                                 [config(JoiningNode)])),
+
+    receive
+        {join_result, JoinResult} -> ?assertEqual(ok, JoinResult)
+    after 300000 ->
+        ct:fail(join_timeout)
+    end,
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, lists:sort(Nodes)),
+    FinalClock = rpc:call(JoiningNode, vmq_swc_store, node_clock, [config(JoiningNode)]),
+    ?assertEqual(LocalEntry, swc_node:get(LocalId, FinalClock)),
+    rpc:call(SourceNode, erlang, send, [?STORE_NAME, {sync_with, JoiningNode}]),
+    ok = wait_until_converged(Nodes, bootstrap_local_write, local_only, local_value).
+
+snapshot_bootstrap_concurrent_joins_test(Config) ->
+    [SourceNode, JoiningNodeX, JoiningNodeZ] = Nodes = proplists:get_value(nodes, Config),
+    ok = rpc:call(SourceNode, vmq_swc_group_coordinator, flag_as_init_synced, []),
+    lists:foreach(fun(I) ->
+                          ok = put_metadata(SourceNode, concurrent_joins, I, I, [])
+                  end, lists:seq(1, 500)),
+
+    Parent = self(),
+    lists:foreach(fun(JoiningNode) ->
+                          spawn(fun() ->
+                                        Result = rpc:call(JoiningNode, vmq_swc_peer_service,
+                                                          join, [SourceNode]),
+                                        Parent ! {join_result, JoiningNode, Result}
+                                end)
+                  end, [JoiningNodeX, JoiningNodeZ]),
+
+    lists:foreach(fun(JoiningNode) ->
+                          ok = vmq_swc_test_utils:wait_until(
+                                 fun() ->
+                                         case bootstrap_peer_marker(JoiningNode) of
+                                             {ok, PeerBin} ->
+                                                 binary_to_term(PeerBin) =:= SourceNode;
+                                             _ ->
+                                                 false
+                                         end
+                                 end, 60*3, 10)
+                  end, [JoiningNodeX, JoiningNodeZ]),
+
+    lists:foreach(fun(JoiningNode) ->
+                          receive
+                              {join_result, JoiningNode, JoinResult} ->
+                                  ?assertEqual(ok, JoinResult)
+                          after 300000 ->
+                              ct:fail({join_timeout, JoiningNode})
+                          end
+                  end, [JoiningNodeX, JoiningNodeZ]),
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    ok = wait_until_converged(Nodes, concurrent_joins, 1, 1),
+    ok = wait_until_converged(Nodes, concurrent_joins, 250, 250),
+    ok = wait_until_converged(Nodes, concurrent_joins, 500, 500).
+
+snapshot_bootstrap_source_not_ready_test(Config) ->
+    [SourceNode, JoiningNode] = proplists:get_value(nodes, Config),
+    ok = vmq_swc_test_utils:wait_until(
+        fun() ->
+            rpc:call(SourceNode, vmq_swc_group_coordinator, is_ready, []) =:= true
+        end,
+        60,
+        10
+    ),
+    ?assertEqual(1, swc_initialized_metric(SourceNode)),
+    ?assertEqual(
+        ok,
+        rpc:call(
+            SourceNode,
+            vmq_swc_store,
+            prepare_snapshot_bootstrap,
+            [config(SourceNode), JoiningNode]
+        )
+    ),
+    ok = vmq_swc_test_utils:wait_until(
+        fun() ->
+            SyncState = rpc:call(SourceNode, vmq_swc_group_coordinator, sync_state, []),
+            maps:get(?SWC_GROUP, SyncState) =:= false
+        end,
+        60,
+        10
+    ),
+    ?assertEqual(false, rpc:call(SourceNode, vmq_swc_group_coordinator, is_ready, [])),
+    ?assertEqual(0, swc_initialized_metric(SourceNode)),
+
+    ?assertEqual(
+        {error, bootstrap_source_not_ready},
+        rpc:call(JoiningNode, vmq_swc_peer_service, join, [SourceNode])
+    ),
+    ?assertEqual(not_found, bootstrap_marker(JoiningNode)),
+    ?assertEqual(not_found, bootstrap_peer_marker(JoiningNode)),
+    ?assertEqual(
+        true,
+        rpc:call(JoiningNode, vmq_swc_store, get_init_sync, [config(JoiningNode)])
+    ),
+    ?assertEqual(true, rpc:call(JoiningNode, vmq_swc_group_coordinator, is_ready, [])),
+    ?assertEqual(1, swc_initialized_metric(JoiningNode)),
+    ?assertEqual(
+        [JoiningNode],
+        rpc:call(
+            JoiningNode,
+            vmq_swc_group_membership,
+            get_members,
+            [config(JoiningNode)]
+        )
+    ).
+
 disable_broadcast(Nodes) ->
     [ok = rpc:call(N, vmq_swc_store, set_broadcast, [config(N), false])
      || N <- Nodes].
@@ -529,6 +987,68 @@ broadcast(_Objects, _Peers) ->
 
 config(Node) ->
     rpc:call(Node, vmq_swc, config, [?SWC_GROUP]).
+
+metadata_count(Node, Prefix) ->
+    rpc:call(Node, vmq_swc, fold,
+             [?SWC_GROUP, fun(_Key, _Value, Acc) -> Acc + 1 end, 0, Prefix,
+              [{allow_put, false}]]).
+
+dkm_has_key(Node, SKey) ->
+    DKM = rpc:call(Node, vmq_swc_store, get_dkm_by_storename, [?STORE_NAME]),
+    Dump = rpc:call(Node, vmq_swc_dkm, dump, [DKM]),
+    lists:any(
+      fun(Table) -> lists:keymember(SKey, 1, maps:get(Table, Dump)) end,
+      [latest, latest_candidates, gc_candidates]).
+
+restart_remote_store(Node) ->
+    StoreSupId = {vmq_swc_store_sup, ?SWC_GROUP},
+    ok = rpc:call(Node, supervisor, terminate_child, [vmq_swc_sup, StoreSupId]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() -> undefined =:= rpc:call(Node, erlang, whereis, [?STORE_NAME]) end,
+           60, 100),
+    {ok, _} = rpc:call(Node, supervisor, restart_child, [vmq_swc_sup, StoreSupId]),
+    ok = vmq_swc_test_utils:wait_until(
+           fun() -> is_pid(rpc:call(Node, erlang, whereis, [?STORE_NAME])) end,
+           60, 100).
+
+set_local_counter(Node, Counter) ->
+    Config = config(Node),
+    Clock0 = rpc:call(Node, vmq_swc_store, node_clock, [Config]),
+    Id = local_id(Node, Clock0),
+    Clock1 = swc_node:store_entry(Id, {Counter, 0}, Clock0),
+    ok = rpc:call(Node, vmq_swc_store, set_nodeclock, [?STORE_NAME, Clock1]),
+    Id.
+
+local_id(Node, Clock) ->
+    [Id] = [Id || {Peer, _Actor} = Id <- swc_node:ids(Clock), Peer =:= Node],
+    Id.
+
+assert_clock_descends(Node, ExpectedClock) ->
+    Clock = rpc:call(Node, vmq_swc_store, node_clock, [config(Node)]),
+    ?assertEqual(Clock, swc_node:merge(Clock, ExpectedClock)).
+
+wait_until_remote_pid(_Node, _Name, _OldPid, 0) ->
+    ct:fail(store_not_restarted);
+wait_until_remote_pid(Node, Name, OldPid, N) ->
+    Pid = rpc:call(Node, erlang, whereis, [Name]),
+    case is_pid(Pid) andalso (Pid =/= OldPid) of
+        true -> Pid;
+        false ->
+            ct:sleep(100),
+            wait_until_remote_pid(Node, Name, OldPid, N - 1)
+    end.
+
+bootstrap_marker(Node) ->
+    rpc:call(Node, vmq_swc_db, get, [config(Node), default, <<"IBS">>]).
+
+bootstrap_peer_marker(Node) ->
+    rpc:call(Node, vmq_swc_db, get, [config(Node), default, <<"IBP">>]).
+
+swc_initialized_metric(Node) ->
+    Metrics = rpc:call(Node, vmq_swc_metrics, metrics, []),
+    {gauge, [], swc_initialized, swc_initialized, _Description, Value} =
+        lists:keyfind(swc_initialized, 4, Metrics),
+    Value.
 
 
 %% ===================================================================

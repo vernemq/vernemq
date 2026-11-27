@@ -83,7 +83,10 @@
                                              hidden
                                             ]}.
 
-%% @doc Enable the SWC init sync procedure. Default: off
+%% @doc Deprecated: eagerly enable the SWC init sync procedure at startup.
+%% Empty nodes now enter snapshot bootstrap automatically when joining a
+%% cluster. Keep this off for normal standalone and clustered deployments.
+%% Default: off
 {mapping, "vmq_swc.init_sync_procedure", "vmq_swc.init_sync_procedure", [
                                              {default, off},
                                              {datatype, flag},

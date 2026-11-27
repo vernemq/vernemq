@@ -99,6 +99,7 @@ handle_cast({set_members, NewMembers}, #state{config = Config, members = OldMemb
     ok = disconnect_members(Config, MembersToDel),
     % need the swc_id here: {peer(), actor()}
     vmq_swc_store:set_group_members(Config, swc_ids(NewMembers)),
+    maybe_start_snapshot_bootstrap(Config, NewMembers),
     {noreply, State#state{members = NewMembers}}.
 
 swc_ids(Peers) ->
@@ -135,6 +136,13 @@ disconnect_members(_Config, []) ->
 disconnect_members(#swc_config{transport = TMod} = Config, [Member | Rest]) ->
     TMod:stop_connection(Config, Member),
     disconnect_members(Config, Rest).
+
+maybe_start_snapshot_bootstrap(#swc_config{store = StoreName}, Members) ->
+    case whereis(StoreName) of
+        undefined -> ok;
+        StorePid -> StorePid ! {start_snapshot_bootstrap, Members}
+    end,
+    ok.
 
 schedule_register_peer_events(T) ->
     erlang:send_after(T, self(), register_peer_events).

@@ -84,6 +84,7 @@ all() ->
      racing_connect_test,
      % ,racing_subscriber_test
      aborted_queue_migration_test,
+     cluster_join_waits_for_transport_test,
      cluster_leave_test,
      cluster_leave_myself_test,
      cluster_leave_dead_node_test,
@@ -102,6 +103,13 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+cluster_join_waits_for_transport_test(Config) ->
+    ok = ensure_cluster(Config),
+    Nodes = nodenames(Config),
+    [?assertEqual(up, rpc:call(Node, vmq_cluster_node_sup, node_status, [Peer]))
+     || Node <- Nodes, Peer <- Nodes],
+    ok.
+
 multiple_connect_test(Config) ->
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
