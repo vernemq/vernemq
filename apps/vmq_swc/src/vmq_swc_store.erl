@@ -574,7 +574,8 @@ init([
     case {Init1, BootstrapPeer} of
         {false, Peer} when is_atom(Peer), Peer =/= undefined ->
             self() ! resume_snapshot_bootstrap;
-        _ -> ok
+        _ ->
+            ok
     end,
     {ok, State1}.
 
@@ -979,13 +980,16 @@ handle_info(
             ignore
     end,
     {noreply, State};
-handle_info(sync, #state{
-    config = Config,
-    init_sync = false,
-    sync_lock = undefined,
-    bootstrap_peer = Peer,
-    peers = Peers
-} = State) when is_atom(Peer), Peer =/= undefined ->
+handle_info(
+    sync,
+    #state{
+        config = Config,
+        init_sync = false,
+        sync_lock = undefined,
+        bootstrap_peer = Peer,
+        peers = Peers
+    } = State
+) when is_atom(Peer), Peer =/= undefined ->
     case proplists:is_defined(Peer, Peers) andalso lists:member(Peer, nodes()) of
         true ->
             vmq_swc_exchange_sup:start_exchange(

@@ -111,9 +111,11 @@ wait_for_snapshot_bootstrap_and_transport(Groups) ->
     end.
 
 wait_for_snapshot_bootstrap(Groups, Deadline) ->
-    case lists:all(
-        fun(Group) -> vmq_swc_store:get_init_sync(vmq_swc:config(Group)) end, Groups
-    ) of
+    case
+        lists:all(
+            fun(Group) -> vmq_swc_store:get_init_sync(vmq_swc:config(Group)) end, Groups
+        )
+    of
         true ->
             ok;
         false ->
