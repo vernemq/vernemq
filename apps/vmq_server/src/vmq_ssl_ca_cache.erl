@@ -55,13 +55,19 @@ start_link() ->
 %% lookup after a purge.
 -spec ca_certs(file:name_all()) -> [public_key:der_encoded()].
 ca_certs(File) ->
+    case application:get_env(ssl, bypass_pem_cache, false) of
+        true -> read_ca_certs(File);
+        _ -> cached_ca_certs(File)
+    end.
+
+cached_ca_certs(File) ->
     case ets:lookup(?TAB, File) of
         [{_, CaCerts}] ->
             CaCerts;
         [] ->
             %% no ca certs loaded
             gen_server:call(?MODULE, {add_ca_certs, File}),
-            ca_certs(File)
+            cached_ca_certs(File)
     end.
 
 -spec refresh() -> 'ok'.
