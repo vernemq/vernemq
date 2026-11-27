@@ -148,6 +148,7 @@ validate_opts(Opts) ->
         true ->
             case proplists:get_value(cafile, Opts) of
                 [_ | _] -> ok;
+                <<_, _/binary>> -> ok;
                 _ -> {error, partial_chain_requires_cafile}
             end;
         _ ->
