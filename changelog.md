@@ -1,3 +1,4 @@
+- Make empty nodes automatically run a resumable SWC snapshot bootstrap when joining a cluster. A join now completes only after bootstrap and bidirectional cluster transport are ready. `vmq_swc.init_sync_procedure` remains available as a deprecated eager-start override and defaults to `off`. Bootstrap readiness is exposed through `/health/ready` and the `swc_initialized` metric.
 - Spec compliance: reject a CONNECT whose Will QoS is 3 (MQTT-3.1.2-14 in MQTT 3.1.1, MQTT-3.1.2-12 in MQTT 5)
   instead of accepting it.
 - Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)

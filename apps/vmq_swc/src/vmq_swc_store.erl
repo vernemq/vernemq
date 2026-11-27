@@ -32,7 +32,7 @@
 
     process_batch/2,
 
-    lock/1,
+    lock/2,
 
     remote_sync_missing/3,
     rpc_sync_missing/3,
@@ -70,6 +70,9 @@
     set_nodeclock/2,
     init_and_reset_dkm/1,
     set_init_sync_by_groupname/2,
+    prepare_snapshot_bootstrap/1,
+    prepare_snapshot_bootstrap/2,
+    get_bootstrap_peer/1,
     set_broadcast_by_groupname/2,
     get_init_sync/1,
     reset_iterator_by_groupname/1
@@ -105,6 +108,8 @@
     subscriptions = #{} :: map(),
     broadcast_enabled :: boolean(),
     init_sync :: boolean(),
+    bootstrap_clock = undefined :: undefined | nodeclock(),
+    bootstrap_peer = undefined :: undefined | peer(),
     iterator = undefined,
     pending_db_write = undefined,
     deferred_calls = [],
@@ -115,6 +120,9 @@
 -define(DBG_OP(_Str, _Format), ok).
 -define(RETAIN_DB, {vmq, retain}).
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
+-define(INIT_SYNC_KEY, <<"ISY">>).
+-define(BOOTSTRAP_KEY, <<"IBS">>).
+-define(BOOTSTRAP_PEER_KEY, <<"IBP">>).
 
 start_link(#swc_config{store = StoreName} = Config) ->
     gen_server:start_link({local, StoreName}, ?MODULE, [Config], []).
@@ -248,9 +256,9 @@ retry_subscribe(StoreName, FullPrefix, ConvertFun, Pid, Opts, N) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Sync API, used by vmq_swc_exchange_fsm
 
--spec lock(config()) -> ok | {error, atom()}.
-lock(#swc_config{store = StoreName}) ->
-    gen_server:call(StoreName, {lock, self()}, fast_call_timeout()).
+-spec lock(config(), pid()) -> ok | {error, atom()}.
+lock(#swc_config{store = StoreName}, OwnerPid) ->
+    gen_server:call(StoreName, {lock, OwnerPid}, fast_call_timeout()).
 
 -spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}] | {error, timeout}.
 remote_sync_missing(
@@ -404,6 +412,15 @@ set_init_sync_by_groupname(Group, InitSync) when is_boolean(InitSync) ->
     persistent_term:put(init_sync_key(Group), InitSync),
     Res.
 
+prepare_snapshot_bootstrap(Config) ->
+    prepare_snapshot_bootstrap(Config, undefined).
+
+prepare_snapshot_bootstrap(#swc_config{store = StoreName}, Peer) ->
+    gen_server:call(StoreName, {prepare_snapshot_bootstrap, Peer}, fast_call_timeout()).
+
+get_bootstrap_peer(#swc_config{store = StoreName}) ->
+    gen_server:call(StoreName, get_bootstrap_peer, fast_call_timeout()).
+
 set_broadcast_by_groupname(Group, IsBroadcastEnabled) when
     is_boolean(IsBroadcastEnabled)
 ->
@@ -455,14 +472,32 @@ init([
     %  IsBroadcastEnabled = application:get_env(vmq_swc, enable_broadcast, true),
     IsAutoGc = application:get_env(vmq_swc, auto_gc, true),
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
+    BootstrapInProgress =
+        case vmq_swc_db:get(Config, default, ?BOOTSTRAP_KEY, []) of
+            not_found -> false;
+            {ok, BootstrapRes} -> binary_to_term(BootstrapRes)
+        end,
+    BootstrapPeer =
+        case vmq_swc_db:get(Config, default, ?BOOTSTRAP_PEER_KEY, []) of
+            not_found -> undefined;
+            {ok, BootstrapPeerRes} -> binary_to_term(BootstrapPeerRes)
+        end,
     Init1 =
-        case application:get_env(vmq_swc, init_sync_procedure, false) of
-            false ->
-                true;
+        case BootstrapInProgress of
             true ->
-                case vmq_swc_db:get(Config, default, <<"ISY">>, []) of
-                    not_found -> false;
-                    {ok, Res} -> binary_to_term(Res)
+                %% A partially imported snapshot must always be resumed. In
+                %% particular, changing init_sync_procedure to false must not
+                %% expose the partial store as initialized after a restart.
+                false;
+            false ->
+                case application:get_env(vmq_swc, init_sync_procedure, false) of
+                    false ->
+                        true;
+                    true ->
+                        case vmq_swc_db:get(Config, default, ?INIT_SYNC_KEY, []) of
+                            not_found -> false;
+                            {ok, InitRes} -> binary_to_term(InitRes)
+                        end
                 end
         end,
     vmq_swc_group_coordinator:group_initialized(Group, Init1),
@@ -532,9 +567,16 @@ init([
         auto_gc = IsAutoGc,
         periodic_gc = IsPeriodicGc,
         broadcast_enabled = IsBroadcastEnabled,
-        init_sync = Init1
+        init_sync = Init1,
+        bootstrap_peer = BootstrapPeer
     }),
     State1 = restore_subscriptions(StoreName, State0),
+    case {Init1, BootstrapPeer} of
+        {false, Peer} when is_atom(Peer), Peer =/= undefined ->
+            self() ! resume_snapshot_bootstrap;
+        _ ->
+            ok
+    end,
     {ok, State1}.
 
 handle_call({lock, OwnerPid}, _From, #state{id = Id, sync_lock = SyncLock} = State0) ->
@@ -555,12 +597,40 @@ handle_call(get_watermark, _From, #state{watermark = Watermark} = State) ->
     {reply, Watermark, State};
 handle_call(get_init_sync, _From, State) ->
     {reply, State#state.init_sync, State};
+handle_call(get_bootstrap_peer, _From, State) ->
+    {reply, State#state.bootstrap_peer, State};
 handle_call(
     Request, From, #state{pending_db_write = Pending, deferred_calls = Deferred} = State
 ) when
     Pending =/= undefined
 ->
     {noreply, State#state{deferred_calls = Deferred ++ [{call, Request, From}]}};
+handle_call(
+    {prepare_snapshot_bootstrap, Peer},
+    _From,
+    #state{id = Id, group = Group, config = Config, nodeclock = NodeClock} = State
+) ->
+    case (map_size(NodeClock) =:= 1) andalso (swc_node:get(Id, NodeClock) =:= {1, 0}) of
+        true ->
+            %% This is persisted before cluster membership changes, ensuring
+            %% that broadcasts cannot expose an empty joining store as ready.
+            ok = db_write(Config, [
+                bootstrap_in_progress_db_op(),
+                {?DB_DEFAULT, ?BOOTSTRAP_PEER_KEY, term_to_binary(Peer)},
+                {?DB_DEFAULT, ?INIT_SYNC_KEY, term_to_binary(false)}
+            ]),
+            persistent_term:put(init_sync_key(Group), false),
+            vmq_swc_group_coordinator:group_initialized(Group, false),
+            {reply, ok, State#state{
+                init_sync = false,
+                broadcast_enabled = false,
+                bootstrap_clock = undefined,
+                bootstrap_peer = Peer,
+                iterator = undefined
+            }};
+        false ->
+            {reply, {error, non_empty_store}, State}
+    end;
 handle_call(
     {batch, Batch},
     _From,
@@ -870,11 +940,65 @@ handle_info(do_gc, #state{id = Id, nodeclock = NodeClock, config = Config} = Sta
     State1 = incremental_gc(State0#state{watermark = Watermark}),
     erlang:send_after(application:get_env(vmq_swc, gc_interval, 15000), self(), do_gc),
     {noreply, State1};
+handle_info(
+    {sync_with, Peer},
+    #state{init_sync = false, bootstrap_peer = BootstrapPeer} = State
+) when BootstrapPeer =/= undefined, Peer =/= BootstrapPeer ->
+    %% A snapshot bootstrap must never mix batches from different peers.
+    {noreply, State};
 handle_info({sync_with, Peer}, #state{config = Config} = State) ->
     %% only used for testing purposes
     vmq_swc_exchange_sup:start_exchange(
         Config, Peer, application:get_env(vmq_swc, sync_timeout, 60000)
     ),
+    {noreply, State};
+handle_info(
+    {start_snapshot_bootstrap, Members},
+    #state{config = Config, init_sync = false, bootstrap_peer = Peer} = State
+) when is_atom(Peer), Peer =/= undefined ->
+    case lists:member(Peer, Members) of
+        true ->
+            vmq_swc_exchange_sup:start_exchange(
+                Config, Peer, application:get_env(vmq_swc, sync_timeout, 60000)
+            );
+        false ->
+            ignore
+    end,
+    {noreply, State};
+handle_info({start_snapshot_bootstrap, _Members}, State) ->
+    {noreply, State};
+handle_info(
+    resume_snapshot_bootstrap,
+    #state{config = Config, bootstrap_peer = Peer, peers = Peers} = State
+) when is_atom(Peer), Peer =/= undefined ->
+    case proplists:is_defined(Peer, Peers) of
+        true ->
+            vmq_swc_exchange_sup:start_exchange(
+                Config, Peer, application:get_env(vmq_swc, sync_timeout, 60000)
+            );
+        false ->
+            ignore
+    end,
+    {noreply, State};
+handle_info(
+    sync,
+    #state{
+        config = Config,
+        init_sync = false,
+        sync_lock = undefined,
+        bootstrap_peer = Peer,
+        peers = Peers
+    } = State
+) when is_atom(Peer), Peer =/= undefined ->
+    case proplists:is_defined(Peer, Peers) andalso lists:member(Peer, nodes()) of
+        true ->
+            vmq_swc_exchange_sup:start_exchange(
+                Config, Peer, application:get_env(vmq_swc, sync_timeout, 60000)
+            );
+        false ->
+            ignore
+    end,
+    maybe_schedule_sync(),
     {noreply, State};
 handle_info(sync, #state{config = Config, sync_lock = undefined, peers = Peers} = State) ->
     case random_peer(proplists:get_keys(Peers), fun(N) -> lists:member(N, nodes()) end) of
@@ -960,14 +1084,29 @@ drain_deferred_calls(#state{deferred_calls = [{info, Info} | Rest]} = State0) ->
 
 sync_repair_db_ops(RepairType, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch, State0) ->
     RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
-    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
+    {DbOps, State1} =
+        case RepairType of
+            repair -> fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0);
+            init_repair -> fill_strip_save_batch_init(MissingObjects, RemoteNodeClock, State0)
+        end,
     case LastBatch of
         false ->
-            UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
-            {[sync_repair_db_ops(RepairType, [UpdateNodeClock_DBop | DbOps])], State1};
+            case RepairType of
+                repair ->
+                    UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
+                    {[sync_repair_db_ops(RepairType, [UpdateNodeClock_DBop | DbOps])], State1};
+                init_repair ->
+                    %% Snapshot objects are durable after every batch, but the
+                    %% imported clock must not become durable until the complete
+                    %% snapshot has been applied. Otherwise a restart could
+                    %% claim knowledge of objects which were never imported.
+                    BootstrapDbOp = bootstrap_in_progress_db_op(),
+                    {[[BootstrapDbOp], DbOps], State1}
+            end;
         {true, RemoteWatermark} ->
+            RepairNodeClock = repair_nodeclock(RepairType, State1),
             NodeClock0 = sync_clocks(
-                {RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock
+                {RemotePeer, RemoteActor}, RemoteNodeClock, RepairNodeClock
             ),
             Watermark = update_watermark_after_sync(
                 State1#state.watermark,
@@ -979,18 +1118,48 @@ sync_repair_db_ops(RepairType, RemotePeer, RemoteNodeClock, MissingObjects, Last
             ),
             UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
             UpdateWatermark_DBop = update_watermark_db_op(Watermark),
-            State2 = State1#state{watermark = Watermark, nodeclock = NodeClock0},
+            State2 = State1#state{
+                watermark = Watermark,
+                nodeclock = NodeClock0,
+                bootstrap_clock = undefined,
+                bootstrap_peer = undefined
+            },
+            CompletionDbOps = bootstrap_completion_db_ops(RepairType),
             RepairDbOps = sync_repair_db_ops(RepairType, [
-                UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps
+                UpdateNodeClock_DBop, UpdateWatermark_DBop | CompletionDbOps ++ DbOps
             ]),
             {GcDbOps, State3} = incremental_gc_db_ops(State2),
-            {[RepairDbOps, GcDbOps], State3}
+            {repair_db_batches(RepairType, RepairDbOps, GcDbOps), State3}
     end.
 
 sync_repair_db_ops(repair, DbOps) ->
     lists:reverse(DbOps);
 sync_repair_db_ops(init_repair, DbOps) ->
     DbOps.
+
+repair_nodeclock(repair, #state{nodeclock = NodeClock}) ->
+    NodeClock;
+repair_nodeclock(init_repair, #state{bootstrap_clock = BootstrapClock}) ->
+    BootstrapClock.
+
+bootstrap_in_progress_db_op() ->
+    {?DB_DEFAULT, ?BOOTSTRAP_KEY, term_to_binary(true)}.
+
+bootstrap_completion_db_ops(repair) ->
+    [];
+bootstrap_completion_db_ops(init_repair) ->
+    [
+        {?DB_DEFAULT, ?INIT_SYNC_KEY, term_to_binary(true)},
+        {?DB_DEFAULT, ?BOOTSTRAP_KEY, ?DELETED},
+        {?DB_DEFAULT, ?BOOTSTRAP_PEER_KEY, ?DELETED}
+    ].
+
+repair_db_batches(repair, RepairDbOps, GcDbOps) ->
+    [RepairDbOps, GcDbOps];
+repair_db_batches(init_repair, RepairDbOps, GcDbOps) ->
+    %% DKM and object data can use different backends, so write the durable
+    %% marker first rather than relying on one cross-backend atomic batch.
+    [[bootstrap_in_progress_db_op()], RepairDbOps, GcDbOps].
 
 db_write_batches(_Config, []) ->
     ok;
@@ -1150,13 +1319,22 @@ fill_strip_save_batch(
     RemoteNodeClock,
     #state{config = #swc_config{store = _StoreName} = Config, nodeclock = NodeClock0} = State0
 ) ->
+    {NodeClock1, RealMissing} = fill_sync_batch(
+        MissingObjects, RemoteNodeClock, NodeClock0, NodeClock0, Config
+    ),
+    % save the synced objects and strip their causal history
+    State1 = State0#state{nodeclock = NodeClock1},
+    FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp, nil),
+    {FinalDBOps, State1}.
+
+fill_sync_batch(MissingObjects, RemoteNodeClock, LocalFillClock, NodeClock0, Config) ->
     {NodeClock1, RealMissing} =
         lists:foldl(
             fun({SKey, Obj}, {NodeClockAcc0, AccRealMissing0} = Acc) ->
                 % fill the object with the sending node clock
                 FilledObj = swc_kv:fill(Obj, RemoteNodeClock),
                 % get the local object corresponding to the received object and fill the causal history
-                {D1, _} = Local = swc_kv:fill(get_obj_for_key(Config, SKey), NodeClock0),
+                {D1, _} = Local = swc_kv:fill(get_obj_for_key(Config, SKey), LocalFillClock),
                 % synchronize / merge the remote and local object
                 {D2, _} = Synced = swc_kv:sync(FilledObj, Local),
                 % filter out the object that is not missing after all
@@ -1173,10 +1351,29 @@ fill_strip_save_batch(
             {NodeClock0, []},
             MissingObjects
         ),
-    % save the synced objects and strip their causal history
-    State1 = State0#state{nodeclock = NodeClock1},
-    FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp, nil),
-    {FinalDBOps, State1}.
+    {NodeClock1, RealMissing}.
+
+fill_strip_save_batch_init(
+    MissingObjects,
+    RemoteNodeClock,
+    #state{nodeclock = LocalNodeClock, bootstrap_clock = BootstrapClock0} = State0
+) ->
+    %% A snapshot represents all causal knowledge in RemoteNodeClock, including
+    %% objects which have already been deleted and whose DKM entries no longer
+    %% exist. Use that clock as the in-memory basis while importing the snapshot
+    %% so an arbitrarily high first object does not create a sparse bitmap.
+    BootstrapClock1 =
+        case BootstrapClock0 of
+            undefined -> LocalNodeClock;
+            _ -> swc_node:merge(BootstrapClock0, LocalNodeClock)
+        end,
+    BootstrapClock2 = swc_node:merge(BootstrapClock1, RemoteNodeClock),
+    {BootstrapClock3, RealMissing} = fill_sync_batch(
+        MissingObjects, RemoteNodeClock, LocalNodeClock, BootstrapClock2, State0#state.config
+    ),
+    WorkState = State0#state{nodeclock = BootstrapClock3},
+    DbOps = strip_save_batch(RealMissing, [], WorkState, sync_resp, nil),
+    {DbOps, State0#state{bootstrap_clock = BootstrapClock3}}.
 
 strip_save_batch([], DBOps, _State, _DbgCategory, _OriginPid) ->
     DBOps;

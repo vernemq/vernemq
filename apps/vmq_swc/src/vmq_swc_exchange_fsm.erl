@@ -51,8 +51,9 @@ start_link(#swc_config{} = Config, Peer, Timeout) ->
 prepare(
     internal, start, #state{config = Config, timeout = Timeout} = State
 ) ->
+    ExchangePid = self(),
     as_event(fun() ->
-        case store_result(fun() -> vmq_swc_store:lock(Config) end) of
+        case store_result(fun() -> vmq_swc_store:lock(Config, ExchangePid) end) of
             {ok, ok} ->
                 case store_result(fun() -> vmq_swc_store:node_clock(Config) end) of
                     {ok, NodeClock} -> {local_node_clock, NodeClock};
@@ -157,7 +158,11 @@ initial_sync_new(
             R = vmq_swc_store:remote_sync_missing_init(Config, RemotePeer, BatchSize, first),
             case R of
                 {error, timeout} -> {error, remote_sync_missing_init_timeout};
-                {first, []} -> {sync_finished, no_keys};
+                %% An empty object table can still carry causal history for
+                %% deleted and already-GC'd objects. Run the normal final
+                %% repair so the remote clock and watermark are imported and
+                %% the durable bootstrap markers are cleared.
+                {first, []} -> {last, 0, []};
                 {last, N, ObjsA} -> {last, N, ObjsA};
                 {NextKey, Objs} -> {NextKey, Objs}
             end
@@ -173,10 +178,7 @@ initial_sync_new(
         obj_cnt = ObjCnt
     } = State
 ) ->
-    case Remaining of
-        no_keys -> teardown_initial_no_jump(State);
-        _ -> teardown_initial(State#state{obj_cnt = ObjCnt + Remaining})
-    end;
+    teardown_initial(State#state{obj_cnt = ObjCnt + Remaining});
 initial_sync_new(
     cast,
     {last, N, RemainingObjs},
@@ -196,7 +198,7 @@ initial_sync_new(
                     Config,
                     RemainingObjs,
                     RemotePeer,
-                    swc_node:base(RemoteClock),
+                    RemoteClock,
                     {true, RemoteWatermark}
                 )
             end)
@@ -245,7 +247,7 @@ initial_sync_new(
         case
             store_result(fun() ->
                 vmq_swc_store:sync_repair_init(
-                    Config, Objs, RemotePeer, swc_node:base(RemoteClock), false
+                    Config, Objs, RemotePeer, RemoteClock, false
                 )
             end)
         of
@@ -279,7 +281,7 @@ initial_sync_new(cast, Msg, #state{group = Group, peer = Peer} = State) ->
             Group, Peer, Msg
         ]
     ),
-    teardown_initial(State);
+    teardown(State);
 initial_sync_new(state_timeout, init_sync, #state{group = Group, peer = Peer} = State) ->
     ?LOG_WARNING(
         "Replica ~p: AE exchange with ~p couldn't sync repair (init) local store due to timeout", [
@@ -452,7 +454,6 @@ teardown_initial(
         group = Group,
         peer = Peer,
         obj_cnt = ObjCnt,
-        remote_clock = RemoteClock,
         start_ts = Start
     } = State
 ) ->
@@ -465,30 +466,10 @@ teardown_initial(
                     Group, Peer, ObjCnt, SyncTime
                 ]
             ),
-            vmq_swc_store:jump_old_clocks(Config, RemoteClock);
+            ok;
         false ->
             ?LOG_DEBUG("Replica ~p: initial sync with ~p, nothing to synchronize", [Group, Peer])
     end,
-    set_init_sync(Config, true),
-    ok = vmq_swc_store:reset_iterator_by_groupname(Group),
-    {stop, normal, State}.
-
-teardown_initial_no_jump(
-    #state{
-        group = Group,
-        config = Config,
-        peer = Peer,
-        obj_cnt = ObjCnt,
-        start_ts = Start
-    } = State
-) ->
-    End = erlang:monotonic_time(millisecond),
-    SyncTime = End - Start,
-    ?LOG_INFO(
-        "Replica ~p: AE initial sync (no jump) with ~p synced ~p objects in ~p milliseconds", [
-            Group, Peer, ObjCnt, SyncTime
-        ]
-    ),
     set_init_sync(Config, true),
     ok = vmq_swc_store:reset_iterator_by_groupname(Group),
     {stop, normal, State}.
