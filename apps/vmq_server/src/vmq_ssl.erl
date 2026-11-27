@@ -169,7 +169,7 @@ partial_chain_opts(Opts) ->
 %% the peer certificate, the first match validates the longest path.
 partial_chain(Chain, CaFile) ->
     CaCerts = vmq_ssl_ca_cache:ca_certs(CaFile),
-    case [C || C <- Chain, lists:member(C, CaCerts)] of
+    case [C || C <- Chain, is_map_key(C, CaCerts)] of
         [C | _] -> {trusted_ca, C};
         [] -> unknown_ca
     end.

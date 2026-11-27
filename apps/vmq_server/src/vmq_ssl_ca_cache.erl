@@ -53,7 +53,7 @@ start_link() ->
 %% The CA certificates of a cafile, used as trust anchors by the
 %% partial_chain option. They are cached and reloaded with the next
 %% lookup after a purge.
--spec ca_certs(file:name_all()) -> [public_key:der_encoded()].
+-spec ca_certs(file:name_all()) -> #{public_key:der_encoded() => true}.
 ca_certs(File) ->
     case application:get_env(ssl, bypass_pem_cache, false) of
         true -> read_ca_certs(File);
@@ -146,10 +146,10 @@ read_ca_certs(File) ->
                 _ ->
                     ok
             end,
-            CaCerts;
+            maps:from_keys(CaCerts, true);
         {error, Reason} ->
             ?LOG_ERROR("partial_chain: can't read cafile ~p due to ~p", [File, Reason]),
-            []
+            #{}
     end.
 
 %% Only certificates that are allowed to sign other certificates become
