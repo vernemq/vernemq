@@ -39,6 +39,7 @@ init_per_testcase(Case, Config) ->
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
     vmq_server_cmd:set_config(topic_alias_max_broker, 0),
+    vmq_server_cmd:set_config(upgrade_outgoing_qos, false),
     case lists:member(Case, [shared_subscription_offline,
                              shared_subscription_online_first]) of
         true ->
@@ -71,6 +72,7 @@ groups() ->
          publish_c2b_qos2_duplicate_test,
          publish_b2c_disconnect_qos1_test,
          publish_b2c_disconnect_qos2_test,
+         queued_publish_uses_effective_qos_test,
          publish_c2b_disconnect_qos2_test,
          publish_b2c_ensure_valid_msg_ids_test,
          pattern_matching_test,
@@ -357,6 +359,56 @@ publish_b2c_disconnect_qos2_test(Config) ->
     disable_on_subscribe(),
     ok = expect_alive(Socket2),
     ok = gen_tcp:close(Socket2).
+
+queued_publish_uses_effective_qos_test(Config) ->
+    ClientId = vmq_cth:ustr(Config) ++ "queued-effective-qos-test",
+    Topic = "queued/effective/qos/" ++ ClientId,
+    Connect = mqtt5_v4compat:gen_connect(
+                ClientId, [{keepalive, 60}, {clean_session, false}], Config),
+    Connack1 = mqtt5_v4compat:gen_connack(success, Config),
+    Connack2 = mqtt5_v4compat:gen_connack(true, success, Config),
+    Subscribe = mqtt5_v4compat:gen_subscribe(3265, Topic, 1, Config),
+    Suback = mqtt5_v4compat:gen_suback(3265, 1, Config),
+    Published = mqtt5_v4compat:gen_publish(
+                  Topic, 2, <<"queued-effective-qos">>, [{mid, 7}], Config),
+    Expected = mqtt5_v4compat:gen_publish(
+                 Topic, 1, <<"queued-effective-qos">>, [{mid, 1}], Config),
+    Puback = mqtt5_v4compat:gen_puback(1, Config),
+
+    enable_on_publish(),
+    enable_on_subscribe(),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack1, [], Config),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Config),
+    ok = gen_tcp:close(Socket),
+    SubscriberId = {"", list_to_binary(ClientId)},
+    ok = wait_for_queue_offline(SubscriberId, 50),
+
+    helper_pub_qos2("queued-effective-qos-publisher", 7, Published, Config),
+
+    {ok, Socket1} = mqtt5_v4compat:do_client_connect(Connect, Connack2, [], Config),
+    ok = mqtt5_v4compat:expect_packet(Socket1, "queued publish", Expected, Config),
+    ok = gen_tcp:send(Socket1, Puback),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = gen_tcp:close(Socket1).
+
+wait_for_queue_offline(_SubscriberId, 0) ->
+    {error, queue_not_offline};
+wait_for_queue_offline(SubscriberId, Retries) ->
+    case vmq_reg:get_queue_pid(SubscriberId) of
+        QPid when is_pid(QPid) ->
+            case vmq_queue:status(QPid) of
+                {offline, _, _, _, _} ->
+                    ok;
+                _ ->
+                    timer:sleep(20),
+                    wait_for_queue_offline(SubscriberId, Retries - 1)
+            end;
+        _ ->
+            timer:sleep(20),
+            wait_for_queue_offline(SubscriberId, Retries - 1)
+    end.
 
 publish_b2c_retry_qos1_test(Config) ->
     Connect = packet:gen_connect("pub-qos1-timeout-test", [{keepalive, 60}]),

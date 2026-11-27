@@ -979,7 +979,8 @@ handle_session_down(
 handle_waiting_acks_and_msgs(
     WAcks,
     NextMsgId,
-    #state{id = SId, sessions = Sessions, offline = Offline, insert_fun = QFun} = State
+    #state{id = SId, sessions = Sessions, offline = Offline, insert_fun = QFun, opts = Opts} =
+        State
 ) ->
     %% we can only handle the last waiting acks and msgs if this is
     %% the last session active for this queue.
@@ -995,10 +996,18 @@ handle_waiting_acks_and_msgs(
                                 QFun,
                                 D#deliver{msg = Msg#vmq_msg{persisted = false}},
                                 AccOffline,
-                                SId
+                                SId,
+                                maps:get(upgrade_qos, Opts, false)
                             );
                         (Msg, AccOffline) ->
-                            queue_insert(true, QFun, Msg, AccOffline, SId)
+                            queue_insert(
+                                true,
+                                QFun,
+                                Msg,
+                                AccOffline,
+                                SId,
+                                maps:get(upgrade_qos, Opts, false)
+                            )
                     end,
                     Offline,
                     WAcks
@@ -1151,57 +1160,115 @@ insert(
     _ = vmq_metrics:incr_queue_unhandled(1),
     State;
 insert(
-    MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions, insert_fun = QFun} = State
+    MsgOrRef,
+    #state{id = SId, offline = Offline, sessions = Sessions, insert_fun = QFun, opts = Opts} =
+        State
 ) when
     Sessions == #{}
 ->
     %% no session online, insert in offline queue
-    State#state{offline = queue_insert(true, QFun, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
+    State#state{
+        offline = queue_insert(
+            true,
+            QFun,
+            maybe_set_expiry_ts(MsgOrRef),
+            Offline,
+            SId,
+            maps:get(upgrade_qos, Opts, false)
+        )
+    };
 %% Online Queue
 insert(
     MsgOrRef,
-    #state{id = SId, deliver_mode = fanout, sessions = Sessions, insert_fun = QFun} = State
+    #state{
+        id = SId,
+        deliver_mode = fanout,
+        sessions = Sessions,
+        insert_fun = QFun,
+        opts = Opts
+    } = State
 ) ->
+    UpgradeQoS = maps:get(upgrade_qos, Opts, false),
     {NewSessions, _} = session_fold(
-        SId, QFun, fun session_insert/4, maybe_set_expiry_ts(MsgOrRef), Sessions
+        SId,
+        QFun,
+        fun(SId0, QFun0, Session, MsgOrRef0) ->
+            session_insert(SId0, QFun0, Session, MsgOrRef0, UpgradeQoS)
+        end,
+        maybe_set_expiry_ts(MsgOrRef),
+        Sessions
     ),
     State#state{sessions = NewSessions};
 insert(
     MsgOrRef,
-    #state{id = SId, deliver_mode = balance, sessions = Sessions, insert_fun = QFun} = State
+    #state{
+        id = SId,
+        deliver_mode = balance,
+        sessions = Sessions,
+        insert_fun = QFun,
+        opts = Opts
+    } = State
 ) ->
     Pids = maps:keys(Sessions),
     RandomPid = lists:nth(rand:uniform(maps:size(Sessions)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
-    {UpdatedSession, _} = session_insert(SId, QFun, RandomSession, maybe_set_expiry_ts(MsgOrRef)),
+    {UpdatedSession, _} = session_insert(
+        SId,
+        QFun,
+        RandomSession,
+        maybe_set_expiry_ts(MsgOrRef),
+        maps:get(upgrade_qos, Opts, false)
+    ),
     State#state{sessions = maps:update(RandomPid, UpdatedSession, Sessions)}.
 
-session_insert(SId, QFun, #session{status = active, queue = Q} = Session, MsgOrRef) ->
+session_insert(SId, QFun, #session{status = active, queue = Q} = Session, MsgOrRef, UpgradeQoS) ->
     {
-        send(SId, Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)}),
+        send(SId, Session#session{
+            queue = queue_insert(false, QFun, MsgOrRef, Q, SId, UpgradeQoS)
+        }),
         MsgOrRef
     };
-session_insert(SId, QFun, #session{status = passive, queue = Q} = Session, MsgOrRef) ->
+session_insert(SId, QFun, #session{status = passive, queue = Q} = Session, MsgOrRef, UpgradeQoS) ->
     {
-        Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)},
+        Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId, UpgradeQoS)},
         MsgOrRef
     };
-session_insert(SId, QFun, #session{status = notify, queue = Q} = Session, MsgOrRef) ->
+session_insert(SId, QFun, #session{status = notify, queue = Q} = Session, MsgOrRef, UpgradeQoS) ->
     {
-        send_notification(Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)}),
+        send_notification(Session#session{
+            queue = queue_insert(false, QFun, MsgOrRef, Q, SId, UpgradeQoS)
+        }),
         MsgOrRef
     }.
 
 %% unlimited messages accepted
-queue_insert(Offline, enqueue, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId) ->
-    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
 queue_insert(
-    Offline, enqueue, MsgOrRef, #queue{ignore_max = true, size = Size, queue = Queue} = Q, SId
+    Offline, enqueue, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId, UpgradeQoS
 ) ->
-    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
+    Q#queue{
+        queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef, UpgradeQoS), Queue),
+        size = Size + 1
+    };
+queue_insert(
+    Offline,
+    enqueue,
+    MsgOrRef,
+    #queue{ignore_max = true, size = Size, queue = Queue} = Q,
+    SId,
+    UpgradeQoS
+) ->
+    Q#queue{
+        queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef, UpgradeQoS), Queue),
+        size = Size + 1
+    };
 %% tail drop in case of fifo
 queue_insert(
-    _Offline, _QFun, MsgOrRef, #queue{type = fifo, max = Max, size = Size, drop = Drop} = Q, SId
+    _Offline,
+    _QFun,
+    MsgOrRef,
+    #queue{type = fifo, max = Max, size = Size, drop = Drop} = Q,
+    SId,
+    _UpgradeQoS
 ) when
     Size >= Max
 ->
@@ -1215,7 +1282,8 @@ queue_insert(
     enqueue,
     MsgOrRef,
     #queue{type = lifo, max = Max, size = Size, queue = Queue, drop = Drop} = Q,
-    SId
+    SId,
+    UpgradeQoS
 ) when
     Size >= Max
 ->
@@ -1224,15 +1292,24 @@ queue_insert(
     vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, OldMsgOrRef),
     Q#queue{
-        queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop = Drop + 1
+        queue = queue:in(
+            maybe_offline_store(Offline, SId, MsgOrRef, UpgradeQoS), NewQueue
+        ),
+        drop = Drop + 1
     };
 %% normal enqueue
-queue_insert(Offline, front, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
+queue_insert(Offline, front, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId, UpgradeQoS) ->
     Q#queue{
-        queue = queue:in_r(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1
+        queue = queue:in_r(maybe_offline_store(Offline, SId, MsgOrRef, UpgradeQoS), Queue),
+        size = Size + 1
     };
-queue_insert(Offline, enqueue, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
-    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1}.
+queue_insert(
+    Offline, enqueue, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId, UpgradeQoS
+) ->
+    Q#queue{
+        queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef, UpgradeQoS), Queue),
+        size = Size + 1
+    }.
 
 send(
     SId,
@@ -1359,14 +1436,20 @@ publish_last_will(#state{delayed_will = undefined} = State) ->
 publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
-maybe_offline_store(_, _, #deliver{msg = #vmq_msg{qos = 0, persisted = false} = _Msg} = D) ->
+maybe_offline_store(
+    _,
+    _,
+    #deliver{msg = #vmq_msg{qos = 0, persisted = false} = _Msg} = D,
+    false
+) ->
     % Don't store QoS 0 messages in the message store
     D;
 maybe_offline_store(
     Offline,
     SubscriberId,
     #deliver{qos = QoS, msg = #vmq_msg{dup = IsDup, persisted = false, expiry_ts = ExpiryTs} = Msg} =
-        D
+        D,
+    UpgradeQoS
 ) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true) the queue can
@@ -1379,7 +1462,8 @@ maybe_offline_store(
     %% - Message ID (required when storing a message with the DUP flag)
     %% - Expiry Timestamp (required when storing a message that should expire)
     PMsg = Msg#vmq_msg{persisted = true},
-    case vmq_message_store:write(SubscriberId, PMsg) of
+    EffectiveQoS = effective_qos(QoS, Msg#vmq_msg.qos, UpgradeQoS),
+    case vmq_message_store:write(SubscriberId, PMsg#vmq_msg{qos = EffectiveQoS}) of
         ok when Offline and IsDup ->
             % No compress
             D#deliver{msg = PMsg};
@@ -1397,19 +1481,24 @@ maybe_offline_store(
             %% full message structure around
             D
     end;
-maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D) ->
+maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D, _) ->
     % we can't compress a DUP message as we'd lose the message id when compressing
     D;
 maybe_offline_store(
-    true, _, #deliver{msg = #vmq_msg{persisted = true, expiry_ts = ExpiryTs}} = D
+    true, _, #deliver{msg = #vmq_msg{persisted = true, expiry_ts = ExpiryTs}} = D, _
 ) when ExpiryTs =/= undefined ->
     % we can't compress a message that has the expiry_ts set as we'd lose the expiry ts when compressing
     D;
-maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true} = Msg}) ->
+maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true} = Msg}, _) ->
     % Compress
     Msg#vmq_msg.msg_ref;
-maybe_offline_store(_, _, MsgOrRef) ->
+maybe_offline_store(_, _, MsgOrRef, _) ->
     MsgOrRef.
+
+effective_qos(SubQoS, _PubQoS, true) ->
+    SubQoS;
+effective_qos(SubQoS, PubQoS, false) ->
+    min(SubQoS, PubQoS).
 
 maybe_offline_delete(SubscriberId, #deliver{msg = #vmq_msg{persisted = true, msg_ref = MsgRef}}) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),
@@ -1484,7 +1573,8 @@ compress_queue(SId, #queue{queue = Q} = Queue) ->
 compress_queue(_, [], Acc) ->
     queue:from_list(lists:reverse(Acc));
 compress_queue(SId, [Msg | Rest], Acc) ->
-    compress_queue(SId, Rest, [maybe_offline_store(true, SId, Msg) | Acc]).
+    %% Persisted messages already contain their effective QoS in the message store.
+    compress_queue(SId, Rest, [maybe_offline_store(true, SId, Msg, false) | Acc]).
 
 decompress_queue(SId, #queue{queue = Q} = Queue) ->
     NewQueue = decompress_queue(SId, queue:to_list(Q), []),

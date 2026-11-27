@@ -1,3 +1,4 @@
+- Spec compliance: persist the effective outgoing QoS for offline messages so that later delivery from offline queue uses the correct resulting QoS.
 - Spec compliance: reject a CONNECT whose Will QoS is 3 (MQTT-3.1.2-14 in MQTT 3.1.1, MQTT-3.1.2-12 in MQTT 5)
   instead of accepting it.
 - Dependency: Update Hackney to 4.10.1. Webhook endpoints on a unix socket (`http+unix://`)

@@ -18,6 +18,7 @@
         ]).
 
 -export([queue_crash_test/1,
+         queue_persists_effective_qos_test/1,
          queue_fifo_test/1,
          queue_lifo_test/1,
          queue_fifo_offline_drop_test/1,
@@ -62,6 +63,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [queue_crash_test,
+     queue_persists_effective_qos_test,
      queue_fifo_test,
      queue_lifo_test,
      queue_fifo_offline_drop_test,
@@ -119,6 +121,164 @@ queue_crash_test(_) ->
     receive_persisted_msg(NewQPid, 1, Msg),
     {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
+
+queue_persists_effective_qos_test(_) ->
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-standard-0-0">>, 0, 0, false),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-standard-0-1">>, 0, 1, false),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-standard-0-2">>, 0, 2, false),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-standard-1-0">>, 1, 0, false),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-standard-2-0">>, 2, 0, false),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-standard-1-1">>, 1, 1, false, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-standard-1-2">>, 1, 2, false, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-standard-2-1">>, 2, 1, false, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-standard-2-2">>, 2, 2, false, 2),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-upgrade-0-0">>, 0, 0, true),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-upgrade-1-0">>, 1, 0, true),
+    ok = assert_qos0_result_not_persisted(
+           <<"effective-qos-upgrade-2-0">>, 2, 0, true),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-0-1">>, 0, 1, true, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-0-2">>, 0, 2, true, 2),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-1-1">>, 1, 1, true, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-1-2">>, 1, 2, true, 2),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-2-1">>, 2, 1, true, 1),
+    ok = assert_persisted_effective_qos(
+           <<"effective-qos-upgrade-2-2">>, 2, 2, true, 2),
+    ok = assert_shared_message_persists_per_subscriber_qos().
+
+assert_qos0_result_not_persisted(ClientId, PublishQoS, SubscriptionQoS, UpgradeQoS) ->
+    Parent = self(),
+    SubscriberId = {"", ClientId},
+    Topic = [<<"test">>, ClientId],
+    QueueOpts = maps:merge(
+                  vmq_queue:default_opts(),
+                  #{cleanup_on_disconnect => false,
+                    upgrade_qos => UpgradeQoS}),
+    SessionPid = spawn(fun() -> mock_session(Parent) end),
+
+    {ok, #{session_present := false,
+           queue_pid := QPid}} =
+        vmq_reg:register_subscriber_(SessionPid, SubscriberId, false, QueueOpts, 10),
+    {ok, [SubscriptionQoS]} =
+        vmq_reg:subscribe(false, SubscriberId, [{Topic, SubscriptionQoS}]),
+    teardown_session(SessionPid),
+
+    Msg = msg(Topic, <<"qos0-result">>, PublishQoS),
+    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {offline, fanout, 0, 0, false} = vmq_queue:status(QPid),
+    {ok, []} = vmq_message_store:find(SubscriberId, other),
+    ok.
+
+assert_persisted_effective_qos(ClientId, PublishQoS, SubscriptionQoS, UpgradeQoS,
+                               ExpectedQoS) ->
+    Parent = self(),
+    SubscriberId = {"", ClientId},
+    Topic = [<<"test">>, ClientId],
+    QueueOpts = maps:merge(
+                  vmq_queue:default_opts(),
+                  #{cleanup_on_disconnect => false,
+                    upgrade_qos => UpgradeQoS}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+
+    {ok, #{session_present := false,
+           queue_pid := QPid1}} =
+        vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [SubscriptionQoS]} =
+        vmq_reg:subscribe(false, SubscriberId, [{Topic, SubscriptionQoS}]),
+    teardown_session(SessionPid1),
+
+    Msg = msg(Topic, <<"effective-qos-message">>, PublishQoS),
+    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
+    {ok, [MsgRef]} = vmq_message_store:find(SubscriberId, other),
+    {ok, #vmq_msg{qos = ExpectedQoS}} = vmq_message_store:read(SubscriberId, MsgRef),
+
+    %% Verify reconstruction from the message store, not only an in-memory reconnect.
+    catch gen_fsm:sync_send_all_state_event(QPid1, byebye),
+    false = is_process_alive(QPid1),
+    timer:sleep(20),
+    QPid2 = vmq_reg:get_queue_pid(SubscriberId),
+    true = is_pid(QPid2),
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+           queue_pid := QPid2}} =
+        vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
+    receive_persisted_msg(QPid2, ExpectedQoS, Msg),
+    SessionPid2 ! go_down,
+    ok.
+
+assert_shared_message_persists_per_subscriber_qos() ->
+    Parent = self(),
+    SubscriberId1 = {"", <<"shared-message-qos-1">>},
+    SubscriberId2 = {"", <<"shared-message-qos-2">>},
+    Topic = [<<"test">>, <<"shared-message-qos">>],
+    QueueOpts = maps:merge(
+                  vmq_queue:default_opts(),
+                  #{cleanup_on_disconnect => false,
+                    upgrade_qos => false}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+
+    {ok, #{session_present := false,
+           queue_pid := QPid1}} =
+        vmq_reg:register_subscriber_(SessionPid1, SubscriberId1, false, QueueOpts, 10),
+    {ok, #{session_present := false,
+           queue_pid := QPid2}} =
+        vmq_reg:register_subscriber_(SessionPid2, SubscriberId2, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId1, [{Topic, 1}]),
+    {ok, [2]} = vmq_reg:subscribe(false, SubscriberId2, [{Topic, 2}]),
+    teardown_session(SessionPid1),
+    teardown_session(SessionPid2),
+
+    Msg = msg(Topic, <<"shared-message">>, 2),
+    {ok, {2, 0}} = vmq_reg:publish(true, vmq_reg_trie, <<"publisher">>, Msg),
+    {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
+    {offline, fanout, 1, 0, false} = vmq_queue:status(QPid2),
+    {ok, [MsgRef]} = vmq_message_store:find(SubscriberId1, other),
+    {ok, [MsgRef]} = vmq_message_store:find(SubscriberId2, other),
+    {ok, #vmq_msg{qos = 1}} = vmq_message_store:read(SubscriberId1, MsgRef),
+    {ok, #vmq_msg{qos = 2}} = vmq_message_store:read(SubscriberId2, MsgRef),
+
+    %% Both queues reference the same stored payload, but their subscriber-specific
+    %% indexes must retain different effective QoS values across queue restarts.
+    catch gen_fsm:sync_send_all_state_event(QPid1, byebye),
+    catch gen_fsm:sync_send_all_state_event(QPid2, byebye),
+    false = is_process_alive(QPid1),
+    false = is_process_alive(QPid2),
+    timer:sleep(20),
+    NewQPid1 = vmq_reg:get_queue_pid(SubscriberId1),
+    NewQPid2 = vmq_reg:get_queue_pid(SubscriberId2),
+
+    NewSessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+           queue_pid := NewQPid1}} =
+        vmq_reg:register_subscriber_(NewSessionPid1, SubscriberId1, false, QueueOpts, 10),
+    receive_persisted_msg(NewQPid1, 1, Msg),
+
+    NewSessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+           queue_pid := NewQPid2}} =
+        vmq_reg:register_subscriber_(NewSessionPid2, SubscriberId2, false, QueueOpts, 10),
+    receive_persisted_msg(NewQPid2, 2, Msg),
+    NewSessionPid1 ! go_down,
+    NewSessionPid2 ! go_down,
+    ok.
 
 queue_fifo_test(_) ->
     Parent = self(),
